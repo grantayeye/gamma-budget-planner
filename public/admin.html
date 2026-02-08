@@ -536,6 +536,62 @@
         </tbody>
       </table>
     </div>
+    
+    <!-- Users Section -->
+    <div class="section-header" style="margin-top: 40px;">
+      <h2>👤 Users</h2>
+      <button class="btn btn-primary btn-small" onclick="showUserModal()">+ Add User</button>
+    </div>
+    
+    <div class="budget-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Name</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersTableBody">
+          <tr>
+            <td colspan="4" class="empty-state">Loading...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- USER MODAL -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal" style="max-width: 450px;">
+    <div class="modal-header">
+      <h2 id="userModalTitle">Add User</h2>
+      <button class="modal-close" onclick="closeUserModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="handleUserSubmit(event)">
+        <input type="hidden" id="userEditId">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="userUsername" required autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="userName" required autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label id="passwordLabel">Password</label>
+          <input type="password" id="userPassword" autocomplete="new-password">
+          <small id="passwordHint" style="color:var(--text-light);font-size:12px;display:none;">Leave blank to keep current password</small>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:24px;">
+          <button type="submit" class="btn btn-primary" style="flex:1;">Save User</button>
+          <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -588,6 +644,7 @@ function showDashboard() {
   document.getElementById('dashboard').classList.add('active');
   document.getElementById('userInfo').textContent = `👤 ${currentUser.name}`;
   loadBudgets();
+  loadUsers();
 }
 
 // ============================================================
@@ -841,6 +898,139 @@ function copyBudgetLink(id) {
 }
 
 // ============================================================
+// USERS
+// ============================================================
+let users = [];
+
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/admin/users');
+    if (res.status === 401) {
+      showLogin();
+      return;
+    }
+    users = await res.json();
+    renderUsers();
+  } catch (err) {
+    console.error('Load users error:', err);
+    showToast('Failed to load users');
+  }
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('usersTableBody');
+  
+  if (users.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No users</td></tr>`;
+    return;
+  }
+  
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td>${u.name}</td>
+      <td>${formatDate(u.created)}</td>
+      <td class="actions-cell">
+        <button class="btn btn-secondary btn-small" onclick="editUser('${u.id}')">Edit</button>
+        ${u.id !== currentUser.id ? `<button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteUser('${u.id}')">Delete</button>` : '<span style="color:var(--text-light);font-size:12px;">(you)</span>'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function showUserModal(userId = null) {
+  const isEdit = !!userId;
+  document.getElementById('userModalTitle').textContent = isEdit ? 'Edit User' : 'Add User';
+  document.getElementById('userEditId').value = userId || '';
+  document.getElementById('passwordHint').style.display = isEdit ? 'block' : 'none';
+  document.getElementById('userPassword').required = !isEdit;
+  
+  if (isEdit) {
+    const user = users.find(u => u.id === userId);
+    if (user) {
+      document.getElementById('userUsername').value = user.username;
+      document.getElementById('userName').value = user.name;
+      document.getElementById('userPassword').value = '';
+    }
+  } else {
+    document.getElementById('userUsername').value = '';
+    document.getElementById('userName').value = '';
+    document.getElementById('userPassword').value = '';
+  }
+  
+  document.getElementById('userModal').classList.add('active');
+  document.getElementById('userUsername').focus();
+}
+
+function closeUserModal() {
+  document.getElementById('userModal').classList.remove('active');
+}
+
+function editUser(id) {
+  showUserModal(id);
+}
+
+async function handleUserSubmit(e) {
+  e.preventDefault();
+  
+  const editId = document.getElementById('userEditId').value;
+  const username = document.getElementById('userUsername').value.trim();
+  const name = document.getElementById('userName').value.trim();
+  const password = document.getElementById('userPassword').value;
+  
+  const isEdit = !!editId;
+  
+  const body = { username, name };
+  if (password) body.password = password;
+  
+  try {
+    const url = isEdit ? `/api/admin/users/${editId}` : '/api/auth/users';
+    const method = isEdit ? 'PUT' : 'POST';
+    
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      showToast(isEdit ? '✓ User updated' : '✓ User created');
+      closeUserModal();
+      loadUsers();
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to save user'));
+    }
+  } catch (err) {
+    console.error('Save user error:', err);
+    showToast('Failed to save user');
+  }
+}
+
+async function deleteUser(id) {
+  const user = users.find(u => u.id === id);
+  if (!user) return;
+  
+  if (!confirm(`Delete user "${user.username}"? This cannot be undone.`)) return;
+  
+  try {
+    const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      showToast('✓ User deleted');
+      loadUsers();
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to delete user'));
+    }
+  } catch (err) {
+    console.error('Delete user error:', err);
+    showToast('Failed to delete user');
+  }
+}
+
+// ============================================================
 // UTILITIES
 // ============================================================
 function formatCurrency(num) {
@@ -893,12 +1083,19 @@ function showToast(message) {
 
 // Close modal on escape
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') {
+    closeModal();
+    closeUserModal();
+  }
 });
 
 // Close modal on backdrop click
 document.getElementById('budgetModal').addEventListener('click', (e) => {
   if (e.target.id === 'budgetModal') closeModal();
+});
+
+document.getElementById('userModal').addEventListener('click', (e) => {
+  if (e.target.id === 'userModal') closeUserModal();
 });
 
 // Initialize

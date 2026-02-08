@@ -538,6 +538,83 @@ app.get('/api/admin/users', requireAuth, (req, res) => {
   res.json(users);
 });
 
+// Update user
+app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
+  try {
+    const { username, password, name } = req.body;
+    const users = loadUsers();
+    const userIndex = users.findIndex(u => u.id === req.params.id);
+    
+    if (userIndex === -1) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Check username uniqueness if changing
+    if (username && username.toLowerCase() !== users[userIndex].username.toLowerCase()) {
+      if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+        return res.status(400).json({ error: 'Username already exists' });
+      }
+      users[userIndex].username = username;
+    }
+    
+    // Update name if provided
+    if (name) {
+      users[userIndex].name = name;
+    }
+    
+    // Update password if provided
+    if (password) {
+      users[userIndex].passwordHash = await bcrypt.hash(password, 10);
+    }
+    
+    saveUsers(users);
+    
+    res.json({ 
+      success: true, 
+      user: { 
+        id: users[userIndex].id, 
+        username: users[userIndex].username, 
+        name: users[userIndex].name 
+      } 
+    });
+    
+  } catch (err) {
+    console.error('Update user error:', err);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// Delete user
+app.delete('/api/admin/users/:id', requireAuth, (req, res) => {
+  try {
+    const users = loadUsers();
+    
+    // Prevent deleting the last user
+    if (users.length <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last user' });
+    }
+    
+    // Prevent deleting yourself
+    if (req.user && req.user.id === req.params.id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    
+    const userIndex = users.findIndex(u => u.id === req.params.id);
+    if (userIndex === -1) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    users.splice(userIndex, 1);
+    saveUsers(users);
+    
+    res.json({ success: true });
+    
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 
