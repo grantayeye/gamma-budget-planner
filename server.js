@@ -233,7 +233,8 @@ app.post('/api/budgets', (req, res) => {
         version: 1,
         timestamp: now,
         state,
-        note: 'Initial budget'
+        note: 'Initial budget',
+        pinned: true
       }],
       currentState: state
     };
@@ -287,10 +288,13 @@ app.get('/api/budgets/:id', (req, res) => {
   }
 });
 
-// Update a live budget (creates new version)
+// Version consolidation window (15 minutes)
+const VERSION_CONSOLIDATION_MS = 15 * 60 * 1000;
+
+// Update a live budget (with soft version consolidation)
 app.put('/api/budgets/:id', (req, res) => {
   try {
-    const { state, note } = req.body;
+    const { state, note, pin } = req.body;
     const budget = loadBudget(req.params.id);
     
     if (!budget) {
@@ -301,24 +305,45 @@ app.put('/api/budgets/:id', (req, res) => {
       return res.status(400).json({ error: 'Budget state is required' });
     }
     
-    // Check if state actually changed (avoid duplicate versions)
+    const now = new Date();
+    const nowISO = now.toISOString();
     const lastVersion = budget.versions[budget.versions.length - 1];
+    
+    // Check if state actually changed
     if (JSON.stringify(lastVersion.state) === JSON.stringify(state)) {
+      // If pin requested, just pin the current version
+      if (pin && !lastVersion.pinned) {
+        lastVersion.pinned = true;
+        lastVersion.note = note || lastVersion.note;
+        saveBudget(budget);
+        return res.json({ success: true, message: 'Version pinned', versionCount: budget.versions.length });
+      }
       return res.json({ success: true, message: 'No changes detected', versionCount: budget.versions.length });
     }
     
-    const now = new Date().toISOString();
+    // Determine if we should consolidate or create new version
+    const lastVersionTime = new Date(lastVersion.timestamp);
+    const timeSinceLastVersion = now - lastVersionTime;
+    const shouldConsolidate = !lastVersion.pinned && timeSinceLastVersion < VERSION_CONSOLIDATION_MS;
     
-    // Add new version
-    budget.versions.push({
-      version: budget.versions.length + 1,
-      timestamp: now,
-      state,
-      note: note || 'Auto-save'
-    });
+    if (shouldConsolidate && !pin) {
+      // Update the existing soft version in place
+      lastVersion.state = state;
+      lastVersion.timestamp = nowISO;
+      lastVersion.note = 'Auto-save';
+    } else {
+      // Create new version (either pinned, or outside consolidation window)
+      budget.versions.push({
+        version: budget.versions.length + 1,
+        timestamp: nowISO,
+        state,
+        note: pin ? (note || 'Shared/Emailed') : (note || 'Auto-save'),
+        pinned: !!pin
+      });
+    }
     
     budget.currentState = state;
-    budget.lastModified = now;
+    budget.lastModified = nowISO;
     
     // Update client name if provided in state
     if (state.clientName) {
@@ -330,7 +355,8 @@ app.put('/api/budgets/:id', (req, res) => {
     res.json({
       success: true,
       versionCount: budget.versions.length,
-      lastModified: now
+      lastModified: nowISO,
+      consolidated: shouldConsolidate && !pin
     });
     
   } catch (err) {
@@ -491,12 +517,13 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, (req, res) => {
     
     const now = new Date().toISOString();
     
-    // Add restore as new version
+    // Add restore as new pinned version
     budget.versions.push({
       version: budget.versions.length + 1,
       timestamp: now,
       state: targetVersion.state,
-      note: `Restored to version ${versionNum}`
+      note: `Restored to version ${versionNum}`,
+      pinned: true
     });
     
     budget.currentState = targetVersion.state;

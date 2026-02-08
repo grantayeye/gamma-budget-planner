@@ -2876,12 +2876,12 @@ async function sendProposalEmail() {
   let budgetUrl = null;
   
   if (currentBudgetId) {
-    // Already in a budget — use its link (save first)
+    // Already in a budget — use its link (save + pin version)
     try {
       await fetch(`/api/budgets/${currentBudgetId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: getStateForAPI() })
+        body: JSON.stringify({ state: getStateForAPI(), pin: true, note: 'Emailed to client' })
       });
     } catch (e) {
       console.warn('Could not save before emailing:', e);
@@ -3304,14 +3304,14 @@ async function loadBudget(budgetId) {
 async function shareLink() {
   const currentState = getStateForAPI();
   
-  // If we're already in a budget, just copy its link (and save current state)
+  // If we're already in a budget, just copy its link (and pin current state)
   if (currentBudgetId) {
-    // Save current state first
+    // Save + pin current state
     try {
       await fetch(`/api/budgets/${currentBudgetId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: currentState })
+        body: JSON.stringify({ state: currentState, pin: true, note: 'Shared link' })
       });
       lastSavedState = currentState;
     } catch (e) {

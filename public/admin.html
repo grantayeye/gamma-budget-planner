@@ -820,10 +820,11 @@ function showBudgetModal(budget) {
     <div class="versions-list">
       ${(budget.versions && budget.versions.length > 0) ? 
         budget.versions.slice().reverse().map(v => `
-          <div class="version-item">
+          <div class="version-item" style="${v.pinned ? 'background:#FFF8E1;' : ''}">
             <div class="version-info">
-              <span class="version-num">v${v.version}</span> — 
-              <span>${formatDateTime(v.timestamp)}</span>
+              <span class="version-num">v${v.version}</span>
+              ${v.pinned ? '<span style="color:#F57C00;font-size:11px;margin-left:4px;">📌</span>' : '<span style="color:#9E9E9E;font-size:10px;margin-left:4px;">(auto)</span>'}
+              — <span>${formatDateTime(v.timestamp)}</span>
               <div class="version-note">${v.note || 'No note'} • ${formatCurrency(v.state?.total || 0)}</div>
             </div>
             ${v.version < budget.versions.length ? `
