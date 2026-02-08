@@ -2827,8 +2827,8 @@ async function sendProposalEmail() {
   const categories = [];
   CATEGORIES().forEach(cat => {
     const tier = state.selections[cat.id];
-    if (tier) {
-      const price = cat.tiers[tier];
+    if (tier && cat.tiers[tier]) {
+      const price = getCategoryPrice(cat, tier);
       categories.push({
         name: cat.name,
         tier: tier,
@@ -2841,7 +2841,7 @@ async function sendProposalEmail() {
   let subtotal = 0;
   CATEGORIES().forEach(cat => {
     const tier = state.selections[cat.id];
-    if (tier) subtotal += cat.tiers[tier];
+    if (tier && cat.tiers[tier]) subtotal += getCategoryPrice(cat, tier);
   });
   EXTRAS().forEach(e => {
     if (state.extras[e.id]) {
@@ -2870,13 +2870,54 @@ async function sendProposalEmail() {
     tierLabel = labels[dominantTier] || '';
   }
   
+  const clientName = document.getElementById('clientName').value || '';
+  
+  // Get or create budget link
+  let budgetUrl = null;
+  
+  if (currentBudgetId) {
+    // Already in a budget — use its link (save first)
+    try {
+      await fetch(`/api/budgets/${currentBudgetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: getStateForAPI() })
+      });
+    } catch (e) {
+      console.warn('Could not save before emailing:', e);
+    }
+    budgetUrl = window.location.origin + '/b/' + currentBudgetId;
+  } else {
+    // No budget yet — create one
+    try {
+      const budgetResponse = await fetch('/api/budgets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          state: getStateForAPI(),
+          clientName: clientName
+        })
+      });
+      const budgetResult = await budgetResponse.json();
+      if (budgetResponse.ok && budgetResult.success) {
+        budgetUrl = window.location.origin + budgetResult.url;
+        // Update page to use this budget
+        currentBudgetId = budgetResult.id;
+        window.history.replaceState({}, '', budgetResult.url);
+      }
+    } catch (e) {
+      console.warn('Could not create live budget for email:', e);
+    }
+  }
+  
   const proposalData = {
     categories,
     total: Math.round(total),
     tierLabel,
-    clientName: document.getElementById('clientName').value || '',
+    clientName: clientName,
     builder: document.getElementById('builder').value || '',
-    homeSize: state.homeSize
+    homeSize: state.homeSize,
+    budgetUrl: budgetUrl
   };
   
   try {
@@ -3263,6 +3304,35 @@ async function loadBudget(budgetId) {
 async function shareLink() {
   const currentState = getStateForAPI();
   
+  // If we're already in a budget, just copy its link (and save current state)
+  if (currentBudgetId) {
+    // Save current state first
+    try {
+      await fetch(`/api/budgets/${currentBudgetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: currentState })
+      });
+      lastSavedState = currentState;
+    } catch (e) {
+      console.warn('Could not save before sharing:', e);
+    }
+    
+    const budgetUrl = window.location.origin + '/b/' + currentBudgetId;
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(budgetUrl).then(() => {
+        showToast('🔗 Link copied!');
+      }).catch(() => {
+        fallbackCopy(budgetUrl);
+      });
+    } else {
+      fallbackCopy(budgetUrl);
+    }
+    return;
+  }
+  
+  // No budget yet — create a new one
   try {
     showToast('⏳ Creating link...');
     

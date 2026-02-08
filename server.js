@@ -823,6 +823,22 @@ function buildProposalEmail(data, recipientName) {
               </table>
               ` : ''}
 
+              ${data.budgetUrl ? `
+              <!-- Budget Link Button -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td align="center">
+                    <a href="${data.budgetUrl}" style="display: inline-block; background: #017ED7; color: #FFFFFF; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">View & Customize Your Budget</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top: 8px;">
+                    <p style="margin: 0; color: #5A5A5A; font-size: 12px;">Click above to view, adjust, and explore your options online</p>
+                  </td>
+                </tr>
+              </table>
+              ` : ''}
+
               <p style="margin: 0 0 16px; color: #5A5A5A; font-size: 14px; line-height: 1.6;">
                 This is a preliminary budget estimate. Final pricing may vary based on site conditions, specific equipment selections, and installation requirements.
               </p>
