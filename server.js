@@ -4,6 +4,8 @@ const { Resend } = require('resend');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,12 +15,21 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = 'BudgetPlanner@gamma.tech';
 const FROM_NAME = 'Gamma Tech Budget Planner';
 
-// Short links storage
+// Storage paths
 const LINKS_FILE = path.join(__dirname, 'data', 'links.json');
+const BUDGETS_DIR = path.join(__dirname, 'data', 'budgets');
+const USERS_FILE = path.join(__dirname, 'data', 'users.json');
+const SESSIONS_FILE = path.join(__dirname, 'data', 'sessions.json');
 
-// Ensure data directory exists
+// Session secret (generate once and store)
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+// Ensure data directories exist
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
   fs.mkdirSync(path.join(__dirname, 'data'));
+}
+if (!fs.existsSync(BUDGETS_DIR)) {
+  fs.mkdirSync(BUDGETS_DIR);
 }
 
 // Load existing links
@@ -51,6 +62,128 @@ function generateCode(length = 6) {
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
+
+// ============================================================
+// BUDGET STORAGE FUNCTIONS
+// ============================================================
+
+function loadBudget(id) {
+  const filePath = path.join(BUDGETS_DIR, `${id}.json`);
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error loading budget:', e);
+  }
+  return null;
+}
+
+function saveBudget(budget) {
+  const filePath = path.join(BUDGETS_DIR, `${budget.id}.json`);
+  fs.writeFileSync(filePath, JSON.stringify(budget, null, 2));
+}
+
+function listBudgets() {
+  try {
+    const files = fs.readdirSync(BUDGETS_DIR).filter(f => f.endsWith('.json'));
+    return files.map(f => {
+      const budget = JSON.parse(fs.readFileSync(path.join(BUDGETS_DIR, f), 'utf8'));
+      // Return summary (not full version history)
+      return {
+        id: budget.id,
+        clientName: budget.clientName,
+        created: budget.created,
+        lastModified: budget.lastModified,
+        viewCount: budget.views ? budget.views.length : 0,
+        lastViewed: budget.views && budget.views.length > 0 ? budget.views[budget.views.length - 1].timestamp : null,
+        versionCount: budget.versions ? budget.versions.length : 0,
+        currentTotal: budget.currentState ? budget.currentState.total : 0
+      };
+    }).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+  } catch (e) {
+    console.error('Error listing budgets:', e);
+    return [];
+  }
+}
+
+// ============================================================
+// USER/AUTH FUNCTIONS
+// ============================================================
+
+function loadUsers() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error loading users:', e);
+  }
+  return [];
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+function loadSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error loading sessions:', e);
+  }
+  return {};
+}
+
+function saveSessions(sessions) {
+  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+}
+
+function createSession(userId) {
+  const sessionId = crypto.randomBytes(32).toString('hex');
+  const sessions = loadSessions();
+  sessions[sessionId] = {
+    userId,
+    created: new Date().toISOString(),
+    expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+  };
+  saveSessions(sessions);
+  return sessionId;
+}
+
+function validateSession(sessionId) {
+  if (!sessionId) return null;
+  const sessions = loadSessions();
+  const session = sessions[sessionId];
+  if (!session) return null;
+  if (new Date(session.expires) < new Date()) {
+    delete sessions[sessionId];
+    saveSessions(sessions);
+    return null;
+  }
+  return session;
+}
+
+function destroySession(sessionId) {
+  const sessions = loadSessions();
+  delete sessions[sessionId];
+  saveSessions(sessions);
+}
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  const sessionId = req.cookies.session;
+  const session = validateSession(sessionId);
+  if (!session) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const users = loadUsers();
+  req.user = users.find(u => u.id === session.userId);
+  next();
+}
 
 // Short link redirect (must be before static middleware)
 app.get('/s/:code', (req, res) => {
@@ -70,8 +203,351 @@ app.get('/s/:code', (req, res) => {
   }
 });
 
+// ============================================================
+// LIVE BUDGET ROUTES
+// ============================================================
+
+// Create a new live budget
+app.post('/api/budgets', (req, res) => {
+  try {
+    const { state, clientName } = req.body;
+    
+    if (!state) {
+      return res.status(400).json({ error: 'Budget state is required' });
+    }
+    
+    // Generate unique ID
+    let id;
+    do {
+      id = generateCode(8);
+    } while (loadBudget(id));
+    
+    const now = new Date().toISOString();
+    const budget = {
+      id,
+      clientName: clientName || null,
+      created: now,
+      lastModified: now,
+      views: [],
+      versions: [{
+        version: 1,
+        timestamp: now,
+        state,
+        note: 'Initial budget'
+      }],
+      currentState: state
+    };
+    
+    saveBudget(budget);
+    
+    res.json({
+      success: true,
+      id,
+      url: `/b/${id}`
+    });
+    
+  } catch (err) {
+    console.error('Create budget error:', err);
+    res.status(500).json({ error: 'Failed to create budget' });
+  }
+});
+
+// Get a live budget (also records view)
+app.get('/api/budgets/:id', (req, res) => {
+  try {
+    const budget = loadBudget(req.params.id);
+    
+    if (!budget) {
+      return res.status(404).json({ error: 'Budget not found' });
+    }
+    
+    // Record view (only if not from admin)
+    if (!req.query.admin) {
+      budget.views.push({
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.get('User-Agent') || 'Unknown'
+      });
+      saveBudget(budget);
+    }
+    
+    // Return only what frontend needs
+    res.json({
+      id: budget.id,
+      clientName: budget.clientName,
+      created: budget.created,
+      lastModified: budget.lastModified,
+      currentState: budget.currentState,
+      versionCount: budget.versions.length
+    });
+    
+  } catch (err) {
+    console.error('Get budget error:', err);
+    res.status(500).json({ error: 'Failed to load budget' });
+  }
+});
+
+// Update a live budget (creates new version)
+app.put('/api/budgets/:id', (req, res) => {
+  try {
+    const { state, note } = req.body;
+    const budget = loadBudget(req.params.id);
+    
+    if (!budget) {
+      return res.status(404).json({ error: 'Budget not found' });
+    }
+    
+    if (!state) {
+      return res.status(400).json({ error: 'Budget state is required' });
+    }
+    
+    // Check if state actually changed (avoid duplicate versions)
+    const lastVersion = budget.versions[budget.versions.length - 1];
+    if (JSON.stringify(lastVersion.state) === JSON.stringify(state)) {
+      return res.json({ success: true, message: 'No changes detected', versionCount: budget.versions.length });
+    }
+    
+    const now = new Date().toISOString();
+    
+    // Add new version
+    budget.versions.push({
+      version: budget.versions.length + 1,
+      timestamp: now,
+      state,
+      note: note || 'Auto-save'
+    });
+    
+    budget.currentState = state;
+    budget.lastModified = now;
+    
+    // Update client name if provided in state
+    if (state.clientName) {
+      budget.clientName = state.clientName;
+    }
+    
+    saveBudget(budget);
+    
+    res.json({
+      success: true,
+      versionCount: budget.versions.length,
+      lastModified: now
+    });
+    
+  } catch (err) {
+    console.error('Update budget error:', err);
+    res.status(500).json({ error: 'Failed to update budget' });
+  }
+});
+
+// Live budget page redirect
+app.get('/b/:id', (req, res) => {
+  const budget = loadBudget(req.params.id);
+  if (!budget) {
+    return res.status(404).send('Budget not found');
+  }
+  // Serve the main page - frontend will detect /b/:id and load budget
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ============================================================
+// AUTH ROUTES
+// ============================================================
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const users = loadUsers();
+    
+    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    const sessionId = createSession(user.id);
+    
+    res.cookie('session', sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
+    res.json({ success: true, user: { id: user.id, username: user.username, name: user.name } });
+    
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  const sessionId = req.cookies.session;
+  if (sessionId) {
+    destroySession(sessionId);
+  }
+  res.clearCookie('session');
+  res.json({ success: true });
+});
+
+// Check auth status
+app.get('/api/auth/me', (req, res) => {
+  const sessionId = req.cookies.session;
+  const session = validateSession(sessionId);
+  if (!session) {
+    return res.json({ authenticated: false });
+  }
+  const users = loadUsers();
+  const user = users.find(u => u.id === session.userId);
+  if (!user) {
+    return res.json({ authenticated: false });
+  }
+  res.json({ authenticated: true, user: { id: user.id, username: user.username, name: user.name } });
+});
+
+// Create user (requires auth, or allowed if no users exist)
+app.post('/api/auth/users', async (req, res) => {
+  try {
+    const users = loadUsers();
+    
+    // If users exist, require auth
+    if (users.length > 0) {
+      const sessionId = req.cookies.session;
+      const session = validateSession(sessionId);
+      if (!session) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
+    
+    const { username, password, name } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+    
+    if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = {
+      id: crypto.randomUUID(),
+      username,
+      passwordHash,
+      name: name || username,
+      created: new Date().toISOString()
+    };
+    
+    users.push(user);
+    saveUsers(users);
+    
+    res.json({ success: true, user: { id: user.id, username: user.username, name: user.name } });
+    
+  } catch (err) {
+    console.error('Create user error:', err);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// ============================================================
+// ADMIN API ROUTES (Protected)
+// ============================================================
+
+// List all budgets
+app.get('/api/admin/budgets', requireAuth, (req, res) => {
+  const budgets = listBudgets();
+  res.json(budgets);
+});
+
+// Get full budget details (including versions and views)
+app.get('/api/admin/budgets/:id', requireAuth, (req, res) => {
+  const budget = loadBudget(req.params.id);
+  if (!budget) {
+    return res.status(404).json({ error: 'Budget not found' });
+  }
+  res.json(budget);
+});
+
+// Restore a budget to a previous version
+app.post('/api/admin/budgets/:id/restore/:version', requireAuth, (req, res) => {
+  try {
+    const budget = loadBudget(req.params.id);
+    if (!budget) {
+      return res.status(404).json({ error: 'Budget not found' });
+    }
+    
+    const versionNum = parseInt(req.params.version);
+    const targetVersion = budget.versions.find(v => v.version === versionNum);
+    
+    if (!targetVersion) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+    
+    const now = new Date().toISOString();
+    
+    // Add restore as new version
+    budget.versions.push({
+      version: budget.versions.length + 1,
+      timestamp: now,
+      state: targetVersion.state,
+      note: `Restored to version ${versionNum}`
+    });
+    
+    budget.currentState = targetVersion.state;
+    budget.lastModified = now;
+    
+    saveBudget(budget);
+    
+    res.json({ success: true, newVersion: budget.versions.length });
+    
+  } catch (err) {
+    console.error('Restore error:', err);
+    res.status(500).json({ error: 'Failed to restore version' });
+  }
+});
+
+// Delete a budget
+app.delete('/api/admin/budgets/:id', requireAuth, (req, res) => {
+  try {
+    const filePath = path.join(BUDGETS_DIR, `${req.params.id}.json`);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Budget not found' });
+    }
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete budget error:', err);
+    res.status(500).json({ error: 'Failed to delete budget' });
+  }
+});
+
+// List users
+app.get('/api/admin/users', requireAuth, (req, res) => {
+  const users = loadUsers().map(u => ({
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    created: u.created
+  }));
+  res.json(users);
+});
+
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Admin dashboard route (serve admin page)
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+app.get('/admin/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

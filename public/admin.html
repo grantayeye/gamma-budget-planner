@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Admin - Gamma Tech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0F2F44;
+      --primary-light: #133F5C;
+      --accent: #017ED7;
+      --bg: #F5F7FA;
+      --card: #FFFFFF;
+      --border: #E0E0E0;
+      --text: #393939;
+      --text-light: #5A5A5A;
+      --success: #2E7D32;
+      --warning: #F57C00;
+      --danger: #D32F2F;
+      --radius: 12px;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    
+    /* LOGIN PAGE */
+    .login-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .login-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    
+    .login-card h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: var(--primary);
+    }
+    
+    .login-card p {
+      color: var(--text-light);
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+      width: 100%;
+    }
+    
+    .btn-primary:hover {
+      background: #0069AF;
+    }
+    
+    .btn-secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    
+    .error-message {
+      background: #FFEBEE;
+      color: var(--danger);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      display: none;
+    }
+    
+    /* DASHBOARD */
+    .dashboard {
+      display: none;
+    }
+    
+    .dashboard.active {
+      display: block;
+    }
+    
+    .header {
+      background: var(--primary);
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    
+    .user-info {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+    
+    .header .btn {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    
+    .content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    
+    .stat-card .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-light);
+      margin-bottom: 4px;
+    }
+    
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    
+    .section-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .budget-table {
+      background: var(--card);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    
+    .budget-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .budget-table th,
+    .budget-table td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .budget-table th {
+      background: var(--bg);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-light);
+    }
+    
+    .budget-table tr:last-child td {
+      border-bottom: none;
+    }
+    
+    .budget-table tr:hover td {
+      background: #F8FAFC;
+    }
+    
+    .budget-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    .budget-link:hover {
+      text-decoration: underline;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .badge-views {
+      background: #E3F2FD;
+      color: #1565C0;
+    }
+    
+    .badge-versions {
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+    
+    .actions-cell {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    
+    /* MODAL */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .modal-overlay.active {
+      display: flex;
+    }
+    
+    .modal {
+      background: var(--card);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .modal-header h2 {
+      font-size: 18px;
+    }
+    
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text-light);
+      padding: 0;
+      line-height: 1;
+    }
+    
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .detail-item {
+      background: var(--bg);
+      padding: 12px;
+      border-radius: 8px;
+    }
+    
+    .detail-item .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-light);
+      margin-bottom: 4px;
+    }
+    
+    .detail-item .value {
+      font-weight: 600;
+      font-size: 15px;
+    }
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .views-list, .versions-list {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .view-item, .version-item {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .view-item:last-child, .version-item:last-child {
+      border-bottom: none;
+    }
+    
+    .version-item .version-info {
+      flex: 1;
+    }
+    
+    .version-item .version-num {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    
+    .version-item .version-note {
+      color: var(--text-light);
+      font-size: 12px;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-light);
+    }
+    
+    .empty-state p {
+      margin-bottom: 16px;
+    }
+    
+    /* TOAST */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--primary);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 2000;
+    }
+    
+    .toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    
+    @media (max-width: 768px) {
+      .budget-table { overflow-x: auto; }
+      .budget-table table { min-width: 600px; }
+      .header { flex-direction: column; gap: 12px; text-align: center; }
+      .detail-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN PAGE -->
+<div class="login-container" id="loginPage">
+  <div class="login-card">
+    <h1>🔐 Budget Admin</h1>
+    <p>Sign in to manage budgets and view analytics</p>
+    
+    <div class="error-message" id="loginError"></div>
+    
+    <form onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="loginUsername" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="dashboard" id="dashboard">
+  <header class="header">
+    <h1>📊 Budget Dashboard</h1>
+    <div class="header-actions">
+      <span class="user-info" id="userInfo"></span>
+      <button class="btn btn-secondary" onclick="logout()">Logout</button>
+    </div>
+  </header>
+  
+  <div class="content">
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card">
+        <div class="label">Total Budgets</div>
+        <div class="value" id="statTotalBudgets">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Views</div>
+        <div class="value" id="statTotalViews">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">This Week</div>
+        <div class="value" id="statWeekBudgets">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Value</div>
+        <div class="value" id="statTotalValue">-</div>
+      </div>
+    </div>
+    
+    <!-- Budget List -->
+    <div class="section-header">
+      <h2>All Budgets</h2>
+      <button class="btn btn-secondary btn-small" onclick="loadBudgets()">↻ Refresh</button>
+    </div>
+    
+    <div class="budget-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th>Total</th>
+            <th>Created</th>
+            <th>Views</th>
+            <th>Versions</th>
+            <th>Last Activity</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="budgetTableBody">
+          <tr>
+            <td colspan="7" class="empty-state">Loading...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- BUDGET DETAIL MODAL -->
+<div class="modal-overlay" id="budgetModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Budget Details</h2>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <!-- Content loaded dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let currentUser = null;
+let budgets = [];
+
+// ============================================================
+// INIT
+// ============================================================
+async function init() {
+  // Check auth status
+  const res = await fetch('/api/auth/me');
+  const data = await res.json();
+  
+  if (data.authenticated) {
+    currentUser = data.user;
+    showDashboard();
+  } else {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('dashboard').classList.remove('active');
+}
+
+function showDashboard() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('dashboard').classList.add('active');
+  document.getElementById('userInfo').textContent = `👤 ${currentUser.name}`;
+  loadBudgets();
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+async function handleLogin(e) {
+  e.preventDefault();
+  
+  const username = document.getElementById('loginUsername').value;
+  const password = document.getElementById('loginPassword').value;
+  const errorEl = document.getElementById('loginError');
+  
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      currentUser = data.user;
+      errorEl.style.display = 'none';
+      showDashboard();
+    } else {
+      errorEl.textContent = data.error || 'Login failed';
+      errorEl.style.display = 'block';
+    }
+  } catch (err) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  currentUser = null;
+  showLogin();
+}
+
+// ============================================================
+// BUDGETS
+// ============================================================
+async function loadBudgets() {
+  try {
+    const res = await fetch('/api/admin/budgets');
+    if (res.status === 401) {
+      showLogin();
+      return;
+    }
+    
+    budgets = await res.json();
+    renderBudgets();
+    updateStats();
+  } catch (err) {
+    console.error('Load budgets error:', err);
+    showToast('Failed to load budgets');
+  }
+}
+
+function renderBudgets() {
+  const tbody = document.getElementById('budgetTableBody');
+  
+  if (budgets.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="empty-state">
+          <p>No budgets yet</p>
+          <p style="font-size:13px;">Budgets will appear here when clients use the Share Link button</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  tbody.innerHTML = budgets.map(b => `
+    <tr>
+      <td>
+        <a href="/b/${b.id}" target="_blank" class="budget-link">
+          ${b.clientName || 'Unnamed'} 
+        </a>
+        <div style="font-size:11px;color:var(--text-light);">${b.id}</div>
+      </td>
+      <td><strong>${formatCurrency(b.currentTotal)}</strong></td>
+      <td>${formatDate(b.created)}</td>
+      <td><span class="badge badge-views">${b.viewCount} views</span></td>
+      <td><span class="badge badge-versions">${b.versionCount} versions</span></td>
+      <td>${b.lastViewed ? formatRelative(b.lastViewed) : 'Never'}</td>
+      <td class="actions-cell">
+        <button class="btn btn-secondary btn-small" onclick="viewBudget('${b.id}')">Details</button>
+        <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function updateStats() {
+  const totalBudgets = budgets.length;
+  const totalViews = budgets.reduce((sum, b) => sum + (b.viewCount || 0), 0);
+  const totalValue = budgets.reduce((sum, b) => sum + (b.currentTotal || 0), 0);
+  
+  // Count budgets created this week
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  const weekBudgets = budgets.filter(b => new Date(b.created) > oneWeekAgo).length;
+  
+  document.getElementById('statTotalBudgets').textContent = totalBudgets;
+  document.getElementById('statTotalViews').textContent = totalViews;
+  document.getElementById('statWeekBudgets').textContent = weekBudgets;
+  document.getElementById('statTotalValue').textContent = formatCurrency(totalValue);
+}
+
+async function viewBudget(id) {
+  try {
+    const res = await fetch(`/api/admin/budgets/${id}`);
+    if (!res.ok) throw new Error('Failed to load budget');
+    
+    const budget = await res.json();
+    showBudgetModal(budget);
+  } catch (err) {
+    console.error('View budget error:', err);
+    showToast('Failed to load budget details');
+  }
+}
+
+function showBudgetModal(budget) {
+  document.getElementById('modalTitle').textContent = budget.clientName || 'Unnamed Budget';
+  
+  const body = document.getElementById('modalBody');
+  body.innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-item">
+        <div class="label">Budget ID</div>
+        <div class="value">${budget.id}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Current Total</div>
+        <div class="value">${formatCurrency(budget.currentState?.total || 0)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Created</div>
+        <div class="value">${formatDate(budget.created)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Last Modified</div>
+        <div class="value">${formatRelative(budget.lastModified)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Total Views</div>
+        <div class="value">${budget.views?.length || 0}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Total Versions</div>
+        <div class="value">${budget.versions?.length || 0}</div>
+      </div>
+    </div>
+    
+    <div class="section-title">📍 View History (${budget.views?.length || 0})</div>
+    <div class="views-list">
+      ${(budget.views && budget.views.length > 0) ? 
+        budget.views.slice().reverse().map(v => `
+          <div class="view-item">
+            <span>${formatDateTime(v.timestamp)}</span>
+            <span style="color:var(--text-light);font-size:11px;">${v.userAgent?.split(' ')[0] || 'Unknown device'}</span>
+          </div>
+        `).join('') : 
+        '<div style="color:var(--text-light);text-align:center;padding:12px;">No views yet</div>'
+      }
+    </div>
+    
+    <div class="section-title">📜 Version History (${budget.versions?.length || 0})</div>
+    <div class="versions-list">
+      ${(budget.versions && budget.versions.length > 0) ? 
+        budget.versions.slice().reverse().map(v => `
+          <div class="version-item">
+            <div class="version-info">
+              <span class="version-num">v${v.version}</span> — 
+              <span>${formatDateTime(v.timestamp)}</span>
+              <div class="version-note">${v.note || 'No note'} • ${formatCurrency(v.state?.total || 0)}</div>
+            </div>
+            ${v.version < budget.versions.length ? `
+              <button class="btn btn-secondary btn-small" onclick="restoreVersion('${budget.id}', ${v.version})">Restore</button>
+            ` : '<span style="color:var(--success);font-size:12px;">Current</span>'}
+          </div>
+        `).join('') : 
+        '<div style="color:var(--text-light);text-align:center;padding:12px;">No versions</div>'
+      }
+    </div>
+    
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <a href="/b/${budget.id}" target="_blank" class="btn btn-primary" style="text-decoration:none;text-align:center;">Open Budget</a>
+      <button class="btn btn-secondary" onclick="copyBudgetLink('${budget.id}')">Copy Link</button>
+    </div>
+  `;
+  
+  document.getElementById('budgetModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('budgetModal').classList.remove('active');
+}
+
+async function restoreVersion(budgetId, version) {
+  if (!confirm(`Restore to version ${version}? This will create a new version with the old state.`)) return;
+  
+  try {
+    const res = await fetch(`/api/admin/budgets/${budgetId}/restore/${version}`, {
+      method: 'POST'
+    });
+    
+    if (!res.ok) throw new Error('Failed to restore');
+    
+    showToast('✓ Version restored');
+    closeModal();
+    loadBudgets();
+    
+    // Reopen modal with fresh data
+    setTimeout(() => viewBudget(budgetId), 500);
+  } catch (err) {
+    console.error('Restore error:', err);
+    showToast('Failed to restore version');
+  }
+}
+
+async function deleteBudget(id) {
+  const budget = budgets.find(b => b.id === id);
+  const name = budget?.clientName || id;
+  
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  
+  try {
+    const res = await fetch(`/api/admin/budgets/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete');
+    
+    showToast('✓ Budget deleted');
+    loadBudgets();
+  } catch (err) {
+    console.error('Delete error:', err);
+    showToast('Failed to delete budget');
+  }
+}
+
+function copyBudgetLink(id) {
+  const url = window.location.origin + '/b/' + id;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('🔗 Link copied!');
+  }).catch(() => {
+    showToast('Failed to copy');
+  });
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function formatCurrency(num) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(num || 0);
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatRelative(iso) {
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return formatDate(iso);
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('visible');
+  setTimeout(() => toast.classList.remove('visible'), 3000);
+}
+
+// Close modal on escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// Close modal on backdrop click
+document.getElementById('budgetModal').addEventListener('click', (e) => {
+  if (e.target.id === 'budgetModal') closeModal();
+});
+
+// Initialize
+init();
+</script>
+</body>
+</html>

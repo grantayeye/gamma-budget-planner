@@ -2608,10 +2608,12 @@ function updateTotals() {
   
   // Update displays
   document.getElementById('headerTotal').textContent = formatCurrency(grandTotal);
-  document.getElementById('statCategories').textContent = selectedCount + '/' + catCount;
   document.getElementById('statSubtotal').textContent = formatCurrency(equipmentSubtotal);
   document.getElementById('statTax').textContent = formatCurrency(taxEstimate);
   document.getElementById('categoryCount').textContent = selectedCount + ' of ' + catCount + ' selected';
+  
+  // Trigger auto-save for live budgets
+  triggerAutoSave();
 }
 
 // ============================================================
@@ -3137,42 +3139,169 @@ function decodeState(search) {
   return loaded;
 }
 
-async function shareLink() {
-  const encoded = encodeState();
+// ============================================================
+// LIVE BUDGET SYSTEM
+// ============================================================
+
+let currentBudgetId = null;
+let autoSaveTimeout = null;
+let lastSavedState = null;
+
+// Get current state as object for API
+function getStateForAPI() {
   const clientName = document.getElementById('clientName').value || null;
+  const homeSize = parseInt(document.getElementById('homeSize').value) || 4000;
+  const propertyType = document.getElementById('propertyType').value || 'residential';
+  
+  // Get total from the header display (already calculated)
+  const totalText = document.getElementById('headerTotal').textContent;
+  const total = parseInt(totalText.replace(/[^0-9]/g, '')) || 0;
+  
+  return {
+    selections: { ...state.selections },
+    extras: { ...state.extras },
+    modifiers: [...state.modifiers],
+    catMods: { ...state.catMods },
+    homeSize,
+    propertyType,
+    clientName,
+    total,
+    timestamp: new Date().toISOString()
+  };
+}
+
+// Auto-save for live budgets
+function triggerAutoSave() {
+  if (!currentBudgetId) return;
+  
+  // Clear existing timeout
+  if (autoSaveTimeout) {
+    clearTimeout(autoSaveTimeout);
+  }
+  
+  // Debounce: save after 2 seconds of no changes
+  autoSaveTimeout = setTimeout(async () => {
+    const currentState = getStateForAPI();
+    
+    // Skip if no actual changes
+    if (lastSavedState && JSON.stringify(currentState) === JSON.stringify(lastSavedState)) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/budgets/${currentBudgetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: currentState })
+      });
+      
+      if (response.ok) {
+        lastSavedState = currentState;
+        // Subtle save indicator
+        showToast('✓ Saved', 1000);
+      }
+    } catch (err) {
+      console.error('Auto-save error:', err);
+    }
+  }, 2000);
+}
+
+// Load a live budget by ID
+async function loadBudget(budgetId) {
+  try {
+    const response = await fetch(`/api/budgets/${budgetId}`);
+    if (!response.ok) {
+      throw new Error('Budget not found');
+    }
+    
+    const budget = await response.json();
+    
+    // Set current budget ID for auto-save
+    currentBudgetId = budget.id;
+    
+    // Apply state
+    if (budget.currentState) {
+      const s = budget.currentState;
+      
+      // Apply state properties
+      state.selections = s.selections || {};
+      state.extras = s.extras || {};
+      state.modifiers = s.modifiers || [];
+      state.catMods = s.catMods || {};
+      state.homeSize = s.homeSize || 4000;
+      state.propertyType = s.propertyType || 'residential';
+      
+      // Update form fields
+      document.getElementById('homeSize').value = state.homeSize;
+      document.getElementById('propertyType').value = state.propertyType;
+      
+      if (s.clientName) {
+        document.getElementById('clientName').value = s.clientName;
+      }
+      
+      // Render UI
+      renderCategories();
+      renderExtras();
+      renderModifiers();
+      updateTotals();
+      
+      // Store as last saved state AFTER rendering to prevent immediate re-save
+      setTimeout(() => {
+        lastSavedState = getStateForAPI();
+      }, 100);
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('Load budget error:', err);
+    showToast('❌ Could not load budget');
+    return false;
+  }
+}
+
+// Share link - creates a new live budget
+async function shareLink() {
+  const currentState = getStateForAPI();
   
   try {
     showToast('⏳ Creating link...');
     
-    const response = await fetch('/api/shorten', {
+    const response = await fetch('/api/budgets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        config: encoded,
-        clientName: clientName
+        state: currentState,
+        clientName: currentState.clientName
       })
     });
     
     const result = await response.json();
     
     if (response.ok && result.success) {
-      const shortUrl = window.location.origin + result.shortUrl;
+      const budgetUrl = window.location.origin + result.url;
+      
+      // Update current page to use this budget ID (enable auto-save)
+      currentBudgetId = result.id;
+      lastSavedState = currentState;
+      
+      // Update URL without reload
+      window.history.replaceState({}, '', result.url);
       
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(shortUrl).then(() => {
+        navigator.clipboard.writeText(budgetUrl).then(() => {
           showToast('🔗 Link copied!');
         }).catch(() => {
-          fallbackCopy(shortUrl);
+          fallbackCopy(budgetUrl);
         });
       } else {
-        fallbackCopy(shortUrl);
+        fallbackCopy(budgetUrl);
       }
     } else {
-      throw new Error(result.error || 'Failed to create short link');
+      throw new Error(result.error || 'Failed to create link');
     }
   } catch (err) {
     console.error('Share link error:', err);
-    showToast('❌ ' + (err.message || 'Failed to create short link'));
+    showToast('❌ ' + (err.message || 'Failed to create link'));
   }
 }
 
@@ -3231,16 +3360,30 @@ function bookmarkConfig() {
 // INIT
 // ============================================================
 
-// Check for shared config in URL
-const _loadedFromURL = decodeState(window.location.search);
+// Check for live budget URL (/b/:id)
+const budgetMatch = window.location.pathname.match(/^\/b\/([a-z0-9]+)$/i);
+let _loadedFromURL = false;
+
+if (budgetMatch) {
+  // Load live budget
+  loadBudget(budgetMatch[1]).then(loaded => {
+    if (loaded) {
+      showSharedBanner();
+    }
+  });
+  _loadedFromURL = true;
+} else {
+  // Check for legacy shared config in URL
+  _loadedFromURL = decodeState(window.location.search);
+}
 
 renderCategories();
 renderExtras();
 renderModifiers();
 updateTotals();
 
-// Show banner if loaded from a shared link
-if (_loadedFromURL) {
+// Show banner if loaded from a shared link (legacy URL params)
+if (_loadedFromURL && !budgetMatch) {
   showSharedBanner();
 }
 
