@@ -136,7 +136,7 @@ app.get('/api/links', (req, res) => {
   res.json(list);
 });
 
-// Send budget proposal via email
+// Send budget via email
 app.post('/api/send-proposal', async (req, res) => {
   try {
     const { 
@@ -167,7 +167,7 @@ app.post('/api/send-proposal', async (req, res) => {
     const { data, error } = await resend.emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: recipientEmail,
-      subject: subject || 'Your Technology Budget Proposal from Gamma Tech',
+      subject: subject || 'Your Technology Budget from Gamma Tech',
       html: emailHtml,
     });
 
@@ -185,7 +185,7 @@ app.post('/api/send-proposal', async (req, res) => {
   }
 });
 
-// Build proposal email HTML from structured data
+// Build budget email HTML from structured data
 function buildProposalEmail(data, recipientName) {
   const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
   
@@ -221,7 +221,7 @@ function buildProposalEmail(data, recipientName) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Technology Budget Proposal</title>
+  <title>Your Technology Budget</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #FAFAFA; padding: 40px 20px;">
@@ -233,7 +233,7 @@ function buildProposalEmail(data, recipientName) {
           <tr>
             <td style="background: linear-gradient(135deg, #0F2F44 0%, #133F5C 100%); padding: 32px 40px; text-align: center;">
               <h1 style="margin: 0; color: #FFFFFF; font-size: 24px; font-weight: 600;">Gamma Tech Services</h1>
-              <p style="margin: 8px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">Residential Technology Budget Proposal</p>
+              <p style="margin: 8px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">Residential Technology Budget</p>
             </td>
           </tr>
 
@@ -244,7 +244,7 @@ function buildProposalEmail(data, recipientName) {
                 ${greeting}
               </p>
               <p style="margin: 0 0 32px; color: #393939; font-size: 16px; line-height: 1.6;">
-                Thank you for your interest in Gamma Tech Services. Below is your personalized technology budget proposal based on your selections.
+                Thank you for your interest in Gamma Tech Services. Below is your personalized technology budget based on your selections.
               </p>
 
               <!-- Summary Box -->

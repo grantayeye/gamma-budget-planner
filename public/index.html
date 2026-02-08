@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Gamma Tech — Residential Technology Budget Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -744,6 +744,7 @@ main {
 
 /* RESPONSIVE */
 @media (max-width: 600px) {
+  body { padding-bottom: 140px; }
   header { padding: 14px 16px; }
   header .header-inner {
     flex-wrap: nowrap;
@@ -761,8 +762,23 @@ main {
   .category-header { padding: 16px 18px; }
   .category-body { padding: 0 18px 18px; }
   .form-grid { grid-template-columns: 1fr; }
-  .summary-inner { flex-direction: column; text-align: center; }
-  .summary-stats { flex-wrap: wrap; justify-content: center; }
+  .summary-bar { 
+    padding: 12px 16px; 
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .summary-inner { flex-direction: column; text-align: center; gap: 10px; }
+  .summary-stats { flex-wrap: wrap; justify-content: center; gap: 16px; }
+  .summary-actions { 
+    width: 100%; 
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 8px; 
+  }
+  .summary-actions .btn { 
+    padding: 10px 8px; 
+    font-size: 11px; 
+    white-space: nowrap;
+  }
   .pm-row { flex-direction: column; align-items: flex-start; }
 }
 </style>
@@ -841,14 +857,12 @@ main {
 <div class="summary-bar">
   <div class="summary-inner">
     <div class="summary-stats">
-      <div><span class="stat-label">Categories: </span><span class="stat-value" id="statCategories">0/13</span></div>
       <div><span class="stat-label">Subtotal: </span><span class="stat-value" id="statSubtotal">$0</span></div>
       <div><span class="stat-label">Tax Est: </span><span class="stat-value" id="statTax">$0</span></div>
     </div>
     <div class="summary-actions">
       <button class="btn btn-outline" onclick="expandAll()">Expand All</button>
-      <button class="btn btn-outline" onclick="shareConfig()">🔗 Share</button>
-      <button class="btn btn-outline" onclick="createShortLink()">✂️ Short Link</button>
+      <button class="btn btn-outline" onclick="shareLink()">🔗 Share Link</button>
       <button class="btn btn-outline" onclick="showEmailModal()">📧 Email</button>
       <button class="btn btn-primary" onclick="showSummary()">📄 View Summary</button>
     </div>
@@ -874,12 +888,12 @@ main {
 <div class="modal-overlay" id="emailModal">
   <div class="modal" style="max-width: 480px;">
     <div class="modal-header">
-      <h2>📧 Email Proposal</h2>
+      <h2>📧 Email Budget</h2>
       <button class="modal-close" onclick="closeEmailModal()">✕</button>
     </div>
     <div class="modal-body">
       <p style="margin-bottom: 20px; color: var(--text-light); font-size: 14px;">
-        Send this budget proposal directly to the client's email.
+        Send this budget directly to the client's email.
       </p>
       <div style="margin-bottom: 16px;">
         <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text);">Recipient Name</label>
@@ -893,7 +907,7 @@ main {
       </div>
       <div style="margin-bottom: 16px;">
         <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text);">Subject</label>
-        <input type="text" id="emailSubject" placeholder="Your Technology Budget Proposal from Gamma Tech"
+        <input type="text" id="emailSubject" placeholder="Your Technology Budget from Gamma Tech"
           style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 15px;">
       </div>
       <div id="emailStatus" style="display: none; padding: 12px 16px; border-radius: var(--radius-sm); margin-top: 16px; font-size: 14px;"></div>
@@ -907,7 +921,7 @@ main {
 
 <script>
 // ============================================================
-// DATA — Based on real Gamma Tech proposals + industry research
+// DATA — Based on real Gamma Tech projects + industry research
 // Prices calibrated to 4,000 sq ft new construction baseline
 // ============================================================
 // DATA CONFIGS — one per property type
@@ -2741,8 +2755,9 @@ function showSummary() {
       <strong>Gamma Tech Services</strong> • (239) 330-4939 • gamma.tech<br>
       3106 Horseshoe Dr S, Naples, FL 34116 • FL License #EG13000578
     </div>
-    <div style="text-align:center;margin-top:20px;">
-      <button onclick="shareConfig();closeSummary();" style="background:var(--accent);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">🔗 Share This Configuration</button>
+    <div style="text-align:center;margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <button onclick="shareLink();closeSummary();" style="background:var(--accent);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">🔗 Share Link</button>
+      <button onclick="closeSummary();showEmailModal();" style="background:var(--primary);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">📧 Email Budget</button>
     </div>
   `;
   
@@ -2779,7 +2794,7 @@ function closeEmailModal() {
 async function sendProposalEmail() {
   const recipientName = document.getElementById('emailRecipientName').value.trim();
   const recipientEmail = document.getElementById('emailRecipientEmail').value.trim();
-  const subject = document.getElementById('emailSubject').value.trim() || 'Your Technology Budget Proposal from Gamma Tech';
+  const subject = document.getElementById('emailSubject').value.trim() || 'Your Technology Budget from Gamma Tech';
   
   const statusEl = document.getElementById('emailStatus');
   const sendBtn = document.getElementById('emailSendBtn');
@@ -2886,7 +2901,7 @@ async function sendProposalEmail() {
       // Close modal after delay
       setTimeout(() => {
         closeEmailModal();
-        showToast('📧 Proposal emailed to ' + recipientEmail);
+        showToast('📧 Budget emailed to ' + recipientEmail);
       }, 1500);
     } else {
       throw new Error(result.error || 'Failed to send email');
@@ -3122,27 +3137,12 @@ function decodeState(search) {
   return loaded;
 }
 
-function shareConfig() {
-  const encoded = encodeState();
-  const url = window.location.origin + window.location.pathname + '?' + encoded;
-  
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => {
-      showToast('🔗 Link copied to clipboard!');
-    }).catch(() => {
-      fallbackCopy(url);
-    });
-  } else {
-    fallbackCopy(url);
-  }
-}
-
-async function createShortLink() {
+async function shareLink() {
   const encoded = encodeState();
   const clientName = document.getElementById('clientName').value || null;
   
   try {
-    showToast('⏳ Creating short link...');
+    showToast('⏳ Creating link...');
     
     const response = await fetch('/api/shorten', {
       method: 'POST',
@@ -3160,7 +3160,7 @@ async function createShortLink() {
       
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(shortUrl).then(() => {
-          showToast('✂️ Short link copied: ' + result.shortUrl);
+          showToast('🔗 Link copied!');
         }).catch(() => {
           fallbackCopy(shortUrl);
         });
@@ -3171,7 +3171,7 @@ async function createShortLink() {
       throw new Error(result.error || 'Failed to create short link');
     }
   } catch (err) {
-    console.error('Short link error:', err);
+    console.error('Share link error:', err);
     showToast('❌ ' + (err.message || 'Failed to create short link'));
   }
 }
