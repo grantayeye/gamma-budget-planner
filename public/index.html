@@ -1,0 +1,3267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gamma Tech — Residential Technology Budget Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #0F2F44;
+  --primary-light: #133F5C;
+  --accent: #017ED7;
+  --accent-hover: #0069AF;
+  --accent-bg: #EEF8FE;
+  --good: #2E7D32;
+  --good-bg: #E8F5E9;
+  --good-border: #A5D6A7;
+  --better: #0692EF;
+  --better-bg: #EEF8FE;
+  --better-border: #74C7FF;
+  --standard: #1976D2;
+  --standard-bg: #E3F2FD;
+  --standard-border: #64B5F6;
+  --best: #0069AF;
+  --best-bg: #E8F1F8;
+  --best-border: #133F5C;
+  --none-bg: #F5F5F5;
+  --text: #393939;
+  --text-light: #5A5A5A;
+  --text-lighter: #B2B2B2;
+  --bg: #FAFAFA;
+  --card: #FFFFFF;
+  --border: #E0E0E0;
+  --shadow: 0 2px 16px rgba(15,47,68,0.06);
+  --shadow-lg: 0 8px 32px rgba(15,47,68,0.10);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --transition: all 0.25s ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* TOAST */
+.toast {
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--primary);
+  color: white;
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* SHARED CONFIG BANNER */
+.shared-banner {
+  background: linear-gradient(135deg, #E8F5E9 0%, #EEF8FE 100%);
+  border: 2px solid var(--good-border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.shared-banner .shared-text {
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 500;
+}
+.shared-banner .shared-text small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-light);
+  font-weight: 400;
+  margin-top: 4px;
+}
+.shared-banner .btn-save {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.shared-banner .btn-save:hover {
+  background: var(--accent-hover);
+}
+
+body {
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding-bottom: 100px;
+}
+
+/* HEADER */
+header {
+  background: linear-gradient(135deg, #0F2F44 0%, #133F5C 100%);
+  color: white;
+  padding: 28px 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 24px rgba(15,47,68,0.18);
+}
+header .header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+header .brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+header .brand .logo-img {
+  height: 40px;
+  width: auto;
+}
+header .brand .logo-img svg {
+  height: 40px;
+  width: auto;
+}
+header .brand .logo-text {
+  font-family: 'Poppins', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #FFFFFF;
+}
+header .brand .logo-text span {
+  color: #74C7FF;
+}
+header .subtitle {
+  font-size: 14px;
+  opacity: 0.75;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+header .total-display {
+  text-align: right;
+}
+header .total-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.6;
+  font-weight: 500;
+}
+header .total-amount {
+  font-size: 34px;
+  font-weight: 800;
+  color: #74C7FF;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+
+/* MAIN */
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 16px;
+}
+
+/* PROJECT DETAILS */
+.project-details {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 32px;
+  margin-bottom: 24px;
+}
+.project-details h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 22px;
+  color: var(--text);
+  letter-spacing: -1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-light);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 11px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-family: 'Poppins', sans-serif;
+  color: var(--text);
+  transition: var(--transition);
+  background: white;
+}
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(1,126,215,0.12);
+}
+
+/* PRESETS */
+.presets {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 32px;
+  margin-bottom: 24px;
+}
+.presets h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: var(--text);
+  letter-spacing: -1px;
+}
+.preset-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.preset-btn {
+  padding: 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+}
+.preset-btn:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.preset-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.preset-btn .preset-name {
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.preset-btn .preset-range {
+  font-size: 13px;
+  color: var(--text-light);
+}
+.preset-btn .preset-desc {
+  font-size: 12px;
+  color: var(--text-lighter);
+  margin-top: 4px;
+}
+
+/* CATEGORIES */
+.categories-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 36px 0 18px;
+  padding: 0 4px;
+}
+.categories-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -1px;
+}
+.category-count {
+  font-size: 14px;
+  color: var(--text-light);
+  font-weight: 500;
+}
+
+.section-header {
+  margin: 32px 0 16px;
+  padding: 0 4px;
+}
+.section-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.5px;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 8px;
+  display: inline-block;
+}
+
+.category-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: var(--transition);
+  border: 2px solid transparent;
+}
+.category-card.has-selection {
+  border-color: var(--border);
+}
+.category-card.tier-good { border-color: var(--good-border); }
+.category-card.tier-standard { border-color: var(--standard-border); }
+.category-card.tier-better { border-color: var(--better-border); }
+.category-card.tier-best { border-color: var(--best-border); }
+.category-card.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  background: var(--none-bg);
+}
+.category-card.disabled .category-price {
+  color: var(--text-lighter);
+}
+
+.category-header {
+  padding: 22px 26px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.category-icon {
+  font-size: 28px;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.category-info { flex: 1; }
+.category-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.category-desc {
+  font-size: 13px;
+  color: var(--text-light);
+  margin-top: 2px;
+}
+.category-price {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent);
+  text-align: right;
+  min-width: 100px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+.category-price.no-selection {
+  color: var(--text-lighter);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.category-body {
+  padding: 0 26px 26px;
+  display: none;
+}
+.category-card.open .category-body {
+  display: block;
+}
+
+.tier-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .tier-selector {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.tier-btn {
+  padding: 16px 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+}
+.tier-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+.tier-btn .tier-label {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.tier-btn .tier-price {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+.tier-btn .tier-tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.tier-btn.none-btn { border-color: var(--border); }
+.tier-btn.none-btn.selected { background: var(--none-bg); border-color: #bbb; }
+.tier-btn.none-btn .tier-label { color: var(--text-lighter); }
+
+.tier-btn.good-btn .tier-label, .tier-btn.good-btn .tier-price { color: var(--good); }
+.tier-btn.good-btn.selected { background: var(--good-bg); border-color: var(--good); }
+
+.tier-btn.standard-btn .tier-label, .tier-btn.standard-btn .tier-price { color: var(--standard); }
+.tier-btn.standard-btn.selected { background: var(--standard-bg); border-color: var(--standard); }
+
+.tier-btn.better-btn .tier-label, .tier-btn.better-btn .tier-price { color: var(--better); }
+.tier-btn.better-btn.selected { background: var(--better-bg); border-color: var(--better); }
+
+.tier-btn.best-btn .tier-label, .tier-btn.best-btn .tier-price { color: var(--best); }
+.tier-btn.best-btn.selected { background: var(--best-bg); border-color: var(--best); }
+
+.tier-btn.tier-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.tier-btn.tier-disabled .tier-label,
+.tier-btn.tier-disabled .tier-price,
+.tier-btn.tier-disabled .tier-tag {
+  color: var(--text-lighter) !important;
+}
+
+.tier-details {
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+  padding: 18px 22px;
+}
+.tier-details h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.tier-details ul {
+  list-style: none;
+  padding: 0;
+}
+.tier-details ul li {
+  font-size: 13px;
+  color: var(--text-light);
+  padding: 3px 0;
+  padding-left: 22px;
+  position: relative;
+}
+.tier-details ul li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+.tier-details .brands {
+  font-size: 12px;
+  color: var(--text-lighter);
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* EXTRAS */
+.extras-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 32px;
+  margin-top: 24px;
+}
+.extras-section h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: var(--text);
+  letter-spacing: -1px;
+}
+.extras-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+.extra-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.extra-item:hover { border-color: var(--accent); }
+.extra-item.active { border-color: var(--accent); background: var(--accent-bg); }
+.extra-item .extra-info { display: flex; align-items: center; gap: 10px; }
+.extra-item .extra-name { font-weight: 600; font-size: 14px; color: var(--text); }
+.extra-item .extra-note { font-size: 12px; color: var(--text-lighter); }
+.extra-item .extra-price { font-weight: 700; color: var(--accent); }
+.extra-toggle {
+  width: 44px; height: 24px;
+  background: #D0D0D0;
+  border-radius: 12px;
+  position: relative;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.extra-item.active .extra-toggle { background: var(--accent); }
+.extra-toggle::after {
+  content: '';
+  width: 20px; height: 20px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px; left: 2px;
+  transition: var(--transition);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.extra-item.active .extra-toggle::after { left: 22px; }
+
+/* PM SLIDER */
+.pm-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 32px;
+  margin-top: 16px;
+}
+.pm-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pm-row label { font-weight: 600; font-size: 14px; min-width: 200px; color: var(--text); }
+.pm-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.pm-row .pm-value { font-weight: 700; color: var(--accent); font-size: 18px; min-width: 80px; text-align: right; }
+
+/* SUMMARY BAR */
+.summary-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--primary);
+  color: white;
+  padding: 16px 32px;
+  z-index: 100;
+  box-shadow: 0 -4px 24px rgba(15,47,68,0.18);
+}
+.summary-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.summary-stats {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+}
+.summary-stats .stat-label { opacity: 0.6; }
+.summary-stats .stat-value { font-weight: 700; }
+.summary-actions { display: flex; gap: 12px; }
+.btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Poppins', sans-serif;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-outline {
+  background: transparent;
+  color: white;
+  border: 2px solid rgba(255,255,255,0.25);
+}
+.btn-outline:hover { border-color: white; }
+
+/* SUMMARY MODAL */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,47,68,0.45);
+  z-index: 200;
+  overflow-y: auto;
+  padding: 40px 20px;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.active { display: flex; justify-content: center; align-items: flex-start; }
+.modal {
+  background: white;
+  border-radius: 20px;
+  max-width: 800px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+.modal-header {
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h2 { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -1px; }
+.modal-close {
+  width: 38px; height: 38px;
+  border: none;
+  background: var(--bg);
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-light);
+  transition: var(--transition);
+}
+.modal-close:hover { background: var(--border); }
+.modal-body { padding: 28px 32px; }
+.modal-footer {
+  padding: 20px 32px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.summary-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+.summary-table th, .summary-table td { padding: 10px 12px; text-align: left; font-size: 14px; }
+.summary-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-lighter); font-weight: 600; border-bottom: 2px solid var(--border); }
+.summary-table td { border-bottom: 1px solid #f0f0f0; }
+.summary-table .tier-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.summary-table .tier-badge.good { background: var(--good-bg); color: var(--good); }
+.summary-table .tier-badge.standard { background: var(--standard-bg); color: var(--standard); }
+.summary-table .tier-badge.better { background: var(--better-bg); color: var(--better); }
+.summary-table .tier-badge.best { background: var(--best-bg); color: var(--best); }
+.summary-table .price-cell { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.summary-table tfoot td { border-top: 2px solid var(--primary); font-weight: 800; font-size: 16px; }
+.summary-table tfoot .grand-total { color: var(--accent); font-size: 22px; }
+
+.summary-project-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 22px;
+  font-size: 14px;
+}
+.summary-project-info .info-label { color: var(--text-light); font-weight: 500; }
+.summary-project-info .info-value { font-weight: 600; color: var(--text); }
+
+.disclaimer {
+  font-size: 11px;
+  color: var(--text-lighter);
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  line-height: 1.7;
+}
+.disclaimer strong {
+  color: var(--text-light);
+}
+
+/* PRINT STYLES */
+@media print {
+  header, main, .summary-bar, .toast, #sharedBanner, .modal-close, .modal-footer, .presets, .no-print { display: none !important; }
+  .modal-overlay { position: static; background: none; padding: 0; display: block !important; backdrop-filter: none; }
+  .modal { box-shadow: none; max-width: none; border-radius: 0; }
+  body { background: white; padding: 0; }
+  .summary-table th, .summary-table td { padding: 6px 8px; }
+  .features-row { page-break-inside: avoid; }
+  .features-row td { border-top: none !important; }
+  .summary-project-info .info-label { color: #555 !important; }
+  .summary-project-info .info-value { color: #111 !important; }
+  .disclaimer { color: #333 !important; }
+  .tier-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+  header { padding: 14px 16px; }
+  header .header-inner {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+  }
+  header .brand { flex: 1; min-width: 0; }
+  header .brand .logo-img { height: 24px; }
+  header .brand .logo-img svg { height: 24px; }
+  header .subtitle { font-size: 10px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .total-display { text-align: right; flex-shrink: 0; }
+  header .total-label { font-size: 9px; letter-spacing: 0.5px; }
+  header .total-amount { font-size: 20px; }
+  .project-details, .presets, .extras-section, .pm-section { padding: 22px 18px; }
+  .category-header { padding: 16px 18px; }
+  .category-body { padding: 0 18px 18px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .summary-inner { flex-direction: column; text-align: center; }
+  .summary-stats { flex-wrap: wrap; justify-content: center; }
+  .pm-row { flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <div>
+        <div class="logo-img"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1107 250" height="40"><defs><style>.hdr-1{fill:#fff;}.hdr-2{fill:#ffffff;}.hdr-3{fill:#74C7FF;}</style></defs><g><path class="hdr-2" d="M320.009,99.228v-28.137c0-4.98-.999-8.466-3.498-11.454-1.249-1.245-3.248-1.992-5.497-1.992-4.747,0-6.996,3.486-7.995,6.723-.75,1.992-.999,4.233-.999,6.723v110.059c0,5.229,1.249,8.715,3.748,11.454,1.249,1.245,2.998,1.992,5.247,1.992,4.747,0,6.996-2.988,7.995-6.723,.75-1.743,.999-3.984,.999-6.723v-33.117h-10.743v-22.659h37.726v91.134h-15.99l-3.248-8.715c-4.997,6.225-12.242,10.707-20.987,10.707s-14.741-2.241-19.238-6.225c-4.497-3.735-7.495-8.466-9.494-13.446-2.249-5.727-3.248-12.45-2.998-19.92V71.091c.25-7.221,1.749-13.944,4.497-19.671,2.249-4.98,5.497-9.96,10.493-13.695,4.997-3.735,11.992-6.225,20.987-6.225s15.74,2.49,20.737,6.225,8.495,8.715,10.743,13.695c2.748,5.727,4.247,12.45,4.497,19.671v28.137h-26.983Z"/><path class="hdr-2" d="M359.23,216.508l27.733-183.016h32.979l27.733,183.016h-26.233l-4.997-37.35h-25.984l-4.997,37.35h-26.233Zm45.721-123.505l-.75-4.731h-1.499l-.75,4.731-7.745,57.768h18.488l-7.745-57.768Z"/><path class="hdr-2" d="M504.887,216.508l-17.239-115.039-.999-7.719h-1.499v122.758h-24.984V33.492h32.979l15.99,83.664,1.249,9.711h.5l1.249-9.711,15.99-83.664h32.979V216.508h-24.984V93.75h-1.499l-.999,7.719-17.239,115.039h-11.493Z"/><path class="hdr-2" d="M625.809,216.508l-17.239-115.039-.999-7.719h-1.499v122.758h-24.984V33.492h32.979l15.99,83.664,1.249,9.711h.5l1.249-9.711,15.99-83.664h32.979V216.508h-24.984V93.75h-1.499l-.999,7.719-17.239,115.039h-11.493Z"/><path class="hdr-2" d="M694.514,216.508l27.733-183.016h32.979l27.733,183.016h-26.233l-4.997-37.35h-25.984l-4.997,37.35h-26.233Zm45.721-123.505l-.75-4.731h-1.499l-.75,4.731-7.745,57.768h18.488l-7.745-57.768Z"/><path class="hdr-3" d="M780.461,61.131v-27.639h77.951v27.639h-25.484V216.508h-26.983V61.131h-25.484Z"/><path class="hdr-3" d="M868.904,33.492h61.711v27.639h-34.728v48.057h24.984v29.382h-24.984v50.298h34.728v27.639h-61.711V33.492Z"/><path class="hdr-3" d="M1015.809,153.76v25.149c-.25,7.47-1.749,14.193-4.497,19.92-2.249,4.98-5.746,9.711-10.743,13.446-4.997,3.984-11.743,6.225-20.737,6.225s-15.99-2.241-20.987-6.225c-4.997-3.735-8.245-8.466-10.493-13.446-2.748-5.727-4.247-12.45-4.497-19.92V71.091c.25-7.221,1.749-13.944,4.497-19.671,2.249-4.98,5.497-9.96,10.493-13.695s11.992-6.225,20.987-6.225,15.74,2.49,20.737,6.225,8.495,8.715,10.743,13.695c2.748,5.727,4.247,12.45,4.497,19.671v25.149h-25.234v-25.149c0-4.98-1.249-8.466-3.997-11.454-1.249-1.245-3.498-1.992-6.246-1.992-4.747,0-6.996,3.486-8.245,6.723-.75,1.992-.999,4.233-1.249,6.723v107.818c.25,5.229,1.749,8.715,4.247,11.454,1.249,1.245,2.998,1.992,5.247,1.992,5.746,0,7.995-2.988,9.244-6.723,.75-1.743,.999-3.984,.999-6.723v-25.149h25.234Z"/><path class="hdr-3" d="M1080.017,136.828h-20.987v79.68h-26.983V33.492h26.983V109.188h20.987V33.492h26.983V216.508h-26.983v-79.68Z"/></g><g><path class="hdr-3" d="M250,125c0,68.361-54.876,123.904-122.98,124.982v-16.333c59.086-1.076,106.649-49.306,106.649-108.649h-96.874v-16.414h95.641c-7.813-51.581-51.886-91.26-105.417-92.235V.018c68.104,1.078,122.98,56.621,122.98,124.982Z"/><path class="hdr-2" d="M136.795,108.586h79.01c-1.194-6.679-3.131-13.194-5.793-19.49-4.646-10.985-11.301-20.854-19.778-29.331-8.477-8.477-18.346-15.131-29.331-19.778-6.295-2.662-12.811-4.599-19.49-5.793-4.722-.848-9.528-1.326-14.394-1.427-.672-.015-1.346-.023-2.02-.023s-1.349,.008-2.02,.023c-4.866,.101-9.672,.578-14.394,1.427-6.679,1.194-13.194,3.131-19.49,5.793-10.985,4.646-20.854,11.301-29.331,19.778-8.477,8.477-15.131,18.346-19.778,29.331-4.806,11.361-7.242,23.442-7.242,35.904s2.437,24.543,7.242,35.904c4.646,10.985,11.301,20.854,19.778,29.331,8.477,8.477,18.346,15.131,29.331,19.778,6.295,2.662,12.811,4.599,19.49,5.793,4.722,.848,9.528,1.326,14.394,1.427,.672,.015,1.346,.023,2.02,.023s1.349-.008,2.02-.023c4.866-.101,9.672-.578,14.394-1.427,6.679-1.194,13.194-3.131,19.49-5.793,10.985-4.646,20.854-11.301,29.331-19.778,8.477-8.477,15.131-18.346,19.778-29.331,2.662-6.295,4.598-12.811,5.793-19.49h-79.01v-32.828Zm-13.816-92.235V.018C54.876,1.096,0,56.639,0,125s54.876,123.904,122.98,124.982v-16.333c-59.086-1.076-106.649-49.306-106.649-108.649S63.894,17.427,122.98,16.351Z"/><path class="hdr-1" d="M233.669,125c0,59.343-47.563,107.573-106.649,108.649v16.333l-2.02,.018-2.02-.018v-16.333c-59.086-1.076-106.649-49.306-106.649-108.649S63.894,17.427,122.98,16.351V.018c.672-.013,1.346-.018,2.02-.018s1.349,.005,2.02,.018V16.351c53.53,.975,97.604,40.654,105.417,92.235h-16.631c-1.194-6.679-3.131-13.194-5.793-19.49-4.646-10.985-11.301-20.854-19.778-29.331-8.477-8.477-18.346-15.131-29.331-19.778-6.295-2.662-12.811-4.599-19.49-5.793-4.722-.848-9.528-1.326-14.394-1.427-.672-.015-1.346-.023-2.02-.023s-1.349,.008-2.02,.023c-4.866,.101-9.672,.578-14.394,1.427-6.679,1.194-13.194,3.131-19.49,5.793-10.985,4.646-20.854,11.301-29.331,19.778-8.477,8.477-15.131,18.346-19.778,29.331-4.806,11.361-7.242,23.442-7.242,35.904s2.437,24.543,7.242,35.904c4.646,10.985,11.301,20.854,19.778,29.331,8.477,8.477,18.346,15.131,29.331,19.778,6.295,2.662,12.811,4.599,19.49,5.793,4.722,.848,9.528,1.326,14.394,1.427,.672,.015,1.346,.023,2.02,.023s1.349-.008,2.02-.023c4.866-.101,9.672-.578,14.394-1.427,6.679-1.194,13.194-3.131,19.49-5.793,10.985-4.646,20.854-11.301,29.331-19.778,8.477-8.477,15.131-18.346,19.778-29.331,2.662-6.295,4.598-12.811,5.793-19.49h-79.01v-16.414h96.874Z"/></g></svg></div>
+        <div class="subtitle">Residential Technology Budget Planner</div>
+      </div>
+    </div>
+    <div class="total-display">
+      <div class="total-label">Estimated Investment</div>
+      <div class="total-amount" id="headerTotal">$0</div>
+    </div>
+  </div>
+</header>
+
+<div class="toast" id="toast"></div>
+<div id="sharedBanner"></div>
+
+<main>
+  <!-- PROJECT DETAILS -->
+  <div class="project-details">
+    <h2>📋 Project Details</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Client / Project Name</label>
+        <input type="text" id="clientName" placeholder="e.g. Smith Residence">
+      </div>
+      <div class="form-group">
+        <label>Builder</label>
+        <input type="text" id="builder" placeholder="">
+      </div>
+      <div class="form-group">
+        <label>Home Size (sq ft)</label>
+        <input type="number" id="homeSize" value="4000" min="1500" max="20000" step="100" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Property Type</label>
+        <select id="propertyType" autocomplete="off">
+          <option value="residential">Single Family</option>
+          <option value="condo">Condo</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUICK PRESETS -->
+  <!-- CATEGORIES -->
+  <div class="categories-header">
+    <h2>System Categories</h2>
+    <div class="category-count" id="categoryCount">0 of 17 selected</div>
+  </div>
+  <div id="categoriesContainer"></div>
+
+  <!-- EXTRAS -->
+  <div class="extras-section" id="extrasSection">
+    <h2>📎 Additional Items</h2>
+    <div class="extras-grid" id="extrasGrid"></div>
+  </div>
+
+  <!-- CUSTOM MODIFIERS -->
+  <div class="extras-section">
+    <h2>🔧 Custom Adjustments</h2>
+    <p style="font-size:13px;color:var(--text-lighter);margin-bottom:12px;">Add or subtract line items for anything outside the standard categories.</p>
+    <div id="modifiersContainer"></div>
+    <button class="btn btn-outline" onclick="addModifier()" style="margin-top:10px;width:100%;padding:14px;font-size:15px;border:2px dashed var(--border);border-radius:var(--radius);color:var(--accent);font-weight:600;">+ Add Line Item</button>
+  </div>
+</main>
+
+<!-- SUMMARY BAR -->
+<div class="summary-bar">
+  <div class="summary-inner">
+    <div class="summary-stats">
+      <div><span class="stat-label">Categories: </span><span class="stat-value" id="statCategories">0/13</span></div>
+      <div><span class="stat-label">Subtotal: </span><span class="stat-value" id="statSubtotal">$0</span></div>
+      <div><span class="stat-label">Tax Est: </span><span class="stat-value" id="statTax">$0</span></div>
+    </div>
+    <div class="summary-actions">
+      <button class="btn btn-outline" onclick="expandAll()">Expand All</button>
+      <button class="btn btn-outline" onclick="shareConfig()">🔗 Share</button>
+      <button class="btn btn-outline" onclick="createShortLink()">✂️ Short Link</button>
+      <button class="btn btn-outline" onclick="showEmailModal()">📧 Email</button>
+      <button class="btn btn-primary" onclick="showSummary()">📄 View Summary</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUMMARY MODAL -->
+<div class="modal-overlay" id="summaryModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Budget Summary</h2>
+      <button class="modal-close" onclick="closeSummary()">✕</button>
+    </div>
+    <div class="modal-body" id="summaryBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" style="color:var(--text);border-color:var(--border);" onclick="closeSummary()">Close</button>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Print / Save PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL MODAL -->
+<div class="modal-overlay" id="emailModal">
+  <div class="modal" style="max-width: 480px;">
+    <div class="modal-header">
+      <h2>📧 Email Proposal</h2>
+      <button class="modal-close" onclick="closeEmailModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom: 20px; color: var(--text-light); font-size: 14px;">
+        Send this budget proposal directly to the client's email.
+      </p>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text);">Recipient Name</label>
+        <input type="text" id="emailRecipientName" placeholder="e.g., John Smith" 
+          style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 15px;">
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text);">Recipient Email <span style="color: #E53935;">*</span></label>
+        <input type="email" id="emailRecipientEmail" placeholder="client@email.com" required
+          style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 15px;">
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text);">Subject</label>
+        <input type="text" id="emailSubject" placeholder="Your Technology Budget Proposal from Gamma Tech"
+          style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 15px;">
+      </div>
+      <div id="emailStatus" style="display: none; padding: 12px 16px; border-radius: var(--radius-sm); margin-top: 16px; font-size: 14px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" style="color:var(--text);border-color:var(--border);" onclick="closeEmailModal()">Cancel</button>
+      <button class="btn btn-primary" id="emailSendBtn" onclick="sendProposalEmail()">📧 Send Email</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA — Based on real Gamma Tech proposals + industry research
+// Prices calibrated to 4,000 sq ft new construction baseline
+// ============================================================
+// DATA CONFIGS — one per property type
+// To edit condo data: search for "CONDO DATA" below
+// To edit residential data: search for "RESIDENTIAL DATA" below
+// ============================================================
+
+// ---- RESIDENTIAL DATA ----
+const RESIDENTIAL_CATEGORIES = [
+  {
+    id: 'prewire',
+    section: 'Infrastructure',
+    name: 'Structured Wiring & Pre-Wire',
+    icon: '🔌',
+    desc: 'Low voltage wiring infrastructure for all technology systems',
+    sizeScale: 1.0,
+    tiers: {
+      good: {
+        price: 12000,
+        label: 'Essential',
+        tag: 'Good',
+        features: [
+          'Dual CAT6 for TVs to main rooms, single CAT6 to others',
+          'Basic coax (RG6) to all TVs',
+          'Standard structured media panel',
+          'Speaker wire to primary living area'
+        ],
+        brands: 'Cat6, RG6 coax, 16-4, Leviton panel'
+      },
+      standard: {
+        price: 22000,
+        label: 'Standard',
+        tag: 'Standard',
+        features: [
+          'Dual Cat6 to all TVs',
+          'Speaker wire to primary living area, lanai, and master bed',
+          'Camera pre-wire (front and rear basics)',
+          'Alarm pre-wire for all doors, single keypad at garage entry',
+          'Upgraded structured media panel with fiber optic incoming'
+        ],
+        brands: 'Cat6, Single mode fiber optic, 16/4 speaker wire, Future Automation Structured Media Panel'
+      },
+      better: {
+        price: 35000,
+        label: 'Comprehensive',
+        tag: 'Better',
+        features: [
+          'Dual Cat6A to all TVs',
+          'Speaker wire to all living areas, lanai, kitchen, master suite, and single outdoor zone',
+          'Outside perimeter camera pre-wire',
+          'Alarm pre-wire for all doors and windows, keypads at garage entry and master bedroom',
+          'Lutron shade pre-wire to all main living area windows and master bedroom',
+          'Upgraded structured media panel with fiber optic and conduit for incoming pathway'
+        ],
+        brands: 'Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Direct Burial 16/4, Future Automation Structured Media Panel'
+      },
+      best: {
+        price: 44000,
+        label: 'Premium',
+        tag: 'Best',
+        features: [
+          'Dual Cat6A to all TVs plus CAT7 to main rooms',
+          'Pre-wire for extensive audio zones + single Atmos room',
+          'Full outside perimeter camera pre-wire + gate/entry points',
+          'Alarm pre-wire for all doors and windows, keypads at garage entry(s) and master bedroom',
+          'Shade pre-wire to most (if not all) windows',
+          'Multiple zone outdoor landscape speaker pre-wire and conduit',
+          'Gate/intercom wiring',
+          'Guest house connectivity',
+          'Upgraded structured media panels (multiple) including fiber optic and conduit for incoming pathways'
+        ],
+        brands: 'Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Direct Burial 16/4, Future Automation Structured Media Panel'
+      }
+    }
+  },
+  {
+    id: 'networking',
+    section: 'Infrastructure',
+    name: 'Whole-Home WiFi & Networking',
+    icon: '📡',
+    desc: 'Enterprise-grade WiFi coverage and network infrastructure',
+    sizeScale: 0.8,
+    tiers: {
+      good: {
+        price: 5700,
+        label: 'Reliable, Basic Coverage',
+        tag: 'Good',
+        features: [
+          'WiFi 7 access points for full interior coverage and lanai',
+          'Cloud managed pro router',
+          'Managed PoE switch',
+          'App-managed, remote access'
+        ],
+        brands: 'UniFi LR, USW-Pro-24-PoE'
+      },
+      better: {
+        price: 9700,
+        label: 'Full Coverage',
+        tag: 'Better',
+        features: [
+          'WiFi 7 access points for full interior, lanai, and garage(s)',
+          'Cloud managed pro router',
+          'Managed pro series PoE+ switches with 10G uplinks',
+          'UPS backup for short power outages',
+          'App-managed, remote access'
+        ],
+        brands: 'UniFi Pro, Unifi UPS, UDM Pro'
+      },
+      best: {
+        price: 15000,
+        label: 'Enterprise Class',
+        tag: 'Best',
+        features: [
+          'High capacity WiFi 7 access points for full interior, lanai, and garage(s)',
+          'Cloud managed pro router with support for multiple internet connections',
+          'Managed enterprise series PoE+ switches with 10G uplinks',
+          'UPS backup for short power outages',
+          'App-managed, remote access'
+        ],
+        brands: 'UniFi Enterprise, Unifi UPS, UDM Pro'
+      }
+    }
+  },
+  {
+    id: 'surveillance',
+    section: 'Security',
+    name: 'Surveillance & Security Cameras',
+    icon: '📹',
+    desc: 'IP camera system with recording and smart detection',
+    sizeScale: 0.7,
+    baseTierNoScale: true,
+    tiers: {
+      good: {
+        price: 5300,
+        label: 'Key Coverage',
+        tag: 'Good',
+        features: [
+          'Basic front and rear exterior coverage',
+          '4K cameras',
+          '14 day recording retention',
+          'Motion alerts to phone',
+          'Night vision & weather-rated'
+        ],
+        brands: 'UniFi'
+      },
+      better: {
+        price: 10700,
+        label: 'Enhanced Coverage',
+        tag: 'Better',
+        features: [
+          'Exterior entry points covered including front and rear',
+          '4K enhanced cameras with AI detection',
+          '21-day recording retention',
+          'Integration for viewing on TVs',
+          'Marine-grade outdoor housings'
+        ],
+        brands: 'UniFi Pro Series'
+      },
+      best: {
+        price: 19300,
+        label: 'Full Perimeter',
+        tag: 'Best',
+        features: [
+          'Full perimeter coverage',
+          'AI searching and analytics (person/vehicle/animal)',
+          '21-day recording',
+          'Interior camera for garage(s)',
+          'Control4/Crestron integration'
+        ],
+        brands: 'UniFi Pro Series, Cloud Key'
+      }
+    }
+  },
+  {
+    id: 'audio',
+    section: 'Audio',
+    name: 'Multi-Room Audio',
+    icon: '🔊',
+    desc: 'Whole-home distributed audio — indoor and outdoor zones',
+    sizeScale: 0.7,
+    tiers: {
+      good: {
+        price: 9600,
+        label: 'Basic',
+        tag: 'Good',
+        features: [
+          'Main living areas with music',
+          'Basic outdoor in ceiling zone',
+          'Architectural in-ceiling speakers',
+          'App-controlled music',
+          'AirPlay 2 & all streaming services'
+        ],
+        brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron'
+      },
+      standard: {
+        price: 18000,
+        label: 'Standard',
+        tag: 'Standard',
+        features: [
+          'Main living areas, kitchen and master suite with music',
+          'Outdoor in-ceiling audio zone(s)',
+          'Upgraded in ceiling speakers',
+          'Automation system integration'
+        ],
+        brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Sonance'
+      },
+      better: {
+        price: 27000,
+        label: 'Entertainment Focused',
+        tag: 'Better',
+        features: [
+          'Main living areas, kitchen, guest area(s), and master suite with music',
+          'Outdoor in-ceiling audio zone(s)',
+          'More speakers in living areas to eliminate loud spots during entertaining',
+          'Premium in-ceiling speakers',
+          'Automation system integration'
+        ],
+        brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron'
+      },
+      best: {
+        price: 32000,
+        label: 'Music Lover',
+        tag: 'Best',
+        features: [
+          'Main living areas, kitchen, guest area(s), and master suite with music',
+          'Outdoor in-ceiling audio zone(s)',
+          'Ultra Premium in-ceiling speakers in main listening areas',
+          'In ceiling/in wall subwoofer(s) in main listening area(s)',
+          'Automation system integration'
+        ],
+        brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Monitor Audio, Sonance, B&W'
+      }
+    }
+  },
+  {
+    id: 'invisible-speakers',
+    section: 'Audio',
+    name: 'Invisible Speakers',
+    icon: '🪄',
+    desc: 'For those who want the cleanest design — speakers completely hidden behind drywall',
+    sizeScale: 0.5,
+    tiers: {
+      good: {
+        price: 7500,
+        sizeScale: 0.2,
+        label: 'Key Coverage',
+        tag: 'Good',
+        features: [
+          'Key area(s) provided with invisible speakers'
+        ],
+        brands: 'Amina Loudspeakers, Stealth Acoustics'
+      },
+      standard: {
+        price: 10500,
+        sizeScale: 0.3,
+        label: 'Main Living',
+        tag: 'Standard',
+        features: [
+          'Main living area(s) including kitchen or other key area(s) provided with invisible speakers'
+        ],
+        brands: 'Amina Loudspeakers, Stealth Acoustics'
+      },
+      better: {
+        price: 28500,
+        sizeScale: 0.5,
+        label: 'Whole Home',
+        tag: 'Better',
+        features: [
+          'Replace all interior speakers with invisible speakers'
+        ],
+        brands: 'Amina Loudspeakers, Stealth Acoustics'
+      },
+      best: {
+        price: 38500,
+        sizeScale: 0.6,
+        label: 'Whole Home, Premium',
+        tag: 'Best',
+        features: [
+          'Replace all interior speakers with premium invisible speakers',
+          'Invisible subwoofers installed in key areas'
+        ],
+        brands: 'Amina Loudspeakers, Stealth Acoustics'
+      }
+    }
+  },
+  {
+    id: 'surround',
+    section: 'Audio',
+    name: 'Surround Sound',
+    icon: '🔉',
+    desc: 'Immersive surround audio for your main TV without a dedicated theater room',
+    sizeScale: 0.0,
+    tiers: {
+      good: {
+        price: 5300,
+        label: 'Sonos Surround',
+        tag: 'Good',
+        features: [
+          'Sonos Arc Ultra Soundbar wall mounted',
+          '2 Sonos in-ceiling speakers',
+          'Sonos Sub',
+          'Apple TV 4K source',
+          'Behind TV box for video sources'
+        ],
+        brands: 'Sonos, Apple TV 4K'
+      },
+      better: {
+        price: 9900,
+        label: 'Custom Surround',
+        tag: 'Better',
+        features: [
+          'Soundbar custom made to match TV width',
+          '4 in-ceiling speakers for Atmos and Surround',
+          'Single in-wall subwoofer',
+          'Atmos Surround Amplifier',
+          'Apple TV 4K source',
+          'Large behind TV box for local components'
+        ],
+        brands: 'Sony AVR, Sonance, Leon, Apple TV 4K, Future Automation'
+      },
+      best: {
+        price: 15900,
+        label: 'Invisible Surround',
+        tag: 'Best',
+        features: [
+          'Invisible front, rear, and in-ceiling speakers',
+          'Coverage for Atmos and Surround',
+          'Dual in-wall invisible subwoofers',
+          'Atmos Surround Amplifier',
+          'Apple TV 4K source',
+          'Large behind TV box for local components'
+        ],
+        brands: 'Sony AVR, Amina Loudspeakers, Apple TV 4K, Future Automation'
+      }
+    }
+  },
+  {
+    id: 'theater',
+    section: 'Audio',
+    name: 'Home Theater / Media Room',
+    icon: '🎬',
+    desc: 'Dedicated entertainment experience — from media room to reference theater (display not included)',
+    sizeScale: 0.0,
+    tiers: {
+      good: {
+        price: 18000,
+        label: 'Media Room',
+        tag: 'Good',
+        features: [
+          'NO DISPLAY INCLUDED (see Video Wall)',
+          '5.2.2 Dolby Atmos surround',
+          'Combination of in-ceiling/in-wall speakers',
+          'Dual subwoofers (in-wall or in-room)',
+          'Atmos Surround Amplifier',
+          'Dimmable lighting scene ("Movie Mode")',
+          'Apple TV 4K source',
+          'Automation system control (app and remote)'
+        ],
+        brands: 'Sonance, Sony AVR, Apple TV 4K, Lutron, Control4'
+      },
+      standard: {
+        price: 39000,
+        label: 'Theater Quality',
+        tag: 'Standard',
+        features: [
+          'NO DISPLAY INCLUDED (see Video Wall)',
+          '7.2.2 Dolby Atmos audio',
+          'Premium in-wall speakers & 2 subs',
+          'Dedicated AV receiver + amplification',
+          'Full light control',
+          'Automation system control (app and remote)',
+          'Kaleidescape movie server',
+          'Dedicated in-room equipment rack'
+        ],
+        brands: 'Monitor Audio, Leon, Amina Loudspeakers, Sony AVR, Lutron, Control4, Crestron, Kaleidescape'
+      },
+      better: {
+        price: 88000,
+        label: 'Reference Theater',
+        tag: 'Better',
+        features: [
+          'NO DISPLAY INCLUDED (see Video Wall)',
+          '7.2.4 Dolby Atmos reference audio',
+          'Reference quality in-wall speakers & subs',
+          'Dedicated AV receiver',
+          'Dedicated multi-channel amplification',
+          'Full light control',
+          'Automation system control (app and remote)',
+          'Dedicated in-room equipment rack',
+          'Kaleidescape movie server',
+          'Full acoustic engineering'
+        ],
+        brands: 'Monitor Audio, Leon, Amina Loudspeakers, Marantz, Sony, Lutron, Control4, Crestron, Kaleidescape, Triad, B&W'
+      },
+      best: {
+        price: 123000,
+        label: 'Full Theater Experience',
+        tag: 'Best',
+        features: [
+          'NO DISPLAY INCLUDED (see Video Wall)',
+          '7.2.4 Dolby Atmos reference audio',
+          'Reference quality in-wall speakers & subs',
+          'Dedicated AV receiver',
+          'Dedicated multi-channel amplification',
+          'Full light control',
+          'Automation system control (app and remote)',
+          'Dedicated in-room equipment rack',
+          'Kaleidescape movie server',
+          'Full acoustic engineering',
+          '$20,000 seating budget included',
+          '$15,000 acoustical paneling budget included'
+        ],
+        brands: 'Monitor Audio, Leon, Amina Loudspeakers, Marantz, Sony, Lutron, Control4, Crestron, Kaleidescape, Triad, B&W'
+      }
+    }
+  },
+  {
+    id: 'videodist',
+    section: 'Video',
+    name: 'TV Mounting & Video Distribution',
+    icon: '📺',
+    desc: 'TV installations, mounting, and source distribution throughout the home',
+    sizeScale: 0.7,
+    tiers: {
+      good: {
+        price: 5500,
+        label: 'Local Sources, Basic',
+        tag: 'Good',
+        features: [
+          'Main TVs mounted (fixed/tilt)',
+          'Apple TV at each location',
+          'In-wall HDMI & cable concealment'
+        ],
+        brands: 'Strong Mounts, Apple TV 4K, in-wall HDMI'
+      },
+      better: {
+        price: 9200,
+        label: 'Local Sources, Preferred',
+        tag: 'Better',
+        features: [
+          'Main TVs mounted (Articulating)',
+          'Apple TV at each location',
+          'In-wall HDMI & cable concealment',
+          'Surge protection at each TV',
+          'Large back box behind TV to hold components and surge protector'
+        ],
+        brands: 'Strong Mounts, Apple TV 4K, in-wall HDMI, WattBox'
+      },
+      best: {
+        price: 29000,
+        sizeScale: 0.5,
+        label: 'Video Over IP Distribution',
+        tag: 'Best',
+        features: [
+          'Main TVs mounted (Articulating mounts)',
+          'Main TVs with video matrix switching',
+          'Any source on any TV',
+          'Perfect syncing of TV video for parties/events',
+          'Automation system control of Main TVs (remote and app)',
+          'Cable concealment',
+          'Surge protection at each TV',
+          'Large back box behind TV to hold components and surge protector'
+        ],
+        brands: 'Control4, Crestron, Binary, Strong Mounts, Future Automation, Apple TV 4K, WattBox OvRC'
+      }
+    }
+  },
+  {
+    id: 'control',
+    section: 'Control & Automation',
+    name: 'Control & Automation System',
+    icon: '🎛️',
+    desc: 'Unified control of all systems from touchscreens, remotes, and app',
+    sizeScale: 0.6,
+    tiers: {
+      good: {
+        price: 9500,
+        label: 'Automation Basic',
+        tag: 'Good',
+        features: [
+          'Automation System Controller',
+          'Single Remote and App control of main TVs',
+          'Integration of installed components including lighting, music, and TVs',
+          'Basic scenes (Morning, Night, Movie)'
+        ],
+        brands: 'Control4, Crestron'
+      },
+      better: {
+        price: 16000,
+        label: 'Automation Enhanced',
+        tag: 'Better',
+        features: [
+          'Advanced Automation System Controller',
+          'Single Remote and App control of main TVs',
+          'Upgraded premium remotes',
+          'Integration of installed, compatible components including lighting, shades, music, cameras, thermostats, gates, and TVs',
+          'Advanced scenes & scheduling'
+        ],
+        brands: 'Control4, Crestron'
+      },
+      best: {
+        price: 29500,
+        label: 'Full Automation',
+        tag: 'Best',
+        features: [
+          'Advanced Automation System Controller',
+          'Single Remote and App control of all TVs',
+          'Upgraded premium remotes for main TVs',
+          'Full integration of any installed, compatible components including lighting, shades, music, security, cameras, thermostats, pool, gates, and TVs',
+          'Advanced scenes & scheduling'
+        ],
+        brands: 'Control4, Crestron'
+      }
+    }
+  },
+  {
+    id: 'touchscreen',
+    section: 'Control & Automation',
+    name: 'Touchscreens',
+    icon: '📱',
+    desc: 'The dedicated hub for instant home control—perfect for you and seamless for your guests',
+    sizeScale: 0,
+    tiers: {
+      good: {
+        price: 2200,
+        label: 'Touchscreen Essential',
+        tag: 'Good',
+        features: [
+          'On-wall iPad mini in main living area'
+        ],
+        brands: 'iPort, Apple'
+      },
+      standard: {
+        price: 4800,
+        label: 'Touchscreen Basic',
+        tag: 'Standard',
+        features: [
+          'On-wall iPads in main living area and master suite'
+        ],
+        brands: 'iPort, Apple'
+      },
+      better: {
+        price: 7200,
+        label: 'Touchscreen Standard',
+        tag: 'Better',
+        features: [
+          'On-wall iPads in main living area and master suite',
+          'Desk mounted iPad mini for kitchen'
+        ],
+        brands: 'iPort, Apple'
+      },
+      best: {
+        price: 23200,
+        sizeScale: 0.5,
+        label: 'Touchscreen Full',
+        tag: 'Best',
+        features: [
+          'On-wall iPads or automation system touchscreens in all living areas, kitchen, guest suites (most if not all), and office/study',
+          'Desk mounted option where appropriate'
+        ],
+        brands: 'iPort, Apple, Crestron, Control4'
+      }
+    }
+  },
+  {
+    id: 'lighting',
+    section: 'Lighting & Shades',
+    name: 'Wireless Lighting Control',
+    icon: '💡',
+    desc: 'Smart lighting with scene control, dimming, and scheduling',
+    sizeScale: 1,
+    tiers: {
+      good: {
+        price: 5500,
+        sizeScale: 0.4,
+        label: 'Wireless Basic',
+        tag: 'Good',
+        features: [
+          'Wireless lighting control in main living areas and kitchen',
+          'App control from phone whether at home or away',
+          'Integration with control system (if selected)'
+        ],
+        brands: 'Lutron Caseta'
+      },
+      better: {
+        price: 15000,
+        sizeScale: 0.4,
+        label: 'Wireless Partial',
+        tag: 'Better',
+        features: [
+          'Wireless lighting control in main living areas, kitchen, and master suite',
+          'Scene keypads for each area and at entry(s). Push one button and lights automatically adjust',
+          'App control from phone whether at home or away',
+          'Integration with control system (if selected)'
+        ],
+        brands: 'Lutron RadioRA, Control4 Contemporary, Crestron Cameo'
+      },
+      best: {
+        price: 32000,
+        sizeScale: 0.9,
+        label: 'Wireless Full Home',
+        tag: 'Best',
+        features: [
+          'Wireless lighting control on every switch in the home',
+          'Scene keypads in every room',
+          'Comprehensive scenes (Wake, Entertain, Night, Away)',
+          'App control from phone whether at home or away'
+        ],
+        brands: 'Lutron RadioRA, Control4 Contemporary, Crestron Cameo'
+      }
+    }
+  },
+  {
+    id: 'lighting-centralized',
+    section: 'Lighting & Shades',
+    name: 'Centralized / Hybrid Lighting Control',
+    icon: '🔆',
+    desc: 'Hardwired smart lighting control for max reliability and convenience including scene control, dimming, and scheduling',
+    sizeScale: 1,
+    tiers: {
+      good: {
+        price: 30000,
+        sizeScale: 0.4,
+        label: 'Centralized Partial',
+        tag: 'Good',
+        features: [
+          'Lighting control in main living areas, kitchen, and master suite',
+          'Clean look on wall, no banks of switches',
+          'Scene keypads in every room',
+          'Integration with control system (if selected)',
+          'App control from phone whether at home or away',
+          'Comprehensive scenes (Wake, Entertain, Night, Away)'
+        ],
+        brands: 'Lutron HomeWorks, Control4 Centralized, Crestron Centralized'
+      },
+      better: {
+        price: 47000,
+        sizeScale: 0.9,
+        label: 'Hybrid Full Home',
+        tag: 'Better',
+        features: [
+          'Combination of wireless and centralized lighting',
+          'Lighting control on every switch in the home',
+          'Main living areas, kitchen, and master suite are centralized',
+          'Other areas are wireless',
+          'Scene keypads in every room',
+          'Integration with control system (if selected)',
+          'App control from phone whether at home or away',
+          'Comprehensive scenes (Wake, Entertain, Night, Away)'
+        ],
+        brands: 'Lutron RadioRA, Control4 Contemporary, Crestron Cameo, Lutron HomeWorks, Control4 Centralized, Crestron Centralized'
+      },
+      best: {
+        price: 60000,
+        sizeScale: 0.9,
+        label: 'Centralized Full Home',
+        tag: 'Best',
+        features: [
+          'Centralized, hardwired lighting control of all lighting in the home',
+          'Clean look on wall, no banks of switches',
+          'Scene keypads in every room',
+          'Integration with control system (if selected)',
+          'App control from phone whether at home or away',
+          'Comprehensive scenes (Wake, Entertain, Night, Away)'
+        ],
+        brands: 'Lutron HomeWorks, Control4 Centralized, Crestron Centralized'
+      }
+    }
+  },
+  {
+    id: 'lighting-designer',
+    section: 'Lighting & Shades',
+    name: 'Designer Lighting Keypads',
+    icon: '✨',
+    desc: 'Elevate your lighting control with premium designer keypads featuring custom finishes and engraving',
+    sizeScale: 0,
+    tiers: {
+      good: {
+        price: 6000,
+        sizeScale: 0.4,
+        label: 'Partial Home',
+        tag: 'Good',
+        features: [
+          'Upgraded designer lighting keypads/switches in main living areas, kitchen, and master suite',
+          'Designer color/finish options',
+          'Custom engraving of keypad buttons'
+        ],
+        brands: 'Lutron Sunnata (designer colors), Control4 Lux, Crestron Horizon, Lutron Palladiom'
+      },
+      better: {
+        price: 10000,
+        sizeScale: 1,
+        label: 'Full Home',
+        tag: 'Better',
+        features: [
+          'Upgraded designer lighting keypads/switches throughout the home',
+          'Designer color/finish options',
+          'Custom engraving of keypad buttons'
+        ],
+        brands: 'Lutron Sunnata (designer colors), Control4 Lux, Crestron Horizon, Lutron Palladiom'
+      },
+      best: {
+        price: 20000,
+        sizeScale: 1,
+        label: 'Full Home Bespoke',
+        tag: 'Best',
+        features: [
+          'Upgraded bespoke lighting keypads/switches throughout the home',
+          'Designer color/finish options',
+          'Custom engraving of keypad buttons'
+        ],
+        brands: 'Lutron Palladiom Glass/Metal, Lutron Alisse, Black Nova'
+      }
+    }
+  },
+  {
+    id: 'shades',
+    section: 'Lighting & Shades',
+    name: 'Motorized Shades',
+    icon: '🪟',
+    desc: 'Automated window treatments with scene integration',
+    sizeScale: 0.9,
+    tiers: {
+      good: {
+        price: 35000,
+        sizeScale: 0.4,
+        label: 'Key Windows',
+        tag: 'Good',
+        features: [
+          'Lutron motorized shades in single living area and master bedroom',
+          'Hardwired for max reliability',
+          'Light filtering or solar screen fabric',
+          'App and remote control',
+          'Integrated with control system (if selected)',
+          'Standard pockets'
+        ],
+        brands: 'Lutron Sivoia, standard fabrics'
+      },
+      better: {
+        price: 70000,
+        sizeScale: 0.8,
+        label: 'Standard Windows',
+        tag: 'Better',
+        features: [
+          'Lutron motorized shades in main living areas, master bedroom, and primary guest and/or master bath',
+          'Hardwired for max reliability',
+          'Mixture of light filtering, solar screen, and black out fabric',
+          'Mixture of in-wall keypads, app, and remote controls',
+          'Integrated with control system (if selected)',
+          'Standard pockets',
+          'Automated scenes (Morning, Movie, Entertaining)',
+          'Upgraded fabric selections'
+        ],
+        brands: 'Lutron Sivoia, upgraded fabrics'
+      },
+      best: {
+        price: 100000,
+        label: 'Most/All Windows',
+        tag: 'Best',
+        features: [
+          'Lutron motorized shades on most, if not every window',
+          'Hardwired for max reliability',
+          'Mixture of light filtering, solar screen, and black out fabric',
+          'Possible drapery tracks on select windows',
+          'Mixture of in-wall keypads, app, and remote controls',
+          'Integrated with control system (if selected)',
+          'Standard pockets',
+          'Automated scenes (Morning, Movie, Entertaining)',
+          'Upgraded fabric selections'
+        ],
+        brands: 'Lutron Sivoia, designer fabrics, Lutron drapery tracks'
+      }
+    }
+  },
+  {
+    id: 'outdoor',
+    section: 'Audio',
+    name: 'Yard/Pool Audio',
+    icon: '🌴',
+    desc: 'Weather-rated outdoor audio and speakers',
+    sizeScale: 0.6,
+    tiers: {
+      good: {
+        price: 6000,
+        sizeScale: 0.2,
+        label: 'Basic',
+        tag: 'Good',
+        features: [
+          'Single outdoor zone with landscape style speakers',
+          'Weather-rated speakers',
+          'Integrated with whole-home audio',
+          'Basic coverage for entertaining'
+        ],
+        brands: 'Sonos, Sonance Landscape'
+      },
+      better: {
+        price: 17000,
+        sizeScale: 0.2,
+        label: 'Preferred',
+        tag: 'Better',
+        features: [
+          'Coastal Source speakers with sub',
+          'Premium outdoor audio coverage',
+          'Integrated with whole-home audio',
+          'IP68 rated for salt air'
+        ],
+        brands: 'Coastal Source Razor, Coastal Source Linesource'
+      },
+      best: {
+        price: 24000,
+        sizeScale: 0.4,
+        label: 'Premium',
+        tag: 'Best',
+        features: [
+          'Coastal Source premium system',
+          'Comprehensive speakers with dedicated subs',
+          'Independently controlled zones (where appropriate)',
+          'Full yard coverage',
+          'Premium amplification',
+          'Integrated with whole-home audio',
+          'IP68 rated for salt air'
+        ],
+        brands: 'Coastal Source Ellipse/Line Source, Coastal Source Razor'
+      }
+    }
+  },
+  {
+    id: 'security',
+    section: 'Security',
+    name: 'Security & Alarm System',
+    icon: '🔒',
+    desc: 'Intrusion detection, sensors, and 24/7 monitoring',
+    sizeScale: 0.6,
+    tiers: {
+      good: {
+        price: 3500,
+        sizeScale: 0.5,
+        label: 'Essential Protection',
+        tag: 'Good',
+        features: [
+          'Coverage of all exterior doors',
+          'Motion detectors',
+          'Keypad at garage entry',
+          'Supports 24/7 professional monitoring',
+          'App control via Alarm.com'
+        ],
+        brands: 'DSC Neo, Alarm.com'
+      },
+      better: {
+        price: 7500,
+        sizeScale: 0.8,
+        label: 'Standard Security',
+        tag: 'Better',
+        features: [
+          'Coverage of all exterior windows and doors',
+          'Motion detectors',
+          'Keypads at garage entry(s) and master bedroom',
+          'Supports 24/7 professional monitoring',
+          'App control via Alarm.com'
+        ],
+        brands: 'DSC Neo, Alarm.com'
+      },
+      best: {
+        price: 9500,
+        sizeScale: 0.8,
+        label: 'Full Integration',
+        tag: 'Best',
+        features: [
+          'Commercial-grade panel + full sensor coverage',
+          'Multi method motion detectors',
+          'Keypads at garage entry(s), safe room (if appropriate), and master bedroom',
+          'Supports 24/7 professional monitoring',
+          'App control via Alarm.com',
+          'Full Crestron/Control4 integration',
+          'Panic buttons on keypads'
+        ],
+        brands: 'DSC PowerSeries Neo / Qolsys, Alarm.com'
+      }
+    }
+  },
+  {
+    id: 'intercom',
+    section: 'Security',
+    name: 'Intercom, Doorbell & Access Control',
+    icon: '🚪',
+    desc: 'Video doorbell, gate intercom, and entry access management',
+    sizeScale: 0.2,
+    tiers: {
+      good: {
+        price: 2000,
+        label: 'Video Doorbell',
+        tag: 'Good',
+        features: [
+          'Hardwired video doorbell (PoE)',
+          '2-way audio & video at front door',
+          'App notifications when someone rings'
+        ],
+        brands: 'UniFi, Control4'
+      },
+      better: {
+        price: 7500,
+        label: 'Video Doorbell + Gate',
+        tag: 'Better',
+        features: [
+          'Hardwired video doorbell (PoE)',
+          '2-way audio & video at front door',
+          'App notifications when someone rings',
+          'Gate video intercom with keypad',
+          'Integration with automatic gate for opening and closing',
+          'Remote gate open from phone'
+        ],
+        brands: 'UniFi, Control4'
+      },
+      best: {
+        price: 10500,
+        label: 'Premium Video Doorbell and Gate',
+        tag: 'Best',
+        features: [
+          'Premium hardwired doorbell station (PoE)',
+          '2-way audio & video at front door',
+          'App notifications when someone rings',
+          'Gate video intercom with keypad',
+          'Integration with automatic gate for opening and closing',
+          'Remote gate open from phone',
+          'Multi-tenant/guest access codes',
+          'Full Crestron/Control4 integration'
+        ],
+        brands: 'UniFi, Control4, 2N'
+      }
+    }
+  },
+  {
+    id: 'videowall-interior',
+    section: 'Video',
+    name: 'Video Wall Interior',
+    icon: '🖥️',
+    desc: 'Large-format LED video wall installations for indoor spaces',
+    sizeScale: 0.0,
+    tiers: {
+      good: {
+        price: 50000,
+        label: '136" Display Standard',
+        tag: 'Good',
+        features: [
+          'High density pixels for clear picture (1.2pp)',
+          'Supports up to 3 video signals at the same time',
+          '3 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron'
+        ],
+        brands: 'Opal Screens Crystal Series'
+      },
+      standard: {
+        price: 69000,
+        label: '136" Display Premium',
+        tag: 'Standard',
+        features: [
+          'Super high density pixels for clearest picture (.9pp)',
+          'Supports up to 4 video signals at the same time',
+          'BlackFire technology for the deepest blacks',
+          '4 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron',
+          'Ambient art mode with customer provided art'
+        ],
+        brands: 'Opal Screens Crystal Series'
+      },
+      better: {
+        price: 89000,
+        label: '163" Display Premium',
+        tag: 'Better',
+        features: [
+          'Super high density pixels for clearest picture (.9pp)',
+          'Supports up to 4 video signals at the same time',
+          'BlackFire technology for the deepest blacks',
+          '4 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron',
+          'Ambient art mode with customer provided art'
+        ],
+        brands: 'Opal Screens Crystal Series'
+      },
+      best: {
+        price: 119000,
+        label: '190" Display Premium',
+        tag: 'Best',
+        features: [
+          'Super high density pixels for clearest picture (.9pp)',
+          'Supports up to 4 video signals at the same time',
+          'BlackFire technology for the deepest blacks',
+          '4 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron',
+          'Ambient art mode with customer provided art'
+        ],
+        brands: 'Opal Screens Crystal Series'
+      }
+    }
+  },
+  {
+    id: 'videowall-exterior',
+    section: 'Video',
+    name: 'Video Wall Exterior',
+    icon: '☀️',
+    desc: 'Weather-rated outdoor LED video wall installations',
+    sizeScale: 0.0,
+    tiers: {
+      good: {
+        price: 83000,
+        label: '136" Outdoor Display Standard',
+        tag: 'Good',
+        features: [
+          'Outdoor weather rated for direct exposure to the weather',
+          '8X brighter than indoor models for direct sun viewing',
+          'High density pixels for clear picture (1.5pp)',
+          'Supports up to 3 video signals at the same time',
+          '3 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron'
+        ],
+        brands: 'Opal Screens Water Series'
+      },
+      standard: {
+        price: 109000,
+        label: '136" Outdoor Display Premium',
+        tag: 'Standard',
+        features: [
+          'Outdoor weather rated for direct exposure to the weather',
+          '8X brighter than indoor models for direct sun viewing',
+          'Super high density pixels for clearest picture (1.2pp)',
+          'Supports up to 4 video signals at the same time',
+          'BlackFire technology for the deepest blacks',
+          '4 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron',
+          'Ambient art mode with customer provided art'
+        ],
+        brands: 'Opal Screens Water Series'
+      },
+      better: {
+        price: 149000,
+        label: '163" Outdoor Display Premium',
+        tag: 'Better',
+        features: [
+          'Outdoor weather rated for direct exposure to the weather',
+          '8X brighter than indoor models for direct sun viewing',
+          'Super high density pixels for clearest picture (1.2pp)',
+          'Supports up to 4 video signals at the same time',
+          'BlackFire technology for the deepest blacks',
+          '4 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron',
+          'Ambient art mode with customer provided art'
+        ],
+        brands: 'Opal Screens Water Series'
+      },
+      best: {
+        price: 179000,
+        label: '190" Outdoor Display Premium',
+        tag: 'Best',
+        features: [
+          'Outdoor weather rated for direct exposure to the weather',
+          '8X brighter than indoor models for direct sun viewing',
+          'Super high density pixels for clearest picture (1.2pp)',
+          'Supports up to 4 video signals at the same time',
+          'BlackFire technology for the deepest blacks',
+          '4 4K Apple TVs',
+          'Professional calibration and installation',
+          'Integration with Control4 or Crestron',
+          'Ambient art mode with customer provided art'
+        ],
+        brands: 'Opal Screens Water Series'
+      }
+    }
+  }
+];
+
+const RESIDENTIAL_EXTRAS = [
+  { id: 'poolAlarm', name: 'Pool Alarm & Child Safety', note: 'Required by FL building code', price: 2200, sizeScale: 1, default: false },
+  { id: 'fireDet', name: 'Low Voltage Fire Detection', note: 'Monitored smoke/heat/CO', price: 3800, sizeScale: 0.3, default: false },
+  { id: 'leakDet', name: 'Leak Detection System', note: 'Water heater, laundry, sinks', price: 3500, sizeScale: 0.2, default: false }
+];
+
+// ---- CONDO DATA ----
+// Clone of residential, then override specific categories
+const CONDO_CATEGORIES = JSON.parse(JSON.stringify(RESIDENTIAL_CATEGORIES));
+const CONDO_EXTRAS = JSON.parse(JSON.stringify(RESIDENTIAL_EXTRAS));
+
+// Helper: find and override a condo category by id
+function condoOverride(id, overrides) {
+  const cat = CONDO_CATEGORIES.find(c => c.id === id);
+  if (cat) Object.assign(cat, overrides);
+}
+
+// -- Condo: Structured Wiring & Pre-Wire --
+condoOverride('prewire', {
+  tiers: {
+    good: {
+      price: 14000,
+      label: 'Essential',
+      tag: 'Good',
+      features: [
+        'Dual CAT6 for TVs to main rooms, single CAT6 to others',
+        'Basic coax (RG6) to all TVs',
+        'Standard structured media panel',
+        'Speaker wire to primary living area'
+      ],
+      brands: 'Cat6, RG6 coax, 16-4, Leviton panel'
+    },
+    standard: {
+      price: 24000,
+      label: 'Standard',
+      tag: 'Standard',
+      features: [
+        'Dual Cat6 to all TVs',
+        'Speaker wire to primary living areas, kitchen, and master bed',
+        'Upgraded structured media panel with fiber optic incoming'
+      ],
+      brands: 'Cat6, Single mode fiber optic, 16/4 speaker wire, Future Automation Structured Media Panel'
+    },
+    better: {
+      price: 35000,
+      label: 'Comprehensive',
+      tag: 'Better',
+      features: [
+        'Dual Cat6A to all TVs',
+        'Speaker wire to all living areas, kitchen, master suite, and primary guest',
+        'Lutron shade pre-wire to all main living area windows and master bedroom',
+        'Upgraded structured media panel with fiber optic and conduit for incoming pathway'
+      ],
+      brands: 'Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Direct Burial 16/4, Future Automation Structured Media Panel'
+    },
+    best: {
+      price: 44000,
+      label: 'Premium',
+      tag: 'Best',
+      features: [
+        'Dual Cat6A to all TVs plus CAT7 to main rooms',
+        'Pre-wire for extensive audio zones + single Atmos room',
+        'Full outside perimeter camera pre-wire + gate/entry points',
+        'Shade pre-wire to all windows',
+        'Upgraded structured media panels (multiple) including fiber optic and conduit for incoming pathways'
+      ],
+      brands: 'Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Future Automation Structured Media Panel'
+    }
+  }
+});
+
+// -- Condo: Networking --
+condoOverride('networking', {
+  tiers: {
+    good: {
+      price: 5700,
+      label: 'Reliable, Basic Coverage',
+      tag: 'Good',
+      features: [
+        'WiFi 7 access points for full interior coverage and balcony',
+        'Cloud managed pro router',
+        'Managed PoE switch',
+        'App-managed, remote access'
+      ],
+      brands: 'Ubiquiti UniFi, Ruckus, Access Networks'
+    },
+    better: {
+      price: 9700,
+      label: 'Full Coverage',
+      tag: 'Better',
+      features: [
+        'WiFi 7 access points for full interior and balcony coverage',
+        'Cloud managed pro router',
+        'Managed pro series PoE+ switches with 10G uplinks',
+        'UPS backup for short power outages',
+        'App-managed, remote access'
+      ],
+      brands: 'Ubiquiti UniFi, Ruckus, Access Networks'
+    },
+    best: {
+      price: 15000,
+      label: 'Enterprise Class',
+      tag: 'Best',
+      features: [
+        'High capacity WiFi 7 access points for full interior and balcony coverage',
+        'Cloud managed pro router with support for multiple internet connections',
+        'Managed enterprise series PoE+ switches with 10G uplinks',
+        'UPS backup for short power outages',
+        'App-managed, remote access'
+      ],
+      brands: 'Ubiquiti UniFi, Ruckus, Access Networks'
+    }
+  }
+});
+
+// -- Condo: Remove categories not applicable --
+['surveillance', 'outdoor', 'security', 'intercom'].forEach(id => {
+  const idx = CONDO_CATEGORIES.findIndex(c => c.id === id);
+  if (idx !== -1) CONDO_CATEGORIES.splice(idx, 1);
+});
+
+// -- Condo: Multi-Room Audio --
+condoOverride('audio', {
+  tiers: {
+    good: {
+      price: 9600,
+      label: 'Basic',
+      tag: 'Good',
+      features: [
+        'Main living areas with music',
+        'Architectural in-ceiling speakers',
+        'App-controlled music',
+        'AirPlay 2 & all streaming services'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron'
+    },
+    standard: {
+      price: 18000,
+      label: 'Standard',
+      tag: 'Standard',
+      features: [
+        'Main living areas, kitchen and master suite with music',
+        'Upgraded in ceiling speakers',
+        'Automation system integration'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Sonance'
+    },
+    better: {
+      price: 27000,
+      label: 'Entertainment Focused',
+      tag: 'Better',
+      features: [
+        'Main living areas, kitchen, guest area(s), and master suite with music',
+        'More speakers in living areas to eliminate loud spots during entertaining',
+        'Premium in-ceiling speakers',
+        'Automation system integration'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron'
+    },
+    best: {
+      price: 32000,
+      label: 'Music Lover',
+      tag: 'Best',
+      features: [
+        'Main living areas, kitchen, guest area(s), and master suite with music',
+        'Ultra Premium in-ceiling speakers in main listening areas',
+        'In ceiling/in wall subwoofer(s) in main listening area(s)',
+        'Automation system integration'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Monitor Audio, Sonance, B&W'
+    }
+  }
+});
+
+// -- Condo: Control & Automation --
+condoOverride('control', {
+  tiers: {
+    good: {
+      price: 9500,
+      label: 'Automation Basic',
+      tag: 'Good',
+      features: [
+        'Automation System Controller',
+        'Single Remote and App control of main TVs',
+        'Integration of installed components including lighting, music, and TVs',
+        'Basic scenes (Morning, Night, Movie)'
+      ],
+      brands: 'Control4, Crestron'
+    },
+    better: {
+      price: 16000,
+      label: 'Automation Enhanced',
+      tag: 'Better',
+      features: [
+        'Advanced Automation System Controller',
+        'Single Remote and App control of main TVs',
+        'Upgraded premium remotes',
+        'Integration of installed, compatible components including lighting, shades, music, cameras, thermostats, and TVs',
+        'Advanced scenes & scheduling'
+      ],
+      brands: 'Control4, Crestron'
+    },
+    best: {
+      price: 29500,
+      label: 'Full Automation',
+      tag: 'Best',
+      features: [
+        'Advanced Automation System Controller',
+        'Single Remote and App control of all TVs',
+        'Upgraded premium remotes for main TVs',
+        'Full integration of any installed, compatible components including lighting, shades, music, security, cameras, thermostats, and TVs',
+        'Advanced scenes & scheduling'
+      ],
+      brands: 'Control4, Crestron'
+    }
+  }
+});
+
+// -- Condo: Video Wall Exterior → Balcony Video Wall --
+condoOverride('videowall-exterior', {
+  name: 'Video Wall Balcony/Terrace',
+  desc: 'Weather-rated LED video wall for balcony or covered terrace',
+});
+
+// -- Condo: No extras section --
+CONDO_EXTRAS.length = 0;
+
+// ---- CONFIG MAP ----
+const CONFIGS = {
+  residential: { categories: RESIDENTIAL_CATEGORIES, extras: RESIDENTIAL_EXTRAS },
+  condo: { categories: CONDO_CATEGORIES, extras: CONDO_EXTRAS }
+};
+
+// Active data accessors — everything uses these
+function CATEGORIES() { return CONFIGS[state.propertyType].categories; }
+function EXTRAS() { return CONFIGS[state.propertyType].extras; }
+
+// ============================================================
+// APP STATE
+// ============================================================
+let state = {
+  selections: {},  // { categoryId: 'good'|'better'|'best'|null }
+  extras: {},      // { extraId: true|false }
+  modifiers: [],   // { id, name, amount } — positive or negative
+  catMods: {},     // { categoryId: { name, amount } } — per-category adjustments
+  homeSize: 4000,
+  propertyType: 'residential'
+};
+
+// Initialize state for all property types (so switching doesn't lose data)
+function initStateForConfig() {
+  CATEGORIES().forEach(c => {
+    if (!(c.id in state.selections)) state.selections[c.id] = null;
+    if (!(c.id in state.catMods)) state.catMods[c.id] = { name: '', amount: 0 };
+  });
+  EXTRAS().forEach(e => {
+    if (!(e.id in state.extras)) state.extras[e.id] = e.default;
+  });
+}
+initStateForConfig();
+
+// ============================================================
+// SIZE SCALING
+// ============================================================
+function getSizeMultiplier(sqft, scaleFactor) {
+  // Baseline: 4000 sq ft = 1.0
+  // Minimum: 2500 sq ft (smaller homes use 2500 for calculations)
+  // Scale factor determines how much this category responds to size changes
+  if (scaleFactor === 0) return 1; // theater doesn't scale
+  const effectiveSqft = Math.max(sqft, 2500); // enforce 2500 minimum
+  const baseline = 4000;
+  const ratio = effectiveSqft / baseline;
+  // Dampen the scaling: use scaleFactor to blend between 1.0 and the ratio
+  return 1 + (ratio - 1) * scaleFactor;
+}
+
+function getCategoryPrice(cat, tier) {
+  if (!tier) return 0;
+  const tierData = cat.tiers[tier];
+  const base = tierData.price;
+  // Skip size scaling for base tier if category opts out
+  const skipSize = cat.baseTierNoScale && tier === 'good';
+  // Use tier-level sizeScale if defined, otherwise fall back to category sizeScale
+  const scaleToUse = tierData.sizeScale !== undefined ? tierData.sizeScale : cat.sizeScale;
+  const sizeMult = skipSize ? 1 : getSizeMultiplier(state.homeSize, scaleToUse);
+  return Math.round(base * sizeMult / 100) * 100; // round to nearest $100
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+const SECTION_ORDER = ['Infrastructure', 'Audio', 'Video', 'Control & Automation', 'Lighting & Shades', 'Security'];
+
+function renderCategories() {
+  const container = document.getElementById('categoriesContainer');
+  container.innerHTML = '';
+  
+  // Group categories by section
+  const sections = {};
+  CATEGORIES().forEach(cat => {
+    const section = cat.section || 'Other';
+    if (!sections[section]) sections[section] = [];
+    sections[section].push(cat);
+  });
+  
+  // Render in defined order
+  SECTION_ORDER.forEach(sectionName => {
+    const cats = sections[sectionName];
+    if (!cats || cats.length === 0) return;
+    
+    // Add section header
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.innerHTML = `<h3>${sectionName}</h3>`;
+    container.appendChild(header);
+    
+    // Render categories in this section
+    cats.forEach(cat => {
+      const selected = state.selections[cat.id];
+      const basePrice = getCategoryPrice(cat, selected);
+      const catModAmount = state.catMods[cat.id]?.amount || 0;
+      const price = basePrice + catModAmount;
+      const tierClass = selected ? 'tier-' + selected : '';
+      
+      // Check mutual exclusivity for lighting
+      let isDisabled = false;
+      if (cat.id === 'lighting' && state.selections['lighting-centralized']) {
+        isDisabled = true;
+      } else if (cat.id === 'lighting-centralized' && state.selections['lighting']) {
+        isDisabled = true;
+      }
+      // Designer Keypads requires a lighting control selection first, and not compatible with Wireless Basic
+      if (cat.id === 'lighting-designer' && (!state.selections['lighting'] && !state.selections['lighting-centralized'] || state.selections['lighting'] === 'good')) {
+        isDisabled = true;
+      }
+      // Invisible Speakers requires Multi-Room Audio selection first
+      if (cat.id === 'invisible-speakers' && !state.selections['audio']) {
+        isDisabled = true;
+      }
+      
+      const card = document.createElement('div');
+      card.className = `category-card ${tierClass} ${selected ? 'has-selection' : ''} ${isDisabled ? 'disabled' : ''}`;
+      card.id = 'cat-' + cat.id;
+      
+      card.innerHTML = `
+        <div class="category-header" onclick="toggleCategory('${cat.id}')">
+          <div class="category-icon">${cat.icon}</div>
+          <div class="category-info">
+            <div class="category-name">${cat.name}</div>
+            <div class="category-desc">${cat.desc}</div>
+          </div>
+          <div class="category-price ${!selected ? 'no-selection' : ''}">
+            ${selected ? formatCurrency(price) : 'Not selected'}
+          </div>
+        </div>
+        <div class="category-body">
+          <div class="tier-selector">
+            <div class="tier-btn none-btn ${!selected ? 'selected' : ''}" onclick="selectTier('${cat.id}', null)">
+              <div class="tier-label">Skip</div>
+              <div class="tier-price">—</div>
+              <div class="tier-tag">Not included</div>
+            </div>
+            ${Object.keys(cat.tiers).map(t => {
+              const tp = getCategoryPrice(cat, t);
+              // Check if this tier should be disabled
+              let tierDisabled = false;
+              if (cat.id === 'lighting-designer' && t === 'best' && state.selections['lighting']) {
+                tierDisabled = true; // Bespoke not available with Wireless Lighting
+              }
+              return `
+                <div class="tier-btn ${t}-btn ${selected === t ? 'selected' : ''} ${tierDisabled ? 'tier-disabled' : ''}" ${tierDisabled ? '' : `onclick="selectTier('${cat.id}', '${t}')"`}>
+                  <div class="tier-label">${cat.tiers[t].label}</div>
+                  <div class="tier-price">${tierDisabled ? 'N/A' : formatCurrency(tp)}</div>
+                  <div class="tier-tag">${tierDisabled ? 'Not available' : cat.tiers[t].tag}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          ${selected ? renderTierDetails(cat, selected) : '<div class="tier-details" style="text-align:center;color:var(--text-lighter);padding:20px;">Select a tier to see what\'s included</div>'}
+          <div class="cat-modifier" style="padding:8px 16px 12px;border-top:1px dashed var(--border);display:flex;gap:8px;align-items:center;">
+            <span style="font-size:12px;color:var(--text-lighter);white-space:nowrap;">± Adjust:</span>
+            <input type="text" placeholder="Note" value="${(state.catMods[cat.id]?.name || '').replace(/"/g, '&quot;')}" 
+              oninput="updateCatMod('${cat.id}', 'name', this.value)"
+              onclick="event.stopPropagation()"
+              style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;min-width:0;">
+            <input type="text" inputmode="numeric" placeholder="$0" value="${state.catMods[cat.id]?.amount ? formatCurrency(state.catMods[cat.id].amount) : ''}" 
+              oninput="handleCatModAmount(this, '${cat.id}')"
+              onclick="event.stopPropagation()"
+              style="width:110px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;text-align:right;">
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  });
+}
+
+function renderTierDetails(cat, tier) {
+  const t = cat.tiers[tier];
+  return `
+    <div class="tier-details">
+      <h4>${t.label} — What's Included</h4>
+      <ul>${t.features.map(f => `<li>${f}</li>`).join('')}</ul>
+      <div class="brands">Typical brands: ${t.brands}</div>
+    </div>
+  `;
+}
+
+function getExtraPrice(e) {
+  if (e.sizeScale !== undefined) {
+    return Math.round(e.price * getSizeMultiplier(state.homeSize, e.sizeScale) / 100) * 100;
+  }
+  return e.price;
+}
+
+function renderExtras() {
+  const section = document.getElementById('extrasSection');
+  const grid = document.getElementById('extrasGrid');
+  // Hide entire section if no extras for this property type
+  if (EXTRAS().length === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  grid.innerHTML = '';
+  EXTRAS().forEach(e => {
+    const active = state.extras[e.id];
+    const scaledPrice = getExtraPrice(e);
+    const div = document.createElement('div');
+    div.className = `extra-item ${active ? 'active' : ''}`;
+    div.onclick = () => { state.extras[e.id] = !state.extras[e.id]; renderExtras(); updateTotals(); };
+    div.innerHTML = `
+      <div class="extra-info">
+        <div>
+          <div class="extra-name">${e.name}</div>
+          <div class="extra-note">${e.note}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="extra-price">${formatCurrency(scaledPrice)}</div>
+        <div class="extra-toggle"></div>
+      </div>
+    `;
+    grid.appendChild(div);
+  });
+}
+
+// ============================================================
+// ACTIONS
+// ============================================================
+function handleModAmount(input, modId) {
+  const raw = input.value.replace(/[^0-9.\-]/g, '');
+  const num = parseFloat(raw) || 0;
+  updateModifier(modId, 'amount', num);
+  const cursorPos = input.selectionStart;
+  const oldLen = input.value.length;
+  if (raw === '' || raw === '-') {
+    input.value = raw;
+  } else {
+    input.value = formatCurrency(num);
+  }
+  const newLen = input.value.length;
+  const newPos = Math.max(0, cursorPos + (newLen - oldLen));
+  input.setSelectionRange(newPos, newPos);
+}
+
+function handleCatModAmount(input, catId) {
+  // Strip everything except digits, minus, and decimal
+  const raw = input.value.replace(/[^0-9.\-]/g, '');
+  const num = parseFloat(raw) || 0;
+  updateCatMod(catId, 'amount', num);
+  // Reformat with dollar sign and commas, preserving cursor
+  const cursorPos = input.selectionStart;
+  const oldLen = input.value.length;
+  if (raw === '' || raw === '-') {
+    input.value = raw;
+  } else {
+    input.value = formatCurrency(num);
+  }
+  const newLen = input.value.length;
+  const newPos = Math.max(0, cursorPos + (newLen - oldLen));
+  input.setSelectionRange(newPos, newPos);
+}
+
+function updateCatMod(catId, field, value) {
+  if (!state.catMods[catId]) state.catMods[catId] = { name: '', amount: 0 };
+  state.catMods[catId][field] = field === 'amount' ? parseFloat(value) || 0 : value;
+  updateTotals();
+  // Update the displayed price on the card header without full re-render
+  const card = document.getElementById('cat-' + catId);
+  if (card) {
+    const priceEl = card.querySelector('.category-price');
+    const tier = state.selections[catId];
+    if (tier && priceEl) {
+      const cat = CATEGORIES().find(c => c.id === catId);
+      const basePrice = getCategoryPrice(cat, tier);
+      const modAmount = state.catMods[catId]?.amount || 0;
+      const total = basePrice + modAmount;
+      priceEl.textContent = formatCurrency(total);
+    }
+  }
+}
+
+function selectTier(catId, tier) {
+  state.selections[catId] = tier;
+  
+  // Mutual exclusivity: Wireless Lighting <-> Centralized Lighting
+  if (tier !== null) {
+    if (catId === 'lighting') {
+      state.selections['lighting-centralized'] = null;
+      // Bespoke keypads not available with Wireless - clear if selected
+      if (state.selections['lighting-designer'] === 'best') {
+        state.selections['lighting-designer'] = null;
+      }
+      // Wireless Basic doesn't support designer keypads at all
+      if (tier === 'good' && state.selections['lighting-designer']) {
+        state.selections['lighting-designer'] = null;
+      }
+    } else if (catId === 'lighting-centralized') {
+      state.selections['lighting'] = null;
+    }
+  }
+  
+  // Clear Invisible Speakers if Multi-Room Audio is deselected
+  if (catId === 'audio' && tier === null) {
+    state.selections['invisible-speakers'] = null;
+  }
+  
+  // Remember which cards are open and scroll position
+  const openCards = new Set();
+  document.querySelectorAll('.category-card.open').forEach(c => openCards.add(c.id));
+  const scrollY = window.scrollY;
+  renderCategories();
+  updateTotals();
+  // Restore all previously open cards + the one we just selected
+  openCards.add('cat-' + catId);
+  openCards.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('open');
+  });
+  // Restore scroll after browser layout
+  requestAnimationFrame(() => window.scrollTo(0, scrollY));
+}
+
+function toggleCategory(catId) {
+  const card = document.getElementById('cat-' + catId);
+  card.classList.toggle('open');
+}
+
+function expandAll() {
+  document.querySelectorAll('.category-card').forEach(c => c.classList.add('open'));
+}
+
+function applyPreset(level, el) {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.closest('.preset-btn').classList.add('active');
+  
+  if (level === 'none') {
+    CATEGORIES().forEach(c => state.selections[c.id] = null);
+  } else {
+    CATEGORIES().forEach(c => {
+      // If category has this tier, use it; otherwise pick the closest available
+      if (c.tiers[level]) {
+        state.selections[c.id] = level;
+      } else {
+        const tierKeys = Object.keys(c.tiers);
+        const tierOrder = ['good','standard','better','best'];
+        const targetIdx = tierOrder.indexOf(level);
+        // Find the closest tier that exists in this category
+        let closest = tierKeys[tierKeys.length - 1]; // default to highest
+        for (let i = targetIdx; i >= 0; i--) {
+          if (c.tiers[tierOrder[i]]) { closest = tierOrder[i]; break; }
+        }
+        state.selections[c.id] = closest;
+      }
+    });
+  }
+  renderCategories();
+  updateTotals();
+}
+
+function updateTotals() {
+  let subtotal = 0;
+  let selectedCount = 0;
+  
+  CATEGORIES().forEach(cat => {
+    const tier = state.selections[cat.id];
+    if (tier) {
+      subtotal += getCategoryPrice(cat, tier);
+      const catModAmount = state.catMods[cat.id]?.amount || 0;
+      subtotal += catModAmount;
+      selectedCount++;
+    }
+  });
+  
+  // Extras
+  let extrasTotal = 0;
+  EXTRAS().forEach(e => {
+    if (state.extras[e.id]) extrasTotal += getExtraPrice(e);
+  });
+
+  // Modifiers
+  let modifiersTotal = 0;
+  state.modifiers.forEach(m => modifiersTotal += m.amount);
+  
+  const equipmentSubtotal = subtotal + extrasTotal + modifiersTotal;
+  const taxEstimate = Math.round(equipmentSubtotal * 0.07); // FL ~7% sales tax on equipment
+  const grandTotal = equipmentSubtotal + taxEstimate;
+  const catCount = CATEGORIES().length;
+  
+  // Update displays
+  document.getElementById('headerTotal').textContent = formatCurrency(grandTotal);
+  document.getElementById('statCategories').textContent = selectedCount + '/' + catCount;
+  document.getElementById('statSubtotal').textContent = formatCurrency(equipmentSubtotal);
+  document.getElementById('statTax').textContent = formatCurrency(taxEstimate);
+  document.getElementById('categoryCount').textContent = selectedCount + ' of ' + catCount + ' selected';
+}
+
+// ============================================================
+// SUMMARY
+// ============================================================
+function showSummary() {
+  const modal = document.getElementById('summaryModal');
+  const body = document.getElementById('summaryBody');
+  
+  const clientName = document.getElementById('clientName').value || 'Unnamed Project';
+  const builder = document.getElementById('builder').value || '—';
+  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  
+  let subtotal = 0;
+  let rows = '';
+  
+  CATEGORIES().forEach(cat => {
+    const tier = state.selections[cat.id];
+    if (tier) {
+      const price = getCategoryPrice(cat, tier);
+      const catMod = state.catMods[cat.id];
+      const catModAmount = catMod?.amount || 0;
+      const t = cat.tiers[tier];
+      subtotal += price + catModAmount;
+      rows += `
+        <tr>
+          <td>${cat.icon} ${cat.name}</td>
+          <td><span class="tier-badge ${tier}">${t.tag}</span> ${t.label}</td>
+          <td class="price-cell">${formatCurrency(price)}</td>
+        </tr>
+        <tr class="features-row">
+          <td colspan="3" style="padding:4px 16px 14px 36px;border-top:none;">
+            <div style="font-size:11px;color:var(--text-light);line-height:1.6;">
+              ${t.features.map(f => `• ${f}`).join('<br>')}
+              <div style="margin-top:4px;font-size:10px;color:var(--text-light);font-style:italic;">Typical brands: ${t.brands}</div>
+            </div>
+          </td>
+        </tr>
+      `;
+      if (catModAmount !== 0) {
+        rows += `
+          <tr>
+            <td style="padding-left:36px;">↳ ${catMod.name || 'Adjustment'}</td>
+            <td style="font-size:12px;color:var(--text-lighter);">${catModAmount > 0 ? 'Addition' : 'Credit'}</td>
+            <td class="price-cell">${formatCurrency(catModAmount)}</td>
+          </tr>
+        `;
+      }
+    }
+  });
+  
+  let extrasTotal = 0;
+  EXTRAS().forEach(e => {
+    if (state.extras[e.id]) {
+      const extraPrice = getExtraPrice(e);
+      extrasTotal += extraPrice;
+      rows += `
+        <tr>
+          <td>📎 ${e.name}</td>
+          <td style="font-size:12px;color:var(--text-lighter);">${e.note}</td>
+          <td class="price-cell">${formatCurrency(extraPrice)}</td>
+        </tr>
+      `;
+    }
+  });
+
+  let modifiersTotal = 0;
+  state.modifiers.forEach(m => {
+    if (m.amount !== 0) {
+      modifiersTotal += m.amount;
+      rows += `
+        <tr>
+          <td>🔧 ${m.name || 'Custom Adjustment'}</td>
+          <td style="font-size:12px;color:var(--text-lighter);">${m.amount > 0 ? 'Addition' : 'Credit'}</td>
+          <td class="price-cell">${formatCurrency(m.amount)}</td>
+        </tr>
+      `;
+    }
+  });
+  
+  const equipmentSubtotal = subtotal + extrasTotal + modifiersTotal;
+  const taxEstimate = Math.round(equipmentSubtotal * 0.07);
+  const grandTotal = equipmentSubtotal + taxEstimate;
+  
+  body.innerHTML = `
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="display:inline-block;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1107 250" height="50"><defs><style>.sm-1{fill:#fff;}.sm-2{fill:#0F2F44;}.sm-3{fill:#017ed7;}</style></defs><g><path class="sm-2" d="M320.009,99.228v-28.137c0-4.98-.999-8.466-3.498-11.454-1.249-1.245-3.248-1.992-5.497-1.992-4.747,0-6.996,3.486-7.995,6.723-.75,1.992-.999,4.233-.999,6.723v110.059c0,5.229,1.249,8.715,3.748,11.454,1.249,1.245,2.998,1.992,5.247,1.992,4.747,0,6.996-2.988,7.995-6.723,.75-1.743,.999-3.984,.999-6.723v-33.117h-10.743v-22.659h37.726v91.134h-15.99l-3.248-8.715c-4.997,6.225-12.242,10.707-20.987,10.707s-14.741-2.241-19.238-6.225c-4.497-3.735-7.495-8.466-9.494-13.446-2.249-5.727-3.248-12.45-2.998-19.92V71.091c.25-7.221,1.749-13.944,4.497-19.671,2.249-4.98,5.497-9.96,10.493-13.695,4.997-3.735,11.992-6.225,20.987-6.225s15.74,2.49,20.737,6.225,8.495,8.715,10.743,13.695c2.748,5.727,4.247,12.45,4.497,19.671v28.137h-26.983Z"/><path class="sm-2" d="M359.23,216.508l27.733-183.016h32.979l27.733,183.016h-26.233l-4.997-37.35h-25.984l-4.997,37.35h-26.233Zm45.721-123.505l-.75-4.731h-1.499l-.75,4.731-7.745,57.768h18.488l-7.745-57.768Z"/><path class="sm-2" d="M504.887,216.508l-17.239-115.039-.999-7.719h-1.499v122.758h-24.984V33.492h32.979l15.99,83.664,1.249,9.711h.5l1.249-9.711,15.99-83.664h32.979V216.508h-24.984V93.75h-1.499l-.999,7.719-17.239,115.039h-11.493Z"/><path class="sm-2" d="M625.809,216.508l-17.239-115.039-.999-7.719h-1.499v122.758h-24.984V33.492h32.979l15.99,83.664,1.249,9.711h.5l1.249-9.711,15.99-83.664h32.979V216.508h-24.984V93.75h-1.499l-.999,7.719-17.239,115.039h-11.493Z"/><path class="sm-2" d="M694.514,216.508l27.733-183.016h32.979l27.733,183.016h-26.233l-4.997-37.35h-25.984l-4.997,37.35h-26.233Zm45.721-123.505l-.75-4.731h-1.499l-.75,4.731-7.745,57.768h18.488l-7.745-57.768Z"/><path class="sm-3" d="M780.461,61.131v-27.639h77.951v27.639h-25.484V216.508h-26.983V61.131h-25.484Z"/><path class="sm-3" d="M868.904,33.492h61.711v27.639h-34.728v48.057h24.984v29.382h-24.984v50.298h34.728v27.639h-61.711V33.492Z"/><path class="sm-3" d="M1015.809,153.76v25.149c-.25,7.47-1.749,14.193-4.497,19.92-2.249,4.98-5.746,9.711-10.743,13.446-4.997,3.984-11.743,6.225-20.737,6.225s-15.99-2.241-20.987-6.225c-4.997-3.735-8.245-8.466-10.493-13.446-2.748-5.727-4.247-12.45-4.497-19.92V71.091c.25-7.221,1.749-13.944,4.497-19.671,2.249-4.98,5.497-9.96,10.493-13.695s11.992-6.225,20.987-6.225,15.74,2.49,20.737,6.225,8.495,8.715,10.743,13.695c2.748,5.727,4.247,12.45,4.497,19.671v25.149h-25.234v-25.149c0-4.98-1.249-8.466-3.997-11.454-1.249-1.245-3.498-1.992-6.246-1.992-4.747,0-6.996,3.486-8.245,6.723-.75,1.992-.999,4.233-1.249,6.723v107.818c.25,5.229,1.749,8.715,4.247,11.454,1.249,1.245,2.998,1.992,5.247,1.992,5.746,0,7.995-2.988,9.244-6.723,.75-1.743,.999-3.984,.999-6.723v-25.149h25.234Z"/><path class="sm-3" d="M1080.017,136.828h-20.987v79.68h-26.983V33.492h26.983V109.188h20.987V33.492h26.983V216.508h-26.983v-79.68Z"/></g><g><path class="sm-3" d="M250,125c0,68.361-54.876,123.904-122.98,124.982v-16.333c59.086-1.076,106.649-49.306,106.649-108.649h-96.874v-16.414h95.641c-7.813-51.581-51.886-91.26-105.417-92.235V.018c68.104,1.078,122.98,56.621,122.98,124.982Z"/><path class="sm-2" d="M136.795,108.586h79.01c-1.194-6.679-3.131-13.194-5.793-19.49-4.646-10.985-11.301-20.854-19.778-29.331-8.477-8.477-18.346-15.131-29.331-19.778-6.295-2.662-12.811-4.599-19.49-5.793-4.722-.848-9.528-1.326-14.394-1.427-.672-.015-1.346-.023-2.02-.023s-1.349,.008-2.02,.023c-4.866,.101-9.672,.578-14.394,1.427-6.679,1.194-13.194,3.131-19.49,5.793-10.985,4.646-20.854,11.301-29.331,19.778-8.477,8.477-15.131,18.346-19.778,29.331-4.806,11.361-7.242,23.442-7.242,35.904s2.437,24.543,7.242,35.904c4.646,10.985,11.301,20.854,19.778,29.331,8.477,8.477,18.346,15.131,29.331,19.778,6.295,2.662,12.811,4.599,19.49,5.793,4.722,.848,9.528,1.326,14.394,1.427,.672,.015,1.346,.023,2.02,.023s1.349-.008,2.02-.023c4.866-.101,9.672-.578,14.394-1.427,6.679-1.194,13.194-3.131,19.49-5.793,10.985-4.646,20.854-11.301,29.331-19.778,8.477-8.477,15.131-18.346,19.778-29.331,2.662-6.295,4.598-12.811,5.793-19.49h-79.01v-32.828Zm-13.816-92.235V.018C54.876,1.096,0,56.639,0,125s54.876,123.904,122.98,124.982v-16.333c-59.086-1.076-106.649-49.306-106.649-108.649S63.894,17.427,122.98,16.351Z"/><path class="sm-1" d="M233.669,125c0,59.343-47.563,107.573-106.649,108.649v16.333l-2.02,.018-2.02-.018v-16.333c-59.086-1.076-106.649-49.306-106.649-108.649S63.894,17.427,122.98,16.351V.018c.672-.013,1.346-.018,2.02-.018s1.349,.005,2.02,.018V16.351c53.53,.975,97.604,40.654,105.417,92.235h-16.631c-1.194-6.679-3.131-13.194-5.793-19.49-4.646-10.985-11.301-20.854-19.778-29.331-8.477-8.477-18.346-15.131-29.331-19.778-6.295-2.662-12.811-4.599-19.49-5.793-4.722-.848-9.528-1.326-14.394-1.427-.672-.015-1.346-.023-2.02-.023s-1.349,.008-2.02,.023c-4.866,.101-9.672,.578-14.394,1.427-6.679,1.194-13.194,3.131-19.49,5.793-10.985,4.646-20.854,11.301-29.331,19.778-8.477,8.477-15.131,18.346-19.778,29.331-4.806,11.361-7.242,23.442-7.242,35.904s2.437,24.543,7.242,35.904c4.646,10.985,11.301,20.854,19.778,29.331,8.477,8.477,18.346,15.131,29.331,19.778,6.295,2.662,12.811,4.599,19.49,5.793,4.722,.848,9.528,1.326,14.394,1.427,.672,.015,1.346,.023,2.02,.023s1.349-.008,2.02-.023c4.866-.101,9.672-.578,14.394-1.427,6.679-1.194,13.194-3.131,19.49-5.793,10.985-4.646,20.854-11.301,29.331-19.778,8.477-8.477,15.131-18.346,19.778-29.331,2.662-6.295,4.598-12.811,5.793-19.49h-79.01v-16.414h96.874Z"/></g></svg></div>
+      <div style="font-size:12px;color:var(--text-lighter);margin-top:8px;">Residential Technology Budget Estimate</div>
+    </div>
+    
+    <div class="summary-project-info">
+      <div><span class="info-label">Project:</span></div>
+      <div><span class="info-value">${clientName}</span></div>
+      <div><span class="info-label">Builder:</span></div>
+      <div><span class="info-value">${builder}</span></div>
+      <div><span class="info-label">Property Type:</span></div>
+      <div><span class="info-value">${state.propertyType === 'residential' ? 'Single Family' : 'Condo'}</span></div>
+      <div><span class="info-label">Home Size:</span></div>
+      <div><span class="info-value">${state.homeSize.toLocaleString()} sq ft</span></div>
+      <div><span class="info-label">Date:</span></div>
+      <div><span class="info-value">${today}</span></div>
+      <div><span class="info-label">Prepared by:</span></div>
+      <div><span class="info-value">Gamma Tech Services</span></div>
+    </div>
+    
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Tier</th>
+          <th style="text-align:right;">Estimated Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">Equipment & Installation Subtotal</td>
+          <td class="price-cell">${formatCurrency(equipmentSubtotal)}</td>
+        </tr>
+        <tr>
+          <td colspan="2">Estimated Sales Tax (~7%)</td>
+          <td class="price-cell">${formatCurrency(taxEstimate)}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="font-size:18px;">Estimated Total Investment</td>
+          <td class="price-cell grand-total">${formatCurrency(grandTotal)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    
+    <div class="disclaimer">
+      This is a budgetary estimate for planning purposes. Final pricing requires detailed design and engineering.<br>
+      • TV/display costs are generally not included unless noted (video wall categories).<br>
+      • Prices reflect new construction; retrofit projects may require additional assessment.<br>
+      • Equipment availability and pricing subject to change. Lead times vary by manufacturer.<br>
+      • Sales tax estimate based on FL rate (~7%); actual tax depends on installation location.<br>
+      • Permits may be required for security, low-voltage, and electrical work per FL code.<br>
+      <br>
+      <strong>Gamma Tech Services</strong> • (239) 330-4939 • gamma.tech<br>
+      3106 Horseshoe Dr S, Naples, FL 34116 • FL License #EG13000578
+    </div>
+    <div style="text-align:center;margin-top:20px;">
+      <button onclick="shareConfig();closeSummary();" style="background:var(--accent);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">🔗 Share This Configuration</button>
+    </div>
+  `;
+  
+  modal.classList.add('active');
+}
+
+function closeSummary() {
+  document.getElementById('summaryModal').classList.remove('active');
+}
+
+// ============================================================
+// EMAIL FUNCTIONS
+// ============================================================
+function showEmailModal() {
+  // Pre-fill recipient name from client name if available
+  const clientName = document.getElementById('clientName').value;
+  if (clientName) {
+    document.getElementById('emailRecipientName').value = clientName;
+  }
+  
+  // Reset status
+  const statusEl = document.getElementById('emailStatus');
+  statusEl.style.display = 'none';
+  document.getElementById('emailSendBtn').disabled = false;
+  document.getElementById('emailSendBtn').textContent = '📧 Send Email';
+  
+  document.getElementById('emailModal').classList.add('active');
+}
+
+function closeEmailModal() {
+  document.getElementById('emailModal').classList.remove('active');
+}
+
+async function sendProposalEmail() {
+  const recipientName = document.getElementById('emailRecipientName').value.trim();
+  const recipientEmail = document.getElementById('emailRecipientEmail').value.trim();
+  const subject = document.getElementById('emailSubject').value.trim() || 'Your Technology Budget Proposal from Gamma Tech';
+  
+  const statusEl = document.getElementById('emailStatus');
+  const sendBtn = document.getElementById('emailSendBtn');
+  
+  // Validate email
+  if (!recipientEmail) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#FFEBEE';
+    statusEl.style.color = '#C62828';
+    statusEl.textContent = '⚠️ Please enter a recipient email address.';
+    return;
+  }
+  
+  if (!recipientEmail.includes('@')) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#FFEBEE';
+    statusEl.style.color = '#C62828';
+    statusEl.textContent = '⚠️ Please enter a valid email address.';
+    return;
+  }
+  
+  // Show loading state
+  sendBtn.disabled = true;
+  sendBtn.textContent = '⏳ Sending...';
+  statusEl.style.display = 'none';
+  
+  // Build proposal data
+  const categories = [];
+  CATEGORIES().forEach(cat => {
+    const tier = state.selections[cat.id];
+    if (tier) {
+      const price = cat.tiers[tier];
+      categories.push({
+        name: cat.name,
+        tier: tier,
+        price: price
+      });
+    }
+  });
+  
+  // Calculate totals
+  let subtotal = 0;
+  CATEGORIES().forEach(cat => {
+    const tier = state.selections[cat.id];
+    if (tier) subtotal += cat.tiers[tier];
+  });
+  EXTRAS().forEach(e => {
+    if (state.extras[e.id]) {
+      subtotal += typeof e.cost === 'function' ? e.cost() : e.cost;
+    }
+  });
+  state.modifiers.forEach(m => {
+    subtotal += parseFloat(m.amount) || 0;
+  });
+  Object.keys(state.catMods).forEach(catId => {
+    const m = state.catMods[catId];
+    if (m && m.amount) subtotal += parseFloat(m.amount) || 0;
+  });
+  
+  const taxRate = 0.075;
+  const total = subtotal * (1 + taxRate);
+  
+  // Determine tier label
+  let tierLabel = '';
+  const tierCounts = { good: 0, standard: 0, better: 0, best: 0 };
+  Object.values(state.selections).forEach(t => { if (t) tierCounts[t]++; });
+  const maxCount = Math.max(...Object.values(tierCounts));
+  const dominantTier = Object.keys(tierCounts).find(k => tierCounts[k] === maxCount && maxCount > 0);
+  if (dominantTier) {
+    const labels = { good: 'Good Tier', standard: 'Standard Tier', better: 'Better Tier', best: 'Best Tier' };
+    tierLabel = labels[dominantTier] || '';
+  }
+  
+  const proposalData = {
+    categories,
+    total: Math.round(total),
+    tierLabel,
+    clientName: document.getElementById('clientName').value || '',
+    builder: document.getElementById('builder').value || '',
+    homeSize: state.homeSize
+  };
+  
+  try {
+    const response = await fetch('/api/send-proposal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipientEmail,
+        recipientName,
+        subject,
+        proposalData
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#E8F5E9';
+      statusEl.style.color = '#2E7D32';
+      statusEl.textContent = '✅ Email sent successfully!';
+      sendBtn.textContent = '✓ Sent!';
+      
+      // Close modal after delay
+      setTimeout(() => {
+        closeEmailModal();
+        showToast('📧 Proposal emailed to ' + recipientEmail);
+      }, 1500);
+    } else {
+      throw new Error(result.error || 'Failed to send email');
+    }
+  } catch (err) {
+    console.error('Email error:', err);
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#FFEBEE';
+    statusEl.style.color = '#C62828';
+    statusEl.textContent = '❌ ' + (err.message || 'Failed to send email. Please try again.');
+    sendBtn.disabled = false;
+    sendBtn.textContent = '📧 Send Email';
+  }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function formatCurrency(n) {
+  if (n < 0) return '-$' + Math.abs(Math.round(n)).toLocaleString('en-US');
+  return '$' + Math.round(n).toLocaleString('en-US');
+}
+
+// ============================================================
+// CUSTOM MODIFIERS
+// ============================================================
+let modifierId = 0;
+
+function addModifier() {
+  state.modifiers.push({ id: ++modifierId, name: '', amount: 0 });
+  renderModifiers();
+}
+
+function removeModifier(id) {
+  state.modifiers = state.modifiers.filter(m => m.id !== id);
+  renderModifiers();
+  updateTotals();
+}
+
+function updateModifier(id, field, value) {
+  const mod = state.modifiers.find(m => m.id === id);
+  if (mod) {
+    mod[field] = field === 'amount' ? parseFloat(value) || 0 : value;
+    updateTotals();
+  }
+}
+
+function renderModifiers() {
+  const container = document.getElementById('modifiersContainer');
+  container.innerHTML = state.modifiers.map(m => `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+      <input type="text" placeholder="Description" value="${m.name}" 
+        oninput="updateModifier(${m.id}, 'name', this.value)"
+        style="flex:1;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;">
+      <input type="text" inputmode="numeric" placeholder="$0" value="${m.amount ? formatCurrency(m.amount) : ''}" 
+        oninput="handleModAmount(this, ${m.id})"
+        style="width:130px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;text-align:right;">
+      <button onclick="removeModifier(${m.id})" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--red);cursor:pointer;padding:8px 12px;font-size:16px;">✕</button>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+document.getElementById('propertyType').addEventListener('change', function() {
+  state.propertyType = this.value;
+  initStateForConfig();
+  renderCategories();
+  renderExtras();
+  renderModifiers();
+  updateTotals();
+});
+
+document.getElementById('homeSize').addEventListener('input', function() {
+  state.homeSize = parseInt(this.value) || 4000;
+  renderCategories();
+  renderExtras();
+  updateTotals();
+});
+
+// Close modal on overlay click
+document.getElementById('summaryModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSummary();
+});
+
+// Keyboard
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeSummary();
+});
+
+// ============================================================
+// SHAREABLE LINK
+// ============================================================
+function encodeState() {
+  const params = new URLSearchParams();
+  
+  // Project details
+  const clientName = document.getElementById('clientName').value;
+  const builder = document.getElementById('builder').value;
+  if (clientName) params.set('client', clientName);
+  if (builder) params.set('builder', builder);
+  params.set('sqft', state.homeSize);
+  params.set('prop', state.propertyType);
+  
+  // Category selections (only non-null)
+  const sel = {};
+  CATEGORIES().forEach(c => {
+    if (state.selections[c.id]) sel[c.id] = state.selections[c.id];
+  });
+  if (Object.keys(sel).length > 0) params.set('sel', JSON.stringify(sel));
+  
+  // Extras (only ones that differ from default)
+  const ext = {};
+  EXTRAS().forEach(e => {
+    if (state.extras[e.id] !== e.default) ext[e.id] = state.extras[e.id];
+  });
+  if (Object.keys(ext).length > 0) params.set('ext', JSON.stringify(ext));
+  
+  // Custom modifiers
+  if (state.modifiers.length > 0) {
+    const mods = state.modifiers
+      .filter(m => m.name || m.amount)
+      .map(m => ({ n: m.name, a: m.amount }));
+    if (mods.length > 0) params.set('mods', JSON.stringify(mods));
+  }
+  
+  // Per-category adjustments (only non-empty ones)
+  const cm = {};
+  Object.keys(state.catMods).forEach(catId => {
+    const m = state.catMods[catId];
+    if (m && (m.name || m.amount)) cm[catId] = { n: m.name, a: m.amount };
+  });
+  if (Object.keys(cm).length > 0) params.set('cm', JSON.stringify(cm));
+  
+  return params.toString();
+}
+
+function decodeState(search) {
+  const params = new URLSearchParams(search);
+  let loaded = false;
+  
+  // Property type — must be set first so categories resolve correctly
+  if (params.has('prop')) {
+    const p = params.get('prop');
+    if (CONFIGS[p]) {
+      state.propertyType = p;
+      document.getElementById('propertyType').value = p;
+      initStateForConfig();
+      loaded = true;
+    }
+  }
+  
+  // Project details
+  if (params.has('client')) {
+    document.getElementById('clientName').value = params.get('client');
+    loaded = true;
+  }
+  if (params.has('builder')) {
+    document.getElementById('builder').value = params.get('builder');
+    loaded = true;
+  }
+  if (params.has('sqft')) {
+    const sqft = parseInt(params.get('sqft'));
+    if (sqft >= 1500 && sqft <= 20000) {
+      state.homeSize = sqft;
+      document.getElementById('homeSize').value = sqft;
+      loaded = true;
+    }
+  }
+  // Category selections
+  if (params.has('sel')) {
+    try {
+      const sel = JSON.parse(params.get('sel'));
+      const validTiers = ['good', 'standard', 'better', 'best'];
+      Object.keys(sel).forEach(catId => {
+        if (state.selections.hasOwnProperty(catId) && validTiers.includes(sel[catId])) {
+          state.selections[catId] = sel[catId];
+          loaded = true;
+        }
+      });
+      // Re-apply mutual exclusivity rules
+      if (state.selections['lighting'] && state.selections['lighting-centralized']) {
+        state.selections['lighting-centralized'] = null;
+      }
+    } catch (e) { /* ignore bad JSON */ }
+  }
+  
+  // Extras
+  if (params.has('ext')) {
+    try {
+      const ext = JSON.parse(params.get('ext'));
+      Object.keys(ext).forEach(extId => {
+        if (state.extras.hasOwnProperty(extId)) {
+          state.extras[extId] = !!ext[extId];
+          loaded = true;
+        }
+      });
+    } catch (e) { /* ignore bad JSON */ }
+  }
+  
+  // Custom modifiers
+  if (params.has('mods')) {
+    try {
+      const mods = JSON.parse(params.get('mods'));
+      if (Array.isArray(mods)) {
+        state.modifiers = mods.map(m => ({
+          id: ++modifierId,
+          name: String(m.n || ''),
+          amount: parseFloat(m.a) || 0
+        }));
+        loaded = true;
+      }
+    } catch (e) { /* ignore bad JSON */ }
+  }
+  
+  // Per-category adjustments
+  if (params.has('cm')) {
+    try {
+      const cm = JSON.parse(params.get('cm'));
+      Object.keys(cm).forEach(catId => {
+        if (state.catMods.hasOwnProperty(catId)) {
+          state.catMods[catId] = {
+            name: String(cm[catId].n || ''),
+            amount: parseFloat(cm[catId].a) || 0
+          };
+          loaded = true;
+        }
+      });
+    } catch (e) { /* ignore bad JSON */ }
+  }
+  
+  return loaded;
+}
+
+function shareConfig() {
+  const encoded = encodeState();
+  const url = window.location.origin + window.location.pathname + '?' + encoded;
+  
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('🔗 Link copied to clipboard!');
+    }).catch(() => {
+      fallbackCopy(url);
+    });
+  } else {
+    fallbackCopy(url);
+  }
+}
+
+async function createShortLink() {
+  const encoded = encodeState();
+  const clientName = document.getElementById('clientName').value || null;
+  
+  try {
+    showToast('⏳ Creating short link...');
+    
+    const response = await fetch('/api/shorten', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        config: encoded,
+        clientName: clientName
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      const shortUrl = window.location.origin + result.shortUrl;
+      
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shortUrl).then(() => {
+          showToast('✂️ Short link copied: ' + result.shortUrl);
+        }).catch(() => {
+          fallbackCopy(shortUrl);
+        });
+      } else {
+        fallbackCopy(shortUrl);
+      }
+    } else {
+      throw new Error(result.error || 'Failed to create short link');
+    }
+  } catch (err) {
+    console.error('Short link error:', err);
+    showToast('❌ ' + (err.message || 'Failed to create short link'));
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('🔗 Link copied to clipboard!');
+  } catch (e) {
+    showToast('Link generated — copy from address bar');
+    // Update address bar so they can copy manually
+    window.history.replaceState(null, '', '?' + encodeState());
+  }
+  document.body.removeChild(ta);
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove('visible'), 3000);
+}
+
+function showSharedBanner() {
+  const banner = document.getElementById('sharedBanner');
+  const clientName = document.getElementById('clientName').value || 'this project';
+  banner.innerHTML = `
+    <div class="shared-banner" style="max-width:1200px;margin:20px auto;">
+      <div class="shared-text">
+        📋 You're viewing a shared budget configuration for <strong>${clientName}</strong>
+        <small>Adjust selections freely. Use the Share button to save your changes as a new link.</small>
+      </div>
+      <button class="btn-save" onclick="bookmarkConfig()">📌 Save to Bookmarks</button>
+    </div>
+  `;
+}
+
+function bookmarkConfig() {
+  // Update the URL bar with current state so they can bookmark it
+  const encoded = encodeState();
+  const url = window.location.origin + window.location.pathname + '?' + encoded;
+  window.history.replaceState(null, '', '?' + encoded);
+  
+  // Try to trigger browser bookmark dialog (Ctrl+D hint)
+  showToast('📌 URL updated — press Ctrl+D (⌘+D on Mac) to bookmark!');
+}
+
+// ============================================================
+// INIT
+// ============================================================
+
+// Check for shared config in URL
+const _loadedFromURL = decodeState(window.location.search);
+
+renderCategories();
+renderExtras();
+renderModifiers();
+updateTotals();
+
+// Show banner if loaded from a shared link
+if (_loadedFromURL) {
+  showSharedBanner();
+}
+
+// Safety: re-sync state from DOM after browser form restoration (Safari restores form values)
+window.addEventListener('pageshow', function() {
+  const domSize = parseInt(document.getElementById('homeSize').value) || 4000;
+  const domProp = document.getElementById('propertyType').value;
+  if (domSize !== state.homeSize || domProp !== state.propertyType) {
+    // If URL params exist, URL wins. Otherwise DOM wins.
+    if (_loadedFromURL) {
+      document.getElementById('homeSize').value = state.homeSize;
+      document.getElementById('propertyType').value = state.propertyType;
+    } else {
+      state.homeSize = domSize;
+      state.propertyType = domProp;
+    }
+    renderCategories();
+    renderExtras();
+    updateTotals();
+  }
+});
+</script>
+</body>
+</html>
