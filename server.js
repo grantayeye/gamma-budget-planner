@@ -309,8 +309,14 @@ app.put('/api/budgets/:id', (req, res) => {
     const nowISO = now.toISOString();
     const lastVersion = budget.versions[budget.versions.length - 1];
     
+    // Helper to compare states (ignore timestamp field if present)
+    const normalizeState = (s) => {
+      const { timestamp, ...rest } = s || {};
+      return JSON.stringify(rest, Object.keys(rest).sort());
+    };
+    
     // Check if state actually changed
-    if (JSON.stringify(lastVersion.state) === JSON.stringify(state)) {
+    if (normalizeState(lastVersion.state) === normalizeState(state)) {
       // If pin requested, just pin the current version
       if (pin && !lastVersion.pinned) {
         lastVersion.pinned = true;
