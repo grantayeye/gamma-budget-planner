@@ -29,6 +29,37 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
   fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
 }
 
+// Auto-backup DB before startup (keeps last 5 backups)
+const BACKUP_DIR = path.join(__dirname, 'data', 'backups');
+if (!fs.existsSync(BACKUP_DIR)) {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+if (fs.existsSync(DB_PATH)) {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const backupPath = path.join(BACKUP_DIR, `app-${ts}.db`);
+  try {
+    fs.copyFileSync(DB_PATH, backupPath);
+    // Also copy WAL/SHM if they exist
+    if (fs.existsSync(DB_PATH + '-wal')) fs.copyFileSync(DB_PATH + '-wal', backupPath + '-wal');
+    if (fs.existsSync(DB_PATH + '-shm')) fs.copyFileSync(DB_PATH + '-shm', backupPath + '-shm');
+    console.log(`[BACKUP] Database backed up to ${backupPath}`);
+    
+    // Prune old backups — keep last 5
+    const backups = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('app-') && f.endsWith('.db') && !f.includes('-wal') && !f.includes('-shm'))
+      .sort()
+      .reverse();
+    for (const old of backups.slice(5)) {
+      fs.unlinkSync(path.join(BACKUP_DIR, old));
+      if (fs.existsSync(path.join(BACKUP_DIR, old + '-wal'))) fs.unlinkSync(path.join(BACKUP_DIR, old + '-wal'));
+      if (fs.existsSync(path.join(BACKUP_DIR, old + '-shm'))) fs.unlinkSync(path.join(BACKUP_DIR, old + '-shm'));
+      console.log(`[BACKUP] Pruned old backup: ${old}`);
+    }
+  } catch (err) {
+    console.error('[BACKUP] Failed to backup database:', err.message);
+  }
+}
+
 const db = new Database(DB_PATH);
 
 // Enable WAL mode for better concurrency
