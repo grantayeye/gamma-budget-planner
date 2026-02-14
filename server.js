@@ -424,6 +424,25 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
   }
 });
 
+// Emergency password reset via secret token (set RESET_TOKEN env var)
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, username, newPassword } = req.body;
+    const resetToken = process.env.RESET_TOKEN;
+    if (!resetToken || token !== resetToken) {
+      return res.status(403).json({ error: 'Invalid reset token' });
+    }
+    const user = getUserByUsername(username);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
+    res.json({ success: true, message: `Password reset for ${username}` });
+  } catch (err) {
+    console.error('Reset error:', err);
+    res.status(500).json({ error: 'Reset failed' });
+  }
+});
+
 app.post('/api/auth/logout', (req, res) => {
   const sessionId = req.cookies.session;
   if (sessionId) destroySession(sessionId);
