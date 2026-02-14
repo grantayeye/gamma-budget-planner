@@ -432,10 +432,15 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (!resetToken || token !== resetToken) {
       return res.status(403).json({ error: 'Invalid reset token' });
     }
-    const user = getUserByUsername(username);
-    if (!user) return res.status(404).json({ error: 'User not found' });
     const hash = await bcrypt.hash(newPassword, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
+    const user = getUserByUsername(username);
+    if (!user) {
+      const id = crypto.randomUUID();
+      db.prepare('INSERT INTO users (id, username, name, password_hash) VALUES (?, ?, ?, ?)')
+        .run(id, username, username.charAt(0).toUpperCase() + username.slice(1), hash);
+    } else {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
+    }
     res.json({ success: true, message: `Password reset for ${username}` });
   } catch (err) {
     console.error('Reset error:', err);
