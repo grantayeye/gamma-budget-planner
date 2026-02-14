@@ -818,7 +818,7 @@ main {
       </div>
       <div class="form-group">
         <label>Home Size (sq ft)</label>
-        <input type="number" id="homeSize" value="4000" min="1500" max="20000" step="100" autocomplete="off">
+        <input type="number" id="homeSize" value="4000" min="1500" max="35000" step="100" autocomplete="off">
       </div>
       <div class="form-group">
         <label>Property Type</label>
@@ -920,6 +920,24 @@ main {
 </div>
 
 <script>
+// ============================================================
+// BASE PATH DETECTION (for reverse proxy / Tailscale serve)
+// ============================================================
+const BASE_PATH = (() => {
+  // Detect if we're behind a path prefix (e.g., /budget-dev)
+  const path = window.location.pathname;
+  // Remove trailing /budget or /b/ if present
+  const match = path.match(/^(\/[^\/]+)/);
+  if (match && match[1] !== '/budget' && match[1] !== '/b' && !path.startsWith('/api')) {
+    return match[1];
+  }
+  return '';
+})();
+
+function api(endpoint) {
+  return BASE_PATH + endpoint;
+}
+
 // ============================================================
 // DATA — Based on real Gamma Tech projects + industry research
 // Prices calibrated to 4,000 sq ft new construction baseline
@@ -2006,6 +2024,7 @@ const RESIDENTIAL_EXTRAS = [
 ];
 
 // ---- CONDO DATA ----
+
 // Clone of residential, then override specific categories
 const CONDO_CATEGORIES = JSON.parse(JSON.stringify(RESIDENTIAL_CATEGORIES));
 const CONDO_EXTRAS = JSON.parse(JSON.stringify(RESIDENTIAL_EXTRAS));
@@ -2232,8 +2251,99 @@ const CONFIGS = {
   condo: { categories: CONDO_CATEGORIES, extras: CONDO_EXTRAS }
 };
 
+// Customization state - must be declared before CATEGORIES() is called
+let isCustomizedBudget = false;
+let customCategoryConfig = null;
+let customCategories = null;
+let sqftLocked = null;
+let propertyTypeLocked = null;
+
 // Active data accessors — everything uses these
-function CATEGORIES() { return CONFIGS[state.propertyType].categories; }
+function CATEGORIES() {
+  const base = CONFIGS[state.propertyType].categories;
+  
+  // If not customized, return defaults
+  if (!isCustomizedBudget || !customCategoryConfig) {
+    return base;
+  }
+  
+  // Apply custom config
+  const result = [];
+  
+  // Process default categories with overrides
+  base.forEach(cat => {
+    const override = customCategoryConfig[cat.id];
+    
+    // Skip hidden categories
+    if (override && override.hidden === true) {
+      return;
+    }
+    
+    // Clone the category
+    const customCat = JSON.parse(JSON.stringify(cat));
+    
+    // Apply tier overrides
+    if (override && override.tiers) {
+      Object.keys(override.tiers).forEach(tierKey => {
+        const tierOverride = override.tiers[tierKey];
+        
+        // Skip disabled tiers
+        if (tierOverride.enabled === false) {
+          delete customCat.tiers[tierKey];
+          return;
+        }
+        
+        // Apply overrides
+        if (customCat.tiers[tierKey]) {
+          if (tierOverride.price !== undefined) customCat.tiers[tierKey].price = tierOverride.price;
+          if (tierOverride.label) customCat.tiers[tierKey].label = tierOverride.label;
+          if (tierOverride.features) customCat.tiers[tierKey].features = tierOverride.features;
+          if (tierOverride.brands) customCat.tiers[tierKey].brands = tierOverride.brands;
+        }
+      });
+    }
+    
+    // Mark as customized (disables size scaling)
+    customCat.isCustomized = true;
+    
+    result.push(customCat);
+  });
+  
+  // Add custom categories
+  if (customCategories && customCategories.length > 0) {
+    customCategories.forEach(cc => {
+      // Build tiers object
+      const tiers = {};
+      if (cc.tiers) {
+        Object.keys(cc.tiers).forEach(tierKey => {
+          const t = cc.tiers[tierKey];
+          if (t.enabled !== false) {
+            tiers[tierKey] = {
+              price: t.price || 0,
+              label: t.label || tierKey,
+              features: t.features || [],
+              brands: t.brands || ''
+            };
+          }
+        });
+      }
+      
+      result.push({
+        id: cc.id,
+        section: 'Custom',
+        name: cc.name,
+        icon: cc.icon || '📦',
+        desc: cc.desc || '',
+        sizeScale: 0, // No scaling for custom
+        isCustomized: true,
+        tiers
+      });
+    });
+  }
+  
+  return result;
+}
+
 function EXTRAS() { return CONFIGS[state.propertyType].extras; }
 
 // ============================================================
@@ -2278,7 +2388,14 @@ function getSizeMultiplier(sqft, scaleFactor) {
 function getCategoryPrice(cat, tier) {
   if (!tier) return 0;
   const tierData = cat.tiers[tier];
+  if (!tierData) return 0;
   const base = tierData.price;
+  
+  // If category is customized, use fixed price (no scaling)
+  if (cat.isCustomized) {
+    return base;
+  }
+  
   // Skip size scaling for base tier if category opts out
   const skipSize = cat.baseTierNoScale && tier === 'good';
   // Use tier-level sizeScale if defined, otherwise fall back to category sizeScale
@@ -2290,9 +2407,13 @@ function getCategoryPrice(cat, tier) {
 // ============================================================
 // RENDERING
 // ============================================================
-const SECTION_ORDER = ['Infrastructure', 'Audio', 'Video', 'Control & Automation', 'Lighting & Shades', 'Security'];
+const SECTION_ORDER = ['Infrastructure', 'Audio', 'Video', 'Control & Automation', 'Lighting & Shades', 'Security', 'Custom'];
 
 function renderCategories() {
+  const categories = CATEGORIES();
+  if (categories.length > 0) {
+  }
+  
   const container = document.getElementById('categoriesContainer');
   container.innerHTML = '';
   
@@ -2372,7 +2493,7 @@ function renderCategories() {
                 <div class="tier-btn ${t}-btn ${selected === t ? 'selected' : ''} ${tierDisabled ? 'tier-disabled' : ''}" ${tierDisabled ? '' : `onclick="selectTier('${cat.id}', '${t}')"`}>
                   <div class="tier-label">${cat.tiers[t].label}</div>
                   <div class="tier-price">${tierDisabled ? 'N/A' : formatCurrency(tp)}</div>
-                  <div class="tier-tag">${tierDisabled ? 'Not available' : cat.tiers[t].tag}</div>
+                  <div class="tier-tag">${tierDisabled ? 'Not available' : (cat.tiers[t].tag || t.charAt(0).toUpperCase() + t.slice(1))}</div>
                 </div>
               `;
             }).join('')}
@@ -2641,7 +2762,7 @@ function showSummary() {
       rows += `
         <tr>
           <td>${cat.icon} ${cat.name}</td>
-          <td><span class="tier-badge ${tier}">${t.tag}</span> ${t.label}</td>
+          <td><span class="tier-badge ${tier}">${t.tag || tier.charAt(0).toUpperCase() + tier.slice(1)}</span> ${t.label}</td>
           <td class="price-cell">${formatCurrency(price)}</td>
         </tr>
         <tr class="features-row">
@@ -2878,7 +2999,7 @@ async function sendProposalEmail() {
   if (currentBudgetId) {
     // Already in a budget — use its link (save + pin version)
     try {
-      await fetch(`/api/budgets/${currentBudgetId}`, {
+      await fetch(api(`/api/budgets/${currentBudgetId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: getStateForAPI(), pin: true, note: 'Emailed to client' })
@@ -2890,7 +3011,7 @@ async function sendProposalEmail() {
   } else {
     // No budget yet — create one
     try {
-      const budgetResponse = await fetch('/api/budgets', {
+      const budgetResponse = await fetch(api('/api/budgets'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2921,7 +3042,7 @@ async function sendProposalEmail() {
   };
   
   try {
-    const response = await fetch('/api/send-proposal', {
+    const response = await fetch(api('/api/send-proposal'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3020,7 +3141,9 @@ document.getElementById('propertyType').addEventListener('change', function() {
 });
 
 document.getElementById('homeSize').addEventListener('input', function() {
-  state.homeSize = parseInt(this.value) || 4000;
+  let val = parseInt(this.value) || 4000;
+  if (val > 35000) { val = 35000; this.value = 35000; }
+  state.homeSize = val;
   renderCategories();
   renderExtras();
   updateTotals();
@@ -3188,6 +3311,9 @@ let currentBudgetId = null;
 let autoSaveTimeout = null;
 let lastSavedState = null;
 
+// Note: isCustomizedBudget, customCategoryConfig, customCategories, sqftLocked, propertyTypeLocked
+// are declared earlier (before CATEGORIES function) to avoid temporal dead zone errors
+
 // Get current state as object for API
 function getStateForAPI() {
   const clientName = document.getElementById('clientName').value || null;
@@ -3229,7 +3355,7 @@ function triggerAutoSave() {
     }
     
     try {
-      const response = await fetch(`/api/budgets/${currentBudgetId}`, {
+      const response = await fetch(api(`/api/budgets/${currentBudgetId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: currentState })
@@ -3249,7 +3375,7 @@ function triggerAutoSave() {
 // Load a live budget by ID
 async function loadBudget(budgetId) {
   try {
-    const response = await fetch(`/api/budgets/${budgetId}`);
+    const response = await fetch(api(`/api/budgets/${budgetId}`));
     if (!response.ok) {
       throw new Error('Budget not found');
     }
@@ -3258,6 +3384,13 @@ async function loadBudget(budgetId) {
     
     // Set current budget ID for auto-save
     currentBudgetId = budget.id;
+    
+    // Load customization config if present
+    isCustomizedBudget = budget.isCustomized || false;
+    customCategoryConfig = budget.categoryConfig || null;
+    customCategories = budget.customCategories || null;
+    sqftLocked = budget.sqftLocked || null;
+    propertyTypeLocked = budget.propertyTypeLocked || null;
     
     // Apply state
     if (budget.currentState) {
@@ -3277,6 +3410,12 @@ async function loadBudget(budgetId) {
       
       if (s.clientName) {
         document.getElementById('clientName').value = s.clientName;
+      }
+      
+      // If customized, silently lock sqft and property type fields
+      if (isCustomizedBudget) {
+        document.getElementById('homeSize').disabled = true;
+        document.getElementById('propertyType').disabled = true;
       }
       
       // Render UI
@@ -3307,7 +3446,7 @@ async function shareLink() {
   if (currentBudgetId) {
     // Save + pin current state
     try {
-      await fetch(`/api/budgets/${currentBudgetId}`, {
+      await fetch(api(`/api/budgets/${currentBudgetId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: currentState, pin: true, note: 'Shared link' })
@@ -3335,7 +3474,7 @@ async function shareLink() {
   try {
     showToast('⏳ Creating link...');
     
-    const response = await fetch('/api/budgets', {
+    const response = await fetch(api('/api/budgets'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3429,8 +3568,9 @@ function bookmarkConfig() {
 // INIT
 // ============================================================
 
-// Check for live budget URL (/b/:id)
-const budgetMatch = window.location.pathname.match(/^\/b\/([a-z0-9]+)$/i);
+// Check for live budget URL (/b/:id) - account for BASE_PATH prefix
+const budgetPathPattern = BASE_PATH ? new RegExp(`^${BASE_PATH}\\/b\\/([a-z0-9]+)$`, 'i') : /^\/b\/([a-z0-9]+)$/i;
+const budgetMatch = window.location.pathname.match(budgetPathPattern);
 let _loadedFromURL = false;
 
 if (budgetMatch) {

@@ -3,3 +3,6 @@ node_modules/
 data/
 *.log
 .DS_Store
+*.tar.gz
+status.sh
+public/index-backup.html

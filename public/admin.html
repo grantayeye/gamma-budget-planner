@@ -513,7 +513,10 @@
     <!-- Budget List -->
     <div class="section-header">
       <h2>All Budgets</h2>
-      <button class="btn btn-secondary btn-small" onclick="loadBudgets()">↻ Refresh</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-small" onclick="showNewBudgetModal()">+ New Custom Budget</button>
+        <button class="btn btn-secondary btn-small" onclick="loadBudgets()">↻ Refresh</button>
+      </div>
     </div>
     
     <div class="budget-table">
@@ -563,6 +566,57 @@
   </div>
 </div>
 
+<!-- NEW BUDGET MODAL -->
+<div class="modal-overlay" id="newBudgetModal">
+  <div class="modal" style="max-width: 500px;">
+    <div class="modal-header">
+      <h2>➕ New Custom Budget</h2>
+      <button class="modal-close" onclick="closeNewBudgetModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:20px;color:var(--text-light);">Create a blank budget to customize pricing for a specific project.</p>
+      <form onsubmit="handleNewBudgetSubmit(event)">
+        <div class="form-group">
+          <label>Client Name</label>
+          <input type="text" id="newBudgetClient" placeholder="e.g., Smith Residence">
+        </div>
+        <div class="form-group">
+          <label>Builder</label>
+          <input type="text" id="newBudgetBuilder" placeholder="e.g., ABC Homes">
+        </div>
+        <div class="form-group">
+          <label>Square Footage *</label>
+          <input type="number" id="newBudgetSqft" required min="500" max="50000" placeholder="e.g., 4500">
+        </div>
+        <div class="form-group">
+          <label>Property Type *</label>
+          <select id="newBudgetPropertyType" required>
+            <option value="residential">Residential (Single Family)</option>
+            <option value="condo">Condo / Multi-Family</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:24px;">
+          <button type="submit" class="btn btn-primary" style="flex:1;">Create Budget</button>
+          <button type="button" class="btn btn-secondary" onclick="closeNewBudgetModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOMIZE MODAL -->
+<div class="modal-overlay" id="customizeModal">
+  <div class="modal" style="max-width: 900px; max-height: 90vh;">
+    <div class="modal-header">
+      <h2>⚙️ Customize Budget: <span id="customizeTitle"></span></h2>
+      <button class="modal-close" onclick="closeCustomizeModal()">×</button>
+    </div>
+    <div class="modal-body" id="customizeBody" style="overflow-y:auto; max-height: calc(90vh - 140px);">
+      <!-- Content loaded dynamically -->
+    </div>
+  </div>
+</div>
+
 <!-- USER MODAL -->
 <div class="modal-overlay" id="userModal">
   <div class="modal" style="max-width: 450px;">
@@ -608,10 +662,58 @@
   </div>
 </div>
 
+<!-- FEATURES EDITOR MODAL -->
+<div class="modal-overlay" id="featuresModal">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header">
+      <h2>✏️ Edit Features: <span id="featuresTitle"></span></h2>
+      <button class="modal-close" onclick="closeFeaturesModal()">×</button>
+    </div>
+    <div class="modal-body" id="featuresBody">
+      <!-- Content loaded dynamically -->
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script>
+// ============================================================
+// BASE PATH DETECTION (for reverse proxy / Tailscale serve)
+// ============================================================
+const BASE_PATH = (() => {
+  // Detect if we're behind a path prefix (e.g., /budget-dev)
+  const path = window.location.pathname;
+  const adminIndex = path.indexOf('/admin');
+  if (adminIndex > 0) {
+    return path.substring(0, adminIndex);
+  }
+  return '';
+})();
+
+function api(endpoint) {
+  return BASE_PATH + endpoint;
+}
+
+// ============================================================
+// PRICE SCALING (same formula as frontend)
+// ============================================================
+function getSizeMultiplier(sqft, scaleFactor) {
+  // Baseline: 4000 sq ft = 1.0
+  // Minimum: 2500 sq ft (smaller homes use 2500 for calculations)
+  if (scaleFactor === 0) return 1;
+  const effectiveSqft = Math.max(sqft, 2500);
+  const baseline = 4000;
+  const ratio = effectiveSqft / baseline;
+  return 1 + (ratio - 1) * scaleFactor;
+}
+
+function getScaledPrice(basePrice, sqft, scaleFactor) {
+  const mult = getSizeMultiplier(sqft, scaleFactor);
+  return Math.round(basePrice * mult / 100) * 100;
+}
+
 // ============================================================
 // STATE
 // ============================================================
@@ -623,7 +725,7 @@ let budgets = [];
 // ============================================================
 async function init() {
   // Check auth status
-  const res = await fetch('/api/auth/me');
+  const res = await fetch(api('/api/auth/me'), { credentials: 'include' });
   const data = await res.json();
   
   if (data.authenticated) {
@@ -658,9 +760,10 @@ async function handleLogin(e) {
   const errorEl = document.getElementById('loginError');
   
   try {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(api('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username, password })
     });
     
@@ -681,7 +784,7 @@ async function handleLogin(e) {
 }
 
 async function logout() {
-  await fetch('/api/auth/logout', { method: 'POST' });
+  await fetch(api('/api/auth/logout'), { method: 'POST', credentials: 'include' });
   currentUser = null;
   showLogin();
 }
@@ -691,7 +794,7 @@ async function logout() {
 // ============================================================
 async function loadBudgets() {
   try {
-    const res = await fetch('/api/admin/budgets');
+    const res = await fetch(api('/api/admin/budgets'), { credentials: 'include' });
     if (res.status === 401) {
       showLogin();
       return;
@@ -724,19 +827,24 @@ function renderBudgets() {
   tbody.innerHTML = budgets.map(b => `
     <tr>
       <td>
-        <a href="/b/${b.id}" target="_blank" class="budget-link">
+        <a href="${BASE_PATH}/b/${b.id}" target="_blank" class="budget-link">
           ${b.clientName || 'Unnamed'} 
         </a>
-        <div style="font-size:11px;color:var(--text-light);">${b.id}</div>
+        <div style="font-size:11px;color:var(--text-light);">
+          ${b.id}
+          ${b.builder ? ` • ${b.builder}` : ''}
+          ${b.isCustomized ? ' <span style="color:#F57C00;">⚙️ Custom</span>' : ''}
+        </div>
       </td>
       <td><strong>${formatCurrency(b.currentTotal)}</strong></td>
       <td>${formatDate(b.created)}</td>
-      <td><span class="badge badge-views">${b.viewCount} views</span></td>
+      <td><span class="badge badge-views">${b.viewCount} ${b.viewCount === 1 ? 'view' : 'views'}</span></td>
       <td><span class="badge badge-versions">${b.versionCount} versions</span></td>
       <td>${b.lastViewed ? formatRelative(b.lastViewed) : 'Never'}</td>
       <td class="actions-cell">
         <button class="btn btn-secondary btn-small" onclick="viewBudget('${b.id}')">Details</button>
-        <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">Delete</button>
+        <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">⚙️</button>
+        <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">🗑️</button>
       </td>
     </tr>
   `).join('');
@@ -760,7 +868,7 @@ function updateStats() {
 
 async function viewBudget(id) {
   try {
-    const res = await fetch(`/api/admin/budgets/${id}`);
+    const res = await fetch(api(`/api/admin/budgets/${id}`), { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to load budget');
     
     const budget = await res.json();
@@ -837,7 +945,7 @@ function showBudgetModal(budget) {
     </div>
     
     <div style="display:flex;gap:12px;margin-top:20px;">
-      <a href="/b/${budget.id}" target="_blank" class="btn btn-primary" style="text-decoration:none;text-align:center;">Open Budget</a>
+      <a href="${BASE_PATH}/b/${budget.id}" target="_blank" class="btn btn-primary" style="text-decoration:none;text-align:center;">Open Budget</a>
       <button class="btn btn-secondary" onclick="copyBudgetLink('${budget.id}')">Copy Link</button>
     </div>
   `;
@@ -853,7 +961,7 @@ async function restoreVersion(budgetId, version) {
   if (!confirm(`Restore to version ${version}? This will create a new version with the old state.`)) return;
   
   try {
-    const res = await fetch(`/api/admin/budgets/${budgetId}/restore/${version}`, {
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}/restore/${version}`), {
       method: 'POST'
     });
     
@@ -878,7 +986,7 @@ async function deleteBudget(id) {
   if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
   
   try {
-    const res = await fetch(`/api/admin/budgets/${id}`, { method: 'DELETE' });
+    const res = await fetch(api(`/api/admin/budgets/${id}`), { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete');
     
     showToast('✓ Budget deleted');
@@ -890,12 +998,566 @@ async function deleteBudget(id) {
 }
 
 function copyBudgetLink(id) {
-  const url = window.location.origin + '/b/' + id;
+  const url = window.location.origin + BASE_PATH + '/b/' + id;
   navigator.clipboard.writeText(url).then(() => {
     showToast('🔗 Link copied!');
   }).catch(() => {
     showToast('Failed to copy');
   });
+}
+
+// ============================================================
+// NEW BUDGET
+// ============================================================
+
+function showNewBudgetModal() {
+  document.getElementById('newBudgetClient').value = '';
+  document.getElementById('newBudgetBuilder').value = '';
+  document.getElementById('newBudgetSqft').value = '';
+  document.getElementById('newBudgetPropertyType').value = 'residential';
+  document.getElementById('newBudgetModal').classList.add('active');
+  document.getElementById('newBudgetClient').focus();
+}
+
+function closeNewBudgetModal() {
+  document.getElementById('newBudgetModal').classList.remove('active');
+}
+
+async function handleNewBudgetSubmit(e) {
+  e.preventDefault();
+  
+  const clientName = document.getElementById('newBudgetClient').value.trim();
+  const builder = document.getElementById('newBudgetBuilder').value.trim();
+  const homeSize = parseInt(document.getElementById('newBudgetSqft').value);
+  const propertyType = document.getElementById('newBudgetPropertyType').value;
+  
+  try {
+    const res = await fetch(api('/api/admin/budgets'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientName, builder, homeSize, propertyType })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      showToast('✓ Budget created');
+      closeNewBudgetModal();
+      loadBudgets();
+      // Open customize modal for the new budget
+      setTimeout(() => openCustomizeModal(data.id), 500);
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to create budget'));
+    }
+  } catch (err) {
+    console.error('Create budget error:', err);
+    showToast('Failed to create budget');
+  }
+}
+
+// ============================================================
+// CUSTOMIZE BUDGET
+// ============================================================
+
+let customizeBudgetId = null;
+let customizeBudgetData = null;
+
+async function openCustomizeModal(budgetId) {
+  customizeBudgetId = budgetId;
+  
+  try {
+    // Load full budget details
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}`), { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to load budget');
+    customizeBudgetData = await res.json();
+    
+    document.getElementById('customizeTitle').textContent = customizeBudgetData.clientName || budgetId;
+    
+    renderCustomizeEditor();
+    document.getElementById('customizeModal').classList.add('active');
+  } catch (err) {
+    console.error('Load budget error:', err);
+    showToast('Failed to load budget');
+  }
+}
+
+function closeCustomizeModal() {
+  document.getElementById('customizeModal').classList.remove('active');
+  customizeBudgetId = null;
+  customizeBudgetData = null;
+}
+
+function renderCustomizeEditor() {
+  const body = document.getElementById('customizeBody');
+  const budget = customizeBudgetData;
+  const sqft = budget.sqftLocked || budget.currentState?.homeSize || 4000;
+  const propertyType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
+  const selections = budget.currentState?.selections || {};
+  const existingConfig = budget.categoryConfig || {};
+  const existingCustom = budget.customCategories || [];
+  
+  // Get default categories from frontend (we'll need to embed these)
+  const defaultCategories = getDefaultCategories(propertyType);
+  
+  body.innerHTML = `
+    <div style="background:#FFF8E1;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;">
+      <strong>⚠️ Customization Info:</strong><br>
+      • Sqft locked at: <strong>${sqft.toLocaleString()}</strong><br>
+      • Property type: <strong>${propertyType}</strong><br>
+      • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions
+    </div>
+    
+    <div id="categoryEditors" data-sqft="${sqft}">
+      ${defaultCategories.map(cat => renderCategoryEditor(cat, existingConfig[cat.id], selections[cat.id], sqft)).join('')}
+    </div>
+    
+    <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+      <h3 style="margin-bottom:12px;">➕ Custom Categories</h3>
+      <div id="customCategoriesList">
+        ${existingCustom.map((cc, i) => renderCustomCategoryEditor(cc, i, selections[cc.id])).join('')}
+      </div>
+      <button type="button" class="btn btn-secondary btn-small" onclick="addCustomCategory()" style="margin-top:12px;">+ Add Custom Category</button>
+    </div>
+    
+    <div style="display:flex;gap:12px;margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+      <button class="btn btn-primary" onclick="saveCustomization()" style="flex:1;">💾 Save Customization</button>
+      <button class="btn btn-secondary" onclick="closeCustomizeModal()">Cancel</button>
+    </div>
+  `;
+}
+
+function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
+  const override = existingOverride || {};
+  const isHidden = override.hidden === true;
+  const isLocked = selectedTier && !isHidden; // Can't hide if selected
+  const sizeScale = cat.sizeScale ?? 0.5; // Default scale factor
+  
+  // All possible tiers - show all of them, even if missing from base data
+  const allTiers = ['good', 'standard', 'better', 'best'];
+  const tierLabels = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+  
+  return `
+    <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div>
+          <strong>${cat.icon} ${cat.name}</strong>
+          ${selectedTier ? `<span style="color:var(--accent);font-size:12px;margin-left:8px;">● ${selectedTier} selected</span>` : ''}
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;${isLocked ? 'opacity:0.5;' : ''}">
+          <input type="checkbox" 
+            ${isHidden ? '' : 'checked'} 
+            ${isLocked ? 'disabled' : ''} 
+            onchange="toggleCategoryHidden('${cat.id}', !this.checked)"
+          > Show
+        </label>
+      </div>
+      <div class="tier-editors" style="display:${isHidden ? 'none' : 'grid'};gap:8px;">
+        ${allTiers.map(tierKey => {
+          const defaultTier = cat.tiers[tierKey];
+          const tierOverride = override.tiers?.[tierKey] || {};
+          const existsInBase = !!defaultTier;
+          
+          // For tiers that exist in base: enabled by default unless explicitly disabled
+          // For tiers that DON'T exist: disabled by default unless explicitly enabled
+          const isEnabled = existsInBase 
+            ? (tierOverride.enabled !== false)
+            : (tierOverride.enabled === true);
+          
+          const isTierLocked = selectedTier === tierKey;
+          
+          // Get base price and scale it for sqft
+          const basePrice = defaultTier?.price || 0;
+          const tierSizeScale = defaultTier?.sizeScale ?? sizeScale;
+          const scaledPrice = basePrice ? getScaledPrice(basePrice, sqft, tierSizeScale) : 0;
+          
+          // Use override price if set, otherwise use scaled price
+          const price = tierOverride.price ?? scaledPrice;
+          const label = tierOverride.label ?? (defaultTier?.label || tierLabels[tierKey]);
+          
+          // Get features for data attribute (for features editor)
+          const features = tierOverride.features ?? (defaultTier?.features || []);
+          const brands = tierOverride.brands ?? (defaultTier?.brands || '');
+          
+          return `
+            <div class="tier-row" data-tier="${tierKey}" 
+                 data-has-base="${existsInBase}" 
+                 data-base-price="${basePrice}"
+                 data-scaled-price="${scaledPrice}"
+                 data-features='${JSON.stringify(features).replace(/'/g, "&#39;")}'
+                 data-brands="${brands.replace(/"/g, '&quot;')}"
+                 style="display:flex;gap:8px;align-items:center;padding:8px;background:${existsInBase ? 'white' : '#FFF3E0'};border-radius:6px;${!isEnabled ? 'opacity:0.5;' : ''}${!existsInBase ? 'border:1px dashed #FFB74D;' : ''}">
+              <label style="width:70px;display:flex;align-items:center;gap:4px;${isTierLocked ? 'opacity:0.5;' : ''}">
+                <input type="checkbox" class="tier-enabled" 
+                  ${isEnabled ? 'checked' : ''} 
+                  ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
+                  onchange="toggleTierEnabled('${cat.id}', '${tierKey}', this.checked)"
+                > ${tierLabels[tierKey]}
+              </label>
+              <input type="text" class="tier-label" value="${label}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+              <div style="position:relative;">
+                <input type="number" class="tier-price" value="${price}" placeholder="Price" style="width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+                ${existsInBase && scaledPrice ? `<span style="position:absolute;right:4px;top:-8px;font-size:10px;color:var(--text-light);">base: $${scaledPrice.toLocaleString()}</span>` : ''}
+              </div>
+              <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" ${!isEnabled ? 'disabled' : ''}>Features</button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderCustomCategoryEditor(cc, index, selectedTier) {
+  const isLocked = !!selectedTier;
+  const allTiers = ['good', 'standard', 'better', 'best'];
+  const tierLabels = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+  
+  return `
+    <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" class="cc-icon" value="${cc.icon || '📦'}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
+        <input type="text" class="cc-name" value="${cc.name || ''}" placeholder="Category Name" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
+        <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
+      </div>
+      <div class="cc-tiers" style="display:grid;gap:8px;">
+        ${allTiers.map(tierKey => {
+          const tier = cc.tiers?.[tierKey] || {};
+          const isTierLocked = selectedTier === tierKey;
+          const isEnabled = tier.enabled !== false && (tier.label || tier.price);
+          const features = tier.features || [];
+          const brands = tier.brands || '';
+          
+          return `
+            <div class="cc-tier-row" data-tier="${tierKey}" 
+                 data-features='${JSON.stringify(features).replace(/'/g, "&#39;")}'
+                 data-brands="${(brands || '').replace(/"/g, '&quot;')}"
+                 style="display:flex;gap:8px;align-items:center;padding:8px;background:white;border-radius:6px;${!isEnabled && !isTierLocked ? 'opacity:0.5;' : ''}">
+              <label style="width:70px;display:flex;align-items:center;gap:4px;${isTierLocked ? 'opacity:0.5;' : ''}">
+                <input type="checkbox" class="cc-tier-enabled" 
+                  ${isEnabled || isTierLocked ? 'checked' : ''} 
+                  ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
+                  onchange="toggleCustomTierEnabled(${index}, '${tierKey}', this.checked)"
+                > ${tierLabels[tierKey]}
+              </label>
+              <input type="text" class="cc-tier-label" data-tier="${tierKey}" value="${tier.label || ''}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+              <input type="number" class="cc-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+              <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function toggleCustomTierEnabled(index, tierKey, enabled) {
+  const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  if (editor) {
+    const tierRow = editor.querySelector(`.cc-tier-row[data-tier="${tierKey}"]`);
+    if (tierRow) {
+      tierRow.style.opacity = enabled ? '1' : '0.5';
+      tierRow.querySelectorAll('input:not(.cc-tier-enabled), button').forEach(el => el.disabled = !enabled);
+    }
+  }
+}
+
+function editCustomTierFeatures(index, tierKey) {
+  featureEditorCatId = `custom-${index}`;
+  featureEditorTierKey = tierKey;
+  
+  const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  const tierRow = editor?.querySelector(`.cc-tier-row[data-tier="${tierKey}"]`);
+  
+  if (!tierRow) {
+    showToast('Could not find tier data');
+    return;
+  }
+  
+  let features = [];
+  try {
+    features = JSON.parse(tierRow.dataset.features || '[]');
+  } catch (e) {
+    features = [];
+  }
+  const brands = tierRow.dataset.brands || '';
+  const label = tierRow.querySelector('.cc-tier-label').value || tierKey;
+  const catName = editor.querySelector('.cc-name').value || 'Custom Category';
+  
+  document.getElementById('featuresTitle').textContent = `${catName} → ${label}`;
+  
+  document.getElementById('featuresBody').innerHTML = `
+    <div style="margin-bottom:20px;">
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${features.join('\n')}</textarea>
+    </div>
+    
+    <div style="margin-bottom:20px;">
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Typical Brands</label>
+      <input type="text" id="brandsInput" value="${brands}" placeholder="e.g., Sonos, Control4, Lutron" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
+    </div>
+    
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-primary" onclick="saveCustomTierFeatures(${index}, '${tierKey}')" style="flex:1;">Save Features</button>
+      <button class="btn btn-secondary" onclick="closeFeaturesModal()">Cancel</button>
+    </div>
+  `;
+  
+  document.getElementById('featuresModal').classList.add('active');
+}
+
+function saveCustomTierFeatures(index, tierKey) {
+  const textarea = document.getElementById('featuresTextarea');
+  const brandsInput = document.getElementById('brandsInput');
+  
+  const features = textarea.value.split('\n')
+    .map(f => f.trim())
+    .filter(f => f.length > 0);
+  
+  const brands = brandsInput.value.trim();
+  
+  const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  const tierRow = editor?.querySelector(`.cc-tier-row[data-tier="${tierKey}"]`);
+  
+  if (tierRow) {
+    tierRow.dataset.features = JSON.stringify(features);
+    tierRow.dataset.brands = brands;
+  }
+  
+  closeFeaturesModal();
+  showToast('✓ Features updated');
+}
+
+function toggleCategoryHidden(catId, hidden) {
+  const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  if (editor) {
+    editor.style.opacity = hidden ? '0.6' : '1';
+    editor.querySelector('.tier-editors').style.display = hidden ? 'none' : 'grid';
+  }
+}
+
+function toggleTierEnabled(catId, tierKey, enabled) {
+  const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  if (editor) {
+    const tierRow = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
+    if (tierRow) {
+      tierRow.style.opacity = enabled ? '1' : '0.5';
+      tierRow.querySelectorAll('input:not(.tier-enabled), button').forEach(el => el.disabled = !enabled);
+    }
+  }
+}
+
+// ============================================================
+// FEATURES EDITOR
+// ============================================================
+let featureEditorCatId = null;
+let featureEditorTierKey = null;
+
+function editTierFeatures(catId, tierKey) {
+  featureEditorCatId = catId;
+  featureEditorTierKey = tierKey;
+  
+  // Find the tier row to get current data
+  const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  const tierRow = editor?.querySelector(`.tier-row[data-tier="${tierKey}"]`);
+  
+  if (!tierRow) {
+    showToast('Could not find tier data');
+    return;
+  }
+  
+  // Parse features from data attribute
+  let features = [];
+  try {
+    features = JSON.parse(tierRow.dataset.features || '[]');
+  } catch (e) {
+    features = [];
+  }
+  const brands = tierRow.dataset.brands || '';
+  const label = tierRow.querySelector('.tier-label').value || tierKey;
+  
+  // Get category name for title
+  const catName = editor.querySelector('strong').textContent;
+  
+  document.getElementById('featuresTitle').textContent = `${catName} → ${label}`;
+  
+  document.getElementById('featuresBody').innerHTML = `
+    <div style="margin-bottom:20px;">
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${features.join('\n')}</textarea>
+    </div>
+    
+    <div style="margin-bottom:20px;">
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Typical Brands</label>
+      <input type="text" id="brandsInput" value="${brands}" placeholder="e.g., Sonos, Control4, Lutron" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
+    </div>
+    
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-primary" onclick="saveTierFeatures()" style="flex:1;">Save Features</button>
+      <button class="btn btn-secondary" onclick="closeFeaturesModal()">Cancel</button>
+    </div>
+  `;
+  
+  document.getElementById('featuresModal').classList.add('active');
+}
+
+function saveTierFeatures() {
+  const textarea = document.getElementById('featuresTextarea');
+  const brandsInput = document.getElementById('brandsInput');
+  
+  // Parse features from textarea (one per line, filter empty)
+  const features = textarea.value.split('\n')
+    .map(f => f.trim())
+    .filter(f => f.length > 0);
+  
+  const brands = brandsInput.value.trim();
+  
+  // Update the tier row data attributes
+  const editor = document.querySelector(`.category-editor[data-cat-id="${featureEditorCatId}"]`);
+  const tierRow = editor?.querySelector(`.tier-row[data-tier="${featureEditorTierKey}"]`);
+  
+  if (tierRow) {
+    tierRow.dataset.features = JSON.stringify(features);
+    tierRow.dataset.brands = brands;
+  }
+  
+  closeFeaturesModal();
+  showToast('✓ Features updated');
+}
+
+function closeFeaturesModal() {
+  document.getElementById('featuresModal').classList.remove('active');
+  featureEditorCatId = null;
+  featureEditorTierKey = null;
+}
+
+let customCategoryCount = 0;
+function addCustomCategory() {
+  const list = document.getElementById('customCategoriesList');
+  const index = list.children.length;
+  const html = renderCustomCategoryEditor({ id: `custom-${Date.now()}`, icon: '📦', name: '', tiers: {} }, index, null);
+  list.insertAdjacentHTML('beforeend', html);
+}
+
+function removeCustomCategory(index) {
+  const el = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  if (el) el.remove();
+}
+
+async function saveCustomization() {
+  if (!customizeBudgetId) return;
+  
+  const categoryConfig = {};
+  const customCategories = [];
+  
+  // Collect category overrides
+  document.querySelectorAll('.category-editor').forEach(editor => {
+    const catId = editor.dataset.catId;
+    const showCheckbox = editor.querySelector('input[type="checkbox"]:not(.tier-enabled)');
+    const isHidden = showCheckbox && !showCheckbox.checked;
+    
+    const tiers = {};
+    editor.querySelectorAll('.tier-row').forEach(row => {
+      const tierKey = row.dataset.tier;
+      const enabled = row.querySelector('.tier-enabled')?.checked ?? true;
+      const label = row.querySelector('.tier-label')?.value || '';
+      const price = parseInt(row.querySelector('.tier-price')?.value) || 0;
+      
+      // Get features and brands from data attributes
+      let features = [];
+      try {
+        features = JSON.parse(row.dataset.features || '[]');
+      } catch (e) {
+        features = [];
+      }
+      const brands = row.dataset.brands || '';
+      
+      tiers[tierKey] = { enabled, label, price, features, brands };
+    });
+    
+    categoryConfig[catId] = { hidden: isHidden, tiers };
+  });
+  
+  // Collect custom categories
+  document.querySelectorAll('.custom-category-editor').forEach(editor => {
+    const icon = editor.querySelector('.cc-icon')?.value || '📦';
+    const name = editor.querySelector('.cc-name')?.value || '';
+    if (!name) return; // Skip empty custom categories
+    
+    const tiers = {};
+    editor.querySelectorAll('.cc-tier-row').forEach(row => {
+      const tierKey = row.dataset.tier;
+      const enabled = row.querySelector('.cc-tier-enabled')?.checked ?? false;
+      const label = row.querySelector('.cc-tier-label')?.value || '';
+      const price = parseInt(row.querySelector('.cc-tier-price')?.value) || 0;
+      
+      // Get features and brands from data attributes
+      let features = [];
+      try {
+        features = JSON.parse(row.dataset.features || '[]');
+      } catch (e) {
+        features = [];
+      }
+      const brands = row.dataset.brands || '';
+      
+      // Only include tier if enabled and has label or price
+      if (enabled && (label || price)) {
+        tiers[tierKey] = { enabled, label, price, features, brands };
+      }
+    });
+    
+    // Only add if at least one tier is configured
+    if (Object.keys(tiers).length > 0) {
+      customCategories.push({
+        id: editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+        name,
+        icon,
+        desc: '',
+        tiers
+      });
+    }
+  });
+  
+  // Confirm if not already customized
+  if (!customizeBudgetData.isCustomized) {
+    if (!confirm('This will lock sqft and wipe all previous versions. Continue?')) {
+      return;
+    }
+  }
+  
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${customizeBudgetId}/customize`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categoryConfig, customCategories })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      showToast('✓ Customization saved');
+      closeCustomizeModal();
+      loadBudgets();
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to save'));
+      if (data.lockedTiers) {
+        console.log('Locked tiers:', data.lockedTiers);
+      }
+    }
+  } catch (err) {
+    console.error('Save customization error:', err);
+    showToast('Failed to save customization');
+  }
+}
+
+// Default categories (subset for the editor - will be loaded from frontend config)
+// ============================================================
+// FULL CATEGORY DATA (matches frontend exactly for correct scaling)
+// ============================================================
+const ADMIN_CATEGORIES = [{"id":"prewire","section":"Infrastructure","name":"Structured Wiring & Pre-Wire","icon":"🔌","desc":"Low voltage wiring infrastructure for all technology systems","sizeScale":1,"tiers":{"good":{"price":12000,"label":"Essential","tag":"Good","features":["Dual CAT6 for TVs to main rooms, single CAT6 to others","Basic coax (RG6) to all TVs","Standard structured media panel","Speaker wire to primary living area"],"brands":"Cat6, RG6 coax, 16-4, Leviton panel"},"standard":{"price":22000,"label":"Standard","tag":"Standard","features":["Dual Cat6 to all TVs","Speaker wire to primary living area, lanai, and master bed","Camera pre-wire (front and rear basics)","Alarm pre-wire for all doors, single keypad at garage entry","Upgraded structured media panel with fiber optic incoming"],"brands":"Cat6, Single mode fiber optic, 16/4 speaker wire, Future Automation Structured Media Panel"},"better":{"price":35000,"label":"Comprehensive","tag":"Better","features":["Dual Cat6A to all TVs","Speaker wire to all living areas, lanai, kitchen, master suite, and single outdoor zone","Outside perimeter camera pre-wire","Alarm pre-wire for all doors and windows, keypads at garage entry and master bedroom","Lutron shade pre-wire to all main living area windows and master bedroom","Upgraded structured media panel with fiber optic and conduit for incoming pathway"],"brands":"Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Direct Burial 16/4, Future Automation Structured Media Panel"},"best":{"price":44000,"label":"Premium","tag":"Best","features":["Dual Cat6A to all TVs plus CAT7 to main rooms","Pre-wire for extensive audio zones + single Atmos room","Full outside perimeter camera pre-wire + gate/entry points","Alarm pre-wire for all doors and windows, keypads at garage entry(s) and master bedroom","Shade pre-wire to most (if not all) windows","Multiple zone outdoor landscape speaker pre-wire and conduit","Gate/intercom wiring","Guest house connectivity","Upgraded structured media panels (multiple) including fiber optic and conduit for incoming pathways"],"brands":"Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Direct Burial 16/4, Future Automation Structured Media Panel"}}},{"id":"networking","section":"Infrastructure","name":"Whole-Home WiFi & Networking","icon":"📡","desc":"Enterprise-grade WiFi coverage and network infrastructure","sizeScale":0.8,"tiers":{"good":{"price":5700,"label":"Reliable, Basic Coverage","tag":"Good","features":["WiFi 7 access points for full interior coverage and lanai","Cloud managed pro router","Managed PoE switch","App-managed, remote access"],"brands":"UniFi LR, USW-Pro-24-PoE"},"better":{"price":9700,"label":"Full Coverage","tag":"Better","features":["WiFi 7 access points for full interior, lanai, and garage(s)","Cloud managed pro router","Managed pro series PoE+ switches with 10G uplinks","UPS backup for short power outages","App-managed, remote access"],"brands":"UniFi Pro, Unifi UPS, UDM Pro"},"best":{"price":15000,"label":"Enterprise Class","tag":"Best","features":["High capacity WiFi 7 access points for full interior, lanai, and garage(s)","Cloud managed pro router with support for multiple internet connections","Managed enterprise series PoE+ switches with 10G uplinks","UPS backup for short power outages","App-managed, remote access"],"brands":"UniFi Enterprise, Unifi UPS, UDM Pro"}}},{"id":"surveillance","section":"Security","name":"Surveillance & Security Cameras","icon":"📹","desc":"IP camera system with recording and smart detection","sizeScale":0.7,"baseTierNoScale":true,"tiers":{"good":{"price":5300,"label":"Key Coverage","tag":"Good","features":["Basic front and rear exterior coverage","4K cameras","14 day recording retention","Motion alerts to phone","Night vision & weather-rated"],"brands":"UniFi"},"better":{"price":10700,"label":"Enhanced Coverage","tag":"Better","features":["Exterior entry points covered including front and rear","4K enhanced cameras with AI detection","21-day recording retention","Integration for viewing on TVs","Marine-grade outdoor housings"],"brands":"UniFi Pro Series"},"best":{"price":19300,"label":"Full Perimeter","tag":"Best","features":["Full perimeter coverage","AI searching and analytics (person/vehicle/animal)","21-day recording","Interior camera for garage(s)","Control4/Crestron integration"],"brands":"UniFi Pro Series, Cloud Key"}}},{"id":"audio","section":"Audio","name":"Multi-Room Audio","icon":"🔊","desc":"Whole-home distributed audio — indoor and outdoor zones","sizeScale":0.7,"tiers":{"good":{"price":9600,"label":"Basic","tag":"Good","features":["Main living areas with music","Basic outdoor in ceiling zone","Architectural in-ceiling speakers","App-controlled music","AirPlay 2 & all streaming services"],"brands":"Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron"},"standard":{"price":18000,"label":"Standard","tag":"Standard","features":["Main living areas, kitchen and master suite with music","Outdoor in-ceiling audio zone(s)","Upgraded in ceiling speakers","Automation system integration"],"brands":"Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Sonance"},"better":{"price":27000,"label":"Entertainment Focused","tag":"Better","features":["Main living areas, kitchen, guest area(s), and master suite with music","Outdoor in-ceiling audio zone(s)","More speakers in living areas to eliminate loud spots during entertaining","Premium in-ceiling speakers","Automation system integration"],"brands":"Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron"},"best":{"price":32000,"label":"Music Lover","tag":"Best","features":["Main living areas, kitchen, guest area(s), and master suite with music","Outdoor in-ceiling audio zone(s)","Ultra Premium in-ceiling speakers in main listening areas","In ceiling/in wall subwoofer(s) in main listening area(s)","Automation system integration"],"brands":"Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Monitor Audio, Sonance, B&W"}}},{"id":"invisible-speakers","section":"Audio","name":"Invisible Speakers","icon":"🪄","desc":"For those who want the cleanest design — speakers completely hidden behind drywall","sizeScale":0.5,"tiers":{"good":{"price":7500,"sizeScale":0.2,"label":"Key Coverage","tag":"Good","features":["Key area(s) provided with invisible speakers"],"brands":"Amina Loudspeakers, Stealth Acoustics"},"standard":{"price":10500,"sizeScale":0.3,"label":"Main Living","tag":"Standard","features":["Main living area(s) including kitchen or other key area(s) provided with invisible speakers"],"brands":"Amina Loudspeakers, Stealth Acoustics"},"better":{"price":28500,"sizeScale":0.5,"label":"Whole Home","tag":"Better","features":["Replace all interior speakers with invisible speakers"],"brands":"Amina Loudspeakers, Stealth Acoustics"},"best":{"price":38500,"sizeScale":0.6,"label":"Whole Home, Premium","tag":"Best","features":["Replace all interior speakers with premium invisible speakers","Invisible subwoofers installed in key areas"],"brands":"Amina Loudspeakers, Stealth Acoustics"}}},{"id":"surround","section":"Audio","name":"Surround Sound","icon":"🔉","desc":"Immersive surround audio for your main TV without a dedicated theater room","sizeScale":0,"tiers":{"good":{"price":5300,"label":"Sonos Surround","tag":"Good","features":["Sonos Arc Ultra Soundbar wall mounted","2 Sonos in-ceiling speakers","Sonos Sub","Apple TV 4K source","Behind TV box for video sources"],"brands":"Sonos, Apple TV 4K"},"better":{"price":9900,"label":"Custom Surround","tag":"Better","features":["Soundbar custom made to match TV width","4 in-ceiling speakers for Atmos and Surround","Single in-wall subwoofer","Atmos Surround Amplifier","Apple TV 4K source","Large behind TV box for local components"],"brands":"Sony AVR, Sonance, Leon, Apple TV 4K, Future Automation"},"best":{"price":15900,"label":"Invisible Surround","tag":"Best","features":["Invisible front, rear, and in-ceiling speakers","Coverage for Atmos and Surround","Dual in-wall invisible subwoofers","Atmos Surround Amplifier","Apple TV 4K source","Large behind TV box for local components"],"brands":"Sony AVR, Amina Loudspeakers, Apple TV 4K, Future Automation"}}},{"id":"theater","section":"Audio","name":"Home Theater / Media Room","icon":"🎬","desc":"Dedicated entertainment experience — from media room to reference theater (display not included)","sizeScale":0,"tiers":{"good":{"price":18000,"label":"Media Room","tag":"Good","features":["NO DISPLAY INCLUDED (see Video Wall)","5.2.2 Dolby Atmos surround","Combination of in-ceiling/in-wall speakers","Dual subwoofers (in-wall or in-room)","Atmos Surround Amplifier","Dimmable lighting scene (\"Movie Mode\")","Apple TV 4K source","Automation system control (app and remote)"],"brands":"Sonance, Sony AVR, Apple TV 4K, Lutron, Control4"},"standard":{"price":39000,"label":"Theater Quality","tag":"Standard","features":["NO DISPLAY INCLUDED (see Video Wall)","7.2.2 Dolby Atmos audio","Premium in-wall speakers & 2 subs","Dedicated AV receiver + amplification","Full light control","Automation system control (app and remote)","Kaleidescape movie server","Dedicated in-room equipment rack"],"brands":"Monitor Audio, Leon, Amina Loudspeakers, Sony AVR, Lutron, Control4, Crestron, Kaleidescape"},"better":{"price":88000,"label":"Reference Theater","tag":"Better","features":["NO DISPLAY INCLUDED (see Video Wall)","7.2.4 Dolby Atmos reference audio","Reference quality in-wall speakers & subs","Dedicated AV receiver","Dedicated multi-channel amplification","Full light control","Automation system control (app and remote)","Dedicated in-room equipment rack","Kaleidescape movie server","Full acoustic engineering"],"brands":"Monitor Audio, Leon, Amina Loudspeakers, Marantz, Sony, Lutron, Control4, Crestron, Kaleidescape, Triad, B&W"},"best":{"price":123000,"label":"Full Theater Experience","tag":"Best","features":["NO DISPLAY INCLUDED (see Video Wall)","7.2.4 Dolby Atmos reference audio","Reference quality in-wall speakers & subs","Dedicated AV receiver","Dedicated multi-channel amplification","Full light control","Automation system control (app and remote)","Dedicated in-room equipment rack","Kaleidescape movie server","Full acoustic engineering","$20,000 seating budget included","$15,000 acoustical paneling budget included"],"brands":"Monitor Audio, Leon, Amina Loudspeakers, Marantz, Sony, Lutron, Control4, Crestron, Kaleidescape, Triad, B&W"}}},{"id":"videodist","section":"Video","name":"TV Mounting & Video Distribution","icon":"📺","desc":"TV installations, mounting, and source distribution throughout the home","sizeScale":0.7,"tiers":{"good":{"price":5500,"label":"Local Sources, Basic","tag":"Good","features":["Main TVs mounted (fixed/tilt)","Apple TV at each location","In-wall HDMI & cable concealment"],"brands":"Strong Mounts, Apple TV 4K, in-wall HDMI"},"better":{"price":9200,"label":"Local Sources, Preferred","tag":"Better","features":["Main TVs mounted (Articulating)","Apple TV at each location","In-wall HDMI & cable concealment","Surge protection at each TV","Large back box behind TV to hold components and surge protector"],"brands":"Strong Mounts, Apple TV 4K, in-wall HDMI, WattBox"},"best":{"price":29000,"sizeScale":0.5,"label":"Video Over IP Distribution","tag":"Best","features":["Main TVs mounted (Articulating mounts)","Main TVs with video matrix switching","Any source on any TV","Perfect syncing of TV video for parties/events","Automation system control of Main TVs (remote and app)","Cable concealment","Surge protection at each TV","Large back box behind TV to hold components and surge protector"],"brands":"Control4, Crestron, Binary, Strong Mounts, Future Automation, Apple TV 4K, WattBox OvRC"}}},{"id":"control","section":"Control & Automation","name":"Control & Automation System","icon":"🎛️","desc":"Unified control of all systems from touchscreens, remotes, and app","sizeScale":0.6,"tiers":{"good":{"price":9500,"label":"Automation Basic","tag":"Good","features":["Automation System Controller","Single Remote and App control of main TVs","Integration of installed components including lighting, music, and TVs","Basic scenes (Morning, Night, Movie)"],"brands":"Control4, Crestron"},"better":{"price":16000,"label":"Automation Enhanced","tag":"Better","features":["Advanced Automation System Controller","Single Remote and App control of main TVs","Upgraded premium remotes","Integration of installed, compatible components including lighting, shades, music, cameras, thermostats, gates, and TVs","Advanced scenes & scheduling"],"brands":"Control4, Crestron"},"best":{"price":29500,"label":"Full Automation","tag":"Best","features":["Advanced Automation System Controller","Single Remote and App control of all TVs","Upgraded premium remotes for main TVs","Full integration of any installed, compatible components including lighting, shades, music, security, cameras, thermostats, pool, gates, and TVs","Advanced scenes & scheduling"],"brands":"Control4, Crestron"}}},{"id":"touchscreen","section":"Control & Automation","name":"Touchscreens","icon":"📱","desc":"The dedicated hub for instant home control—perfect for you and seamless for your guests","sizeScale":0,"tiers":{"good":{"price":2200,"label":"Touchscreen Essential","tag":"Good","features":["On-wall iPad mini in main living area"],"brands":"iPort, Apple"},"standard":{"price":4800,"label":"Touchscreen Basic","tag":"Standard","features":["On-wall iPads in main living area and master suite"],"brands":"iPort, Apple"},"better":{"price":7200,"label":"Touchscreen Standard","tag":"Better","features":["On-wall iPads in main living area and master suite","Desk mounted iPad mini for kitchen"],"brands":"iPort, Apple"},"best":{"price":23200,"sizeScale":0.5,"label":"Touchscreen Full","tag":"Best","features":["On-wall iPads or automation system touchscreens in all living areas, kitchen, guest suites (most if not all), and office/study","Desk mounted option where appropriate"],"brands":"iPort, Apple, Crestron, Control4"}}},{"id":"lighting","section":"Lighting & Shades","name":"Wireless Lighting Control","icon":"💡","desc":"Smart lighting with scene control, dimming, and scheduling","sizeScale":1,"tiers":{"good":{"price":5500,"sizeScale":0.4,"label":"Wireless Basic","tag":"Good","features":["Wireless lighting control in main living areas and kitchen","App control from phone whether at home or away","Integration with control system (if selected)"],"brands":"Lutron Caseta"},"better":{"price":15000,"sizeScale":0.4,"label":"Wireless Partial","tag":"Better","features":["Wireless lighting control in main living areas, kitchen, and master suite","Scene keypads for each area and at entry(s). Push one button and lights automatically adjust","App control from phone whether at home or away","Integration with control system (if selected)"],"brands":"Lutron RadioRA, Control4 Contemporary, Crestron Cameo"},"best":{"price":32000,"sizeScale":0.9,"label":"Wireless Full Home","tag":"Best","features":["Wireless lighting control on every switch in the home","Scene keypads in every room","Comprehensive scenes (Wake, Entertain, Night, Away)","App control from phone whether at home or away"],"brands":"Lutron RadioRA, Control4 Contemporary, Crestron Cameo"}}},{"id":"lighting-centralized","section":"Lighting & Shades","name":"Centralized / Hybrid Lighting Control","icon":"🔆","desc":"Hardwired smart lighting control for max reliability and convenience including scene control, dimming, and scheduling","sizeScale":1,"tiers":{"good":{"price":30000,"sizeScale":0.4,"label":"Centralized Partial","tag":"Good","features":["Lighting control in main living areas, kitchen, and master suite","Clean look on wall, no banks of switches","Scene keypads in every room","Integration with control system (if selected)","App control from phone whether at home or away","Comprehensive scenes (Wake, Entertain, Night, Away)"],"brands":"Lutron HomeWorks, Control4 Centralized, Crestron Centralized"},"better":{"price":47000,"sizeScale":0.9,"label":"Hybrid Full Home","tag":"Better","features":["Combination of wireless and centralized lighting","Lighting control on every switch in the home","Main living areas, kitchen, and master suite are centralized","Other areas are wireless","Scene keypads in every room","Integration with control system (if selected)","App control from phone whether at home or away","Comprehensive scenes (Wake, Entertain, Night, Away)"],"brands":"Lutron RadioRA, Control4 Contemporary, Crestron Cameo, Lutron HomeWorks, Control4 Centralized, Crestron Centralized"},"best":{"price":60000,"sizeScale":0.9,"label":"Centralized Full Home","tag":"Best","features":["Centralized, hardwired lighting control of all lighting in the home","Clean look on wall, no banks of switches","Scene keypads in every room","Integration with control system (if selected)","App control from phone whether at home or away","Comprehensive scenes (Wake, Entertain, Night, Away)"],"brands":"Lutron HomeWorks, Control4 Centralized, Crestron Centralized"}}},{"id":"lighting-designer","section":"Lighting & Shades","name":"Designer Lighting Keypads","icon":"✨","desc":"Elevate your lighting control with premium designer keypads featuring custom finishes and engraving","sizeScale":0,"tiers":{"good":{"price":6000,"sizeScale":0.4,"label":"Partial Home","tag":"Good","features":["Upgraded designer lighting keypads/switches in main living areas, kitchen, and master suite","Designer color/finish options","Custom engraving of keypad buttons"],"brands":"Lutron Sunnata (designer colors), Control4 Lux, Crestron Horizon, Lutron Palladiom"},"better":{"price":10000,"sizeScale":1,"label":"Full Home","tag":"Better","features":["Upgraded designer lighting keypads/switches throughout the home","Designer color/finish options","Custom engraving of keypad buttons"],"brands":"Lutron Sunnata (designer colors), Control4 Lux, Crestron Horizon, Lutron Palladiom"},"best":{"price":20000,"sizeScale":1,"label":"Full Home Bespoke","tag":"Best","features":["Upgraded bespoke lighting keypads/switches throughout the home","Designer color/finish options","Custom engraving of keypad buttons"],"brands":"Lutron Palladiom Glass/Metal, Lutron Alisse, Black Nova"}}},{"id":"shades","section":"Lighting & Shades","name":"Motorized Shades","icon":"🪟","desc":"Automated window treatments with scene integration","sizeScale":0.9,"tiers":{"good":{"price":35000,"sizeScale":0.4,"label":"Key Windows","tag":"Good","features":["Lutron motorized shades in single living area and master bedroom","Hardwired for max reliability","Light filtering or solar screen fabric","App and remote control","Integrated with control system (if selected)","Standard pockets"],"brands":"Lutron Sivoia, standard fabrics"},"better":{"price":70000,"sizeScale":0.8,"label":"Standard Windows","tag":"Better","features":["Lutron motorized shades in main living areas, master bedroom, and primary guest and/or master bath","Hardwired for max reliability","Mixture of light filtering, solar screen, and black out fabric","Mixture of in-wall keypads, app, and remote controls","Integrated with control system (if selected)","Standard pockets","Automated scenes (Morning, Movie, Entertaining)","Upgraded fabric selections"],"brands":"Lutron Sivoia, upgraded fabrics"},"best":{"price":100000,"label":"Most/All Windows","tag":"Best","features":["Lutron motorized shades on most, if not every window","Hardwired for max reliability","Mixture of light filtering, solar screen, and black out fabric","Possible drapery tracks on select windows","Mixture of in-wall keypads, app, and remote controls","Integrated with control system (if selected)","Standard pockets","Automated scenes (Morning, Movie, Entertaining)","Upgraded fabric selections"],"brands":"Lutron Sivoia, designer fabrics, Lutron drapery tracks"}}},{"id":"outdoor","section":"Audio","name":"Yard/Pool Audio","icon":"🌴","desc":"Weather-rated outdoor audio and speakers","sizeScale":0.6,"tiers":{"good":{"price":6000,"sizeScale":0.2,"label":"Basic","tag":"Good","features":["Single outdoor zone with landscape style speakers","Weather-rated speakers","Integrated with whole-home audio","Basic coverage for entertaining"],"brands":"Sonos, Sonance Landscape"},"better":{"price":17000,"sizeScale":0.2,"label":"Preferred","tag":"Better","features":["Coastal Source speakers with sub","Premium outdoor audio coverage","Integrated with whole-home audio","IP68 rated for salt air"],"brands":"Coastal Source Razor, Coastal Source Linesource"},"best":{"price":24000,"sizeScale":0.4,"label":"Premium","tag":"Best","features":["Coastal Source premium system","Comprehensive speakers with dedicated subs","Independently controlled zones (where appropriate)","Full yard coverage","Premium amplification","Integrated with whole-home audio","IP68 rated for salt air"],"brands":"Coastal Source Ellipse/Line Source, Coastal Source Razor"}}},{"id":"security","section":"Security","name":"Security & Alarm System","icon":"🔒","desc":"Intrusion detection, sensors, and 24/7 monitoring","sizeScale":0.6,"tiers":{"good":{"price":3500,"sizeScale":0.5,"label":"Essential Protection","tag":"Good","features":["Coverage of all exterior doors","Motion detectors","Keypad at garage entry","Supports 24/7 professional monitoring","App control via Alarm.com"],"brands":"DSC Neo, Alarm.com"},"better":{"price":7500,"sizeScale":0.8,"label":"Standard Security","tag":"Better","features":["Coverage of all exterior windows and doors","Motion detectors","Keypads at garage entry(s) and master bedroom","Supports 24/7 professional monitoring","App control via Alarm.com"],"brands":"DSC Neo, Alarm.com"},"best":{"price":9500,"sizeScale":0.8,"label":"Full Integration","tag":"Best","features":["Commercial-grade panel + full sensor coverage","Multi method motion detectors","Keypads at garage entry(s), safe room (if appropriate), and master bedroom","Supports 24/7 professional monitoring","App control via Alarm.com","Full Crestron/Control4 integration","Panic buttons on keypads"],"brands":"DSC PowerSeries Neo / Qolsys, Alarm.com"}}},{"id":"intercom","section":"Security","name":"Intercom, Doorbell & Access Control","icon":"🚪","desc":"Video doorbell, gate intercom, and entry access management","sizeScale":0.2,"tiers":{"good":{"price":2000,"label":"Video Doorbell","tag":"Good","features":["Hardwired video doorbell (PoE)","2-way audio & video at front door","App notifications when someone rings"],"brands":"UniFi, Control4"},"better":{"price":7500,"label":"Video Doorbell + Gate","tag":"Better","features":["Hardwired video doorbell (PoE)","2-way audio & video at front door","App notifications when someone rings","Gate video intercom with keypad","Integration with automatic gate for opening and closing","Remote gate open from phone"],"brands":"UniFi, Control4"},"best":{"price":10500,"label":"Premium Video Doorbell and Gate","tag":"Best","features":["Premium hardwired doorbell station (PoE)","2-way audio & video at front door","App notifications when someone rings","Gate video intercom with keypad","Integration with automatic gate for opening and closing","Remote gate open from phone","Multi-tenant/guest access codes","Full Crestron/Control4 integration"],"brands":"UniFi, Control4, 2N"}}},{"id":"videowall-interior","section":"Video","name":"Video Wall Interior","icon":"🖥️","desc":"Large-format LED video wall installations for indoor spaces","sizeScale":0,"tiers":{"good":{"price":50000,"label":"136\" Display Standard","tag":"Good","features":["High density pixels for clear picture (1.2pp)","Supports up to 3 video signals at the same time","3 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron"],"brands":"Opal Screens Crystal Series"},"standard":{"price":69000,"label":"136\" Display Premium","tag":"Standard","features":["Super high density pixels for clearest picture (.9pp)","Supports up to 4 video signals at the same time","BlackFire technology for the deepest blacks","4 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron","Ambient art mode with customer provided art"],"brands":"Opal Screens Crystal Series"},"better":{"price":89000,"label":"163\" Display Premium","tag":"Better","features":["Super high density pixels for clearest picture (.9pp)","Supports up to 4 video signals at the same time","BlackFire technology for the deepest blacks","4 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron","Ambient art mode with customer provided art"],"brands":"Opal Screens Crystal Series"},"best":{"price":119000,"label":"190\" Display Premium","tag":"Best","features":["Super high density pixels for clearest picture (.9pp)","Supports up to 4 video signals at the same time","BlackFire technology for the deepest blacks","4 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron","Ambient art mode with customer provided art"],"brands":"Opal Screens Crystal Series"}}},{"id":"videowall-exterior","section":"Video","name":"Video Wall Exterior","icon":"☀️","desc":"Weather-rated outdoor LED video wall installations","sizeScale":0,"tiers":{"good":{"price":83000,"label":"136\" Outdoor Display Standard","tag":"Good","features":["Outdoor weather rated for direct exposure to the weather","8X brighter than indoor models for direct sun viewing","High density pixels for clear picture (1.5pp)","Supports up to 3 video signals at the same time","3 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron"],"brands":"Opal Screens Water Series"},"standard":{"price":109000,"label":"136\" Outdoor Display Premium","tag":"Standard","features":["Outdoor weather rated for direct exposure to the weather","8X brighter than indoor models for direct sun viewing","Super high density pixels for clearest picture (1.2pp)","Supports up to 4 video signals at the same time","BlackFire technology for the deepest blacks","4 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron","Ambient art mode with customer provided art"],"brands":"Opal Screens Water Series"},"better":{"price":149000,"label":"163\" Outdoor Display Premium","tag":"Better","features":["Outdoor weather rated for direct exposure to the weather","8X brighter than indoor models for direct sun viewing","Super high density pixels for clearest picture (1.2pp)","Supports up to 4 video signals at the same time","BlackFire technology for the deepest blacks","4 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron","Ambient art mode with customer provided art"],"brands":"Opal Screens Water Series"},"best":{"price":179000,"label":"190\" Outdoor Display Premium","tag":"Best","features":["Outdoor weather rated for direct exposure to the weather","8X brighter than indoor models for direct sun viewing","Super high density pixels for clearest picture (1.2pp)","Supports up to 4 video signals at the same time","BlackFire technology for the deepest blacks","4 4K Apple TVs","Professional calibration and installation","Integration with Control4 or Crestron","Ambient art mode with customer provided art"],"brands":"Opal Screens Water Series"}}}];
+
+function getDefaultCategories(propertyType) {
+  // Returns full category data including sizeScale for accurate price calculation
+  return ADMIN_CATEGORIES;
 }
 
 // ============================================================
@@ -905,7 +1567,7 @@ let users = [];
 
 async function loadUsers() {
   try {
-    const res = await fetch('/api/admin/users');
+    const res = await fetch(api('/api/admin/users'), { credentials: 'include' });
     if (res.status === 401) {
       showLogin();
       return;
@@ -985,7 +1647,7 @@ async function handleUserSubmit(e) {
   if (password) body.password = password;
   
   try {
-    const url = isEdit ? `/api/admin/users/${editId}` : '/api/auth/users';
+    const url = api(isEdit ? `/api/admin/users/${editId}` : '/api/auth/users');
     const method = isEdit ? 'PUT' : 'POST';
     
     const res = await fetch(url, {
@@ -1016,7 +1678,7 @@ async function deleteUser(id) {
   if (!confirm(`Delete user "${user.username}"? This cannot be undone.`)) return;
   
   try {
-    const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+    const res = await fetch(api(`/api/admin/users/${id}`), { method: 'DELETE' });
     const data = await res.json();
     
     if (res.ok && data.success) {
@@ -1044,7 +1706,10 @@ function formatCurrency(num) {
 }
 
 function formatDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
@@ -1052,7 +1717,10 @@ function formatDate(iso) {
 }
 
 function formatDateTime(iso) {
-  return new Date(iso).toLocaleString('en-US', {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -1087,6 +1755,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeModal();
     closeUserModal();
+    closeNewBudgetModal();
+    closeCustomizeModal();
+    closeFeaturesModal();
   }
 });
 
@@ -1097,6 +1768,18 @@ document.getElementById('budgetModal').addEventListener('click', (e) => {
 
 document.getElementById('userModal').addEventListener('click', (e) => {
   if (e.target.id === 'userModal') closeUserModal();
+});
+
+document.getElementById('newBudgetModal').addEventListener('click', (e) => {
+  if (e.target.id === 'newBudgetModal') closeNewBudgetModal();
+});
+
+document.getElementById('customizeModal').addEventListener('click', (e) => {
+  if (e.target.id === 'customizeModal') closeCustomizeModal();
+});
+
+document.getElementById('featuresModal').addEventListener('click', (e) => {
+  if (e.target.id === 'featuresModal') closeFeaturesModal();
 });
 
 // Initialize
