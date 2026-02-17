@@ -1,4 +1,9 @@
-export const RESIDENTIAL_CATEGORIES = [
+// ============================================================
+// CATEGORY DATA — Single source of truth for all pricing
+// Edit this file for pricing/feature changes
+// ============================================================
+
+const RESIDENTIAL_CATEGORIES = [
   {
     id: 'prewire',
     section: 'Infrastructure',
@@ -335,7 +340,7 @@ export const RESIDENTIAL_CATEGORIES = [
     sizeScale: 0.0,
     tiers: {
       good: {
-        price: 18000,
+        price: 26000,
         label: 'Media Room',
         tag: 'Good',
         features: [
@@ -351,7 +356,7 @@ export const RESIDENTIAL_CATEGORIES = [
         brands: 'Sonance, Sony AVR, Apple TV 4K, Lutron, Control4'
       },
       standard: {
-        price: 39000,
+        price: 62000,
         label: 'Theater Quality',
         tag: 'Standard',
         features: [
@@ -367,12 +372,12 @@ export const RESIDENTIAL_CATEGORIES = [
         brands: 'Monitor Audio, Leon, Amina Loudspeakers, Sony AVR, Lutron, Control4, Crestron, Kaleidescape'
       },
       better: {
-        price: 88000,
+        price: 129000,
         label: 'Reference Theater',
         tag: 'Better',
         features: [
           'NO DISPLAY INCLUDED (see Video Wall)',
-          '7.2.4 Dolby Atmos reference audio',
+          '9.4.4 Dolby Atmos Reference Audio',
           'Reference quality in-wall speakers & subs',
           'Dedicated AV receiver',
           'Dedicated multi-channel amplification',
@@ -385,12 +390,12 @@ export const RESIDENTIAL_CATEGORIES = [
         brands: 'Monitor Audio, Leon, Amina Loudspeakers, Marantz, Sony, Lutron, Control4, Crestron, Kaleidescape, Triad, B&W'
       },
       best: {
-        price: 123000,
+        price: 187000,
         label: 'Full Theater Experience',
         tag: 'Best',
         features: [
           'NO DISPLAY INCLUDED (see Video Wall)',
-          '7.2.4 Dolby Atmos reference audio',
+          '9.4.6 Dolby Atmos Reference Audio',
           'Reference quality in-wall speakers & subs',
           'Dedicated AV receiver',
           'Dedicated multi-channel amplification',
@@ -1068,8 +1073,235 @@ export const RESIDENTIAL_CATEGORIES = [
 ];
 
 const RESIDENTIAL_EXTRAS = [
-const RESIDENTIAL_EXTRAS = [
   { id: 'poolAlarm', name: 'Pool Alarm & Child Safety', note: 'Required by FL building code', price: 2200, sizeScale: 1, default: false },
   { id: 'fireDet', name: 'Low Voltage Fire Detection', note: 'Monitored smoke/heat/CO', price: 3800, sizeScale: 0.3, default: false },
   { id: 'leakDet', name: 'Leak Detection System', note: 'Water heater, laundry, sinks', price: 3500, sizeScale: 0.2, default: false }
 ];
+
+// ---- CONDO DATA ----
+
+// Clone of residential, then override specific categories
+const CONDO_CATEGORIES = JSON.parse(JSON.stringify(RESIDENTIAL_CATEGORIES));
+const CONDO_EXTRAS = JSON.parse(JSON.stringify(RESIDENTIAL_EXTRAS));
+
+// Helper: find and override a condo category by id
+function condoOverride(id, overrides) {
+  const cat = CONDO_CATEGORIES.find(c => c.id === id);
+  if (cat) Object.assign(cat, overrides);
+}
+
+// -- Condo: Structured Wiring & Pre-Wire --
+condoOverride('prewire', {
+  tiers: {
+    good: {
+      price: 14000,
+      label: 'Essential',
+      tag: 'Good',
+      features: [
+        'Dual CAT6 for TVs to main rooms, single CAT6 to others',
+        'Basic coax (RG6) to all TVs',
+        'Standard structured media panel',
+        'Speaker wire to primary living area'
+      ],
+      brands: 'Cat6, RG6 coax, 16-4, Leviton panel'
+    },
+    standard: {
+      price: 24000,
+      label: 'Standard',
+      tag: 'Standard',
+      features: [
+        'Dual Cat6 to all TVs',
+        'Speaker wire to primary living areas, kitchen, and master bed',
+        'Upgraded structured media panel with fiber optic incoming'
+      ],
+      brands: 'Cat6, Single mode fiber optic, 16/4 speaker wire, Future Automation Structured Media Panel'
+    },
+    better: {
+      price: 35000,
+      label: 'Comprehensive',
+      tag: 'Better',
+      features: [
+        'Dual Cat6A to all TVs',
+        'Speaker wire to all living areas, kitchen, master suite, and primary guest',
+        'Lutron shade pre-wire to all main living area windows and master bedroom',
+        'Upgraded structured media panel with fiber optic and conduit for incoming pathway'
+      ],
+      brands: 'Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Direct Burial 16/4, Future Automation Structured Media Panel'
+    },
+    best: {
+      price: 44000,
+      label: 'Premium',
+      tag: 'Best',
+      features: [
+        'Dual Cat6A to all TVs plus CAT7 to main rooms',
+        'Pre-wire for extensive audio zones + single Atmos room',
+        'Full outside perimeter camera pre-wire + gate/entry points',
+        'Shade pre-wire to all windows',
+        'Upgraded structured media panels (multiple) including fiber optic and conduit for incoming pathways'
+      ],
+      brands: 'Cat6A, Single mode fiber optic, 16/2 speaker wire, Lutron shade wire, Future Automation Structured Media Panel'
+    }
+  }
+});
+
+// -- Condo: Networking --
+condoOverride('networking', {
+  tiers: {
+    good: {
+      price: 5700,
+      label: 'Reliable, Basic Coverage',
+      tag: 'Good',
+      features: [
+        'WiFi 7 access points for full interior coverage and balcony',
+        'Cloud managed pro router',
+        'Managed PoE switch',
+        'App-managed, remote access'
+      ],
+      brands: 'Ubiquiti UniFi, Ruckus, Access Networks'
+    },
+    better: {
+      price: 9700,
+      label: 'Full Coverage',
+      tag: 'Better',
+      features: [
+        'WiFi 7 access points for full interior and balcony coverage',
+        'Cloud managed pro router',
+        'Managed pro series PoE+ switches with 10G uplinks',
+        'UPS backup for short power outages',
+        'App-managed, remote access'
+      ],
+      brands: 'Ubiquiti UniFi, Ruckus, Access Networks'
+    },
+    best: {
+      price: 15000,
+      label: 'Enterprise Class',
+      tag: 'Best',
+      features: [
+        'High capacity WiFi 7 access points for full interior and balcony coverage',
+        'Cloud managed pro router with support for multiple internet connections',
+        'Managed enterprise series PoE+ switches with 10G uplinks',
+        'UPS backup for short power outages',
+        'App-managed, remote access'
+      ],
+      brands: 'Ubiquiti UniFi, Ruckus, Access Networks'
+    }
+  }
+});
+
+// -- Condo: Remove categories not applicable --
+['surveillance', 'outdoor', 'security', 'intercom'].forEach(id => {
+  const idx = CONDO_CATEGORIES.findIndex(c => c.id === id);
+  if (idx !== -1) CONDO_CATEGORIES.splice(idx, 1);
+});
+
+// -- Condo: Multi-Room Audio --
+condoOverride('audio', {
+  tiers: {
+    good: {
+      price: 9600,
+      label: 'Basic',
+      tag: 'Good',
+      features: [
+        'Main living areas with music',
+        'Architectural in-ceiling speakers',
+        'App-controlled music',
+        'AirPlay 2 & all streaming services'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron'
+    },
+    standard: {
+      price: 18000,
+      label: 'Standard',
+      tag: 'Standard',
+      features: [
+        'Main living areas, kitchen and master suite with music',
+        'Upgraded in ceiling speakers',
+        'Automation system integration'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Sonance'
+    },
+    better: {
+      price: 27000,
+      label: 'Entertainment Focused',
+      tag: 'Better',
+      features: [
+        'Main living areas, kitchen, guest area(s), and master suite with music',
+        'More speakers in living areas to eliminate loud spots during entertaining',
+        'Premium in-ceiling speakers',
+        'Automation system integration'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron'
+    },
+    best: {
+      price: 32000,
+      label: 'Music Lover',
+      tag: 'Best',
+      features: [
+        'Main living areas, kitchen, guest area(s), and master suite with music',
+        'Ultra Premium in-ceiling speakers in main listening areas',
+        'In ceiling/in wall subwoofer(s) in main listening area(s)',
+        'Automation system integration'
+      ],
+      brands: 'Sonos Amp, Sonos Architectural by Sonance, Control4, Crestron, Monitor Audio, Sonance, B&W'
+    }
+  }
+});
+
+// -- Condo: Control & Automation --
+condoOverride('control', {
+  tiers: {
+    good: {
+      price: 9500,
+      label: 'Automation Basic',
+      tag: 'Good',
+      features: [
+        'Automation System Controller',
+        'Single Remote and App control of main TVs',
+        'Integration of installed components including lighting, music, and TVs',
+        'Basic scenes (Morning, Night, Movie)'
+      ],
+      brands: 'Control4, Crestron'
+    },
+    better: {
+      price: 16000,
+      label: 'Automation Enhanced',
+      tag: 'Better',
+      features: [
+        'Advanced Automation System Controller',
+        'Single Remote and App control of main TVs',
+        'Upgraded premium remotes',
+        'Integration of installed, compatible components including lighting, shades, music, cameras, thermostats, and TVs',
+        'Advanced scenes & scheduling'
+      ],
+      brands: 'Control4, Crestron'
+    },
+    best: {
+      price: 29500,
+      label: 'Full Automation',
+      tag: 'Best',
+      features: [
+        'Advanced Automation System Controller',
+        'Single Remote and App control of all TVs',
+        'Upgraded premium remotes for main TVs',
+        'Full integration of any installed, compatible components including lighting, shades, music, security, cameras, thermostats, and TVs',
+        'Advanced scenes & scheduling'
+      ],
+      brands: 'Control4, Crestron'
+    }
+  }
+});
+
+// -- Condo: Video Wall Exterior → Balcony Video Wall --
+condoOverride('videowall-exterior', {
+  name: 'Video Wall Balcony/Terrace',
+  desc: 'Weather-rated LED video wall for balcony or covered terrace',
+});
+
+// -- Condo: No extras section --
+CONDO_EXTRAS.length = 0;
+
+// ---- CONFIG MAP ----
+const CONFIGS = {
+  residential: { categories: RESIDENTIAL_CATEGORIES, extras: RESIDENTIAL_EXTRAS },
+  condo: { categories: CONDO_CATEGORIES, extras: CONDO_EXTRAS }
+};
