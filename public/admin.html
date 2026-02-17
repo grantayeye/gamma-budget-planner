@@ -460,22 +460,73 @@
 <!-- LOGIN PAGE -->
 <div class="login-container" id="loginPage">
   <div class="login-card">
-    <h1>🔐 Budget Admin</h1>
-    <p>Sign in to manage budgets and view analytics</p>
-    
-    <div class="error-message" id="loginError"></div>
-    
-    <form onsubmit="handleLogin(event)">
-      <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="loginUsername" required autocomplete="username">
+    <!-- SIGN IN VIEW -->
+    <div id="loginView">
+      <h1>🔐 Budget Admin</h1>
+      <p>Sign in to manage budgets and view analytics</p>
+      
+      <div class="error-message" id="loginError"></div>
+      
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="loginUsername" required autocomplete="username" placeholder="you@company.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Sign In</button>
+      </form>
+      <div style="text-align:center;margin-top:16px;">
+        <a href="#" onclick="showForgotPassword(event)" style="color:var(--accent);font-size:13px;text-decoration:none;">Forgot your password?</a>
       </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="loginPassword" required autocomplete="current-password">
+    </div>
+    
+    <!-- FORGOT PASSWORD VIEW -->
+    <div id="forgotView" style="display:none;">
+      <h1>🔑 Reset Password</h1>
+      <p>Enter your email address and we'll send you a link to reset your password.</p>
+      
+      <div class="error-message" id="forgotError"></div>
+      <div class="success-message" id="forgotSuccess" style="display:none;background:#E8F5E9;color:#2E7D32;padding:12px 16px;border-radius:8px;font-size:14px;margin-bottom:16px;"></div>
+      
+      <form onsubmit="handleForgotPassword(event)">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="forgotEmail" required autocomplete="email" placeholder="you@company.com">
+        </div>
+        <button type="submit" class="btn btn-primary" id="forgotSubmitBtn" style="width:100%;">Send Reset Link</button>
+      </form>
+      <div style="text-align:center;margin-top:16px;">
+        <a href="#" onclick="showLoginView(event)" style="color:var(--accent);font-size:13px;text-decoration:none;">← Back to Sign In</a>
       </div>
-      <button type="submit" class="btn btn-primary">Sign In</button>
-    </form>
+    </div>
+    
+    <!-- RESET PASSWORD VIEW (from email link) -->
+    <div id="resetView" style="display:none;">
+      <h1>🔒 Set New Password</h1>
+      <p>Enter your new password below.</p>
+      
+      <div class="error-message" id="resetError"></div>
+      <div class="success-message" id="resetSuccess" style="display:none;background:#E8F5E9;color:#2E7D32;padding:12px 16px;border-radius:8px;font-size:14px;margin-bottom:16px;"></div>
+      
+      <form onsubmit="handleResetPassword(event)">
+        <div class="form-group">
+          <label>New Password</label>
+          <input type="password" id="resetPassword" required autocomplete="new-password" minlength="8" placeholder="Minimum 8 characters">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="resetPasswordConfirm" required autocomplete="new-password" minlength="8" placeholder="Re-enter your password">
+        </div>
+        <div id="passwordStrength" style="font-size:12px;margin-bottom:12px;"></div>
+        <button type="submit" class="btn btn-primary" id="resetSubmitBtn" style="width:100%;">Set New Password</button>
+      </form>
+      <div style="text-align:center;margin-top:16px;">
+        <a href="#" onclick="showLoginView(event)" style="color:var(--accent);font-size:13px;text-decoration:none;">← Back to Sign In</a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -628,12 +679,13 @@
       <form onsubmit="handleUserSubmit(event)">
         <input type="hidden" id="userEditId">
         <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="userUsername" required autocomplete="off">
+          <label>Email (used as login)</label>
+          <input type="email" id="userUsername" required autocomplete="off" placeholder="user@company.com">
+          <small style="color:var(--text-light);font-size:12px;">Must be a valid email address</small>
         </div>
         <div class="form-group">
-          <label>Name</label>
-          <input type="text" id="userName" required autocomplete="off">
+          <label>Display Name</label>
+          <input type="text" id="userName" required autocomplete="off" placeholder="Full name">
         </div>
         <div class="form-group">
           <label id="passwordLabel">Password</label>
@@ -724,6 +776,9 @@ let budgets = [];
 // INIT
 // ============================================================
 async function init() {
+  // Check if this is a password reset link
+  if (checkResetToken()) return;
+  
   // Check auth status
   const res = await fetch(api('/api/auth/me'), { credentials: 'include' });
   const data = await res.json();
@@ -787,6 +842,184 @@ async function logout() {
   await fetch(api('/api/auth/logout'), { method: 'POST', credentials: 'include' });
   currentUser = null;
   showLogin();
+}
+
+// ============================================================
+// PASSWORD RESET
+// ============================================================
+function showForgotPassword(e) {
+  if (e) e.preventDefault();
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('forgotView').style.display = 'block';
+  document.getElementById('resetView').style.display = 'none';
+  document.getElementById('forgotError').style.display = 'none';
+  document.getElementById('forgotSuccess').style.display = 'none';
+  document.getElementById('forgotEmail').focus();
+}
+
+function showLoginView(e) {
+  if (e) e.preventDefault();
+  document.getElementById('loginView').style.display = 'block';
+  document.getElementById('forgotView').style.display = 'none';
+  document.getElementById('resetView').style.display = 'none';
+  // Clear hash
+  history.replaceState(null, '', window.location.pathname);
+}
+
+function showResetView() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('forgotView').style.display = 'none';
+  document.getElementById('resetView').style.display = 'block';
+  document.getElementById('resetError').style.display = 'none';
+  document.getElementById('resetSuccess').style.display = 'none';
+  document.getElementById('resetPassword').focus();
+}
+
+async function handleForgotPassword(e) {
+  e.preventDefault();
+  const email = document.getElementById('forgotEmail').value.trim();
+  const errorEl = document.getElementById('forgotError');
+  const successEl = document.getElementById('forgotSuccess');
+  const btn = document.getElementById('forgotSubmitBtn');
+  
+  // Client-side email validation
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errorEl.textContent = 'Please enter a valid email address.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  errorEl.style.display = 'none';
+  
+  try {
+    const res = await fetch(api('/api/auth/forgot-password'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      successEl.textContent = '✓ If an account with that email exists, a reset link has been sent. Check your inbox (and spam folder).';
+      successEl.style.display = 'block';
+      btn.textContent = 'Email Sent';
+    } else {
+      errorEl.textContent = data.error || 'Something went wrong.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send Reset Link';
+    }
+  } catch (err) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Send Reset Link';
+  }
+}
+
+async function handleResetPassword(e) {
+  e.preventDefault();
+  const password = document.getElementById('resetPassword').value;
+  const confirm = document.getElementById('resetPasswordConfirm').value;
+  const errorEl = document.getElementById('resetError');
+  const successEl = document.getElementById('resetSuccess');
+  const btn = document.getElementById('resetSubmitBtn');
+  
+  // Validations
+  if (password.length < 8) {
+    errorEl.textContent = 'Password must be at least 8 characters.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  if (password !== confirm) {
+    errorEl.textContent = 'Passwords do not match.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  // Extract token from URL hash
+  const hash = window.location.hash;
+  const tokenMatch = hash.match(/token=([a-f0-9]+)/);
+  if (!tokenMatch) {
+    errorEl.textContent = 'Invalid reset link. Please request a new one.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Updating...';
+  errorEl.style.display = 'none';
+  
+  try {
+    const res = await fetch(api('/api/auth/reset-password-with-token'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: tokenMatch[1], password })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      successEl.textContent = '✓ Password updated successfully! Redirecting to sign in...';
+      successEl.style.display = 'block';
+      btn.style.display = 'none';
+      // Clear hash and redirect to login after 2 seconds
+      setTimeout(() => {
+        history.replaceState(null, '', window.location.pathname);
+        showLoginView();
+      }, 2000);
+    } else {
+      errorEl.textContent = data.error || 'Reset failed. The link may have expired.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Set New Password';
+    }
+  } catch (err) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Set New Password';
+  }
+}
+
+// Password strength indicator
+document.addEventListener('DOMContentLoaded', () => {
+  const pwField = document.getElementById('resetPassword');
+  if (pwField) {
+    pwField.addEventListener('input', () => {
+      const pw = pwField.value;
+      const el = document.getElementById('passwordStrength');
+      if (!pw) { el.innerHTML = ''; return; }
+      
+      let score = 0;
+      if (pw.length >= 8) score++;
+      if (pw.length >= 12) score++;
+      if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+      if (/\d/.test(pw)) score++;
+      if (/[^A-Za-z0-9]/.test(pw)) score++;
+      
+      const labels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+      const colors = ['#D32F2F', '#F57C00', '#FFC107', '#4CAF50', '#2E7D32'];
+      const idx = Math.min(score, 4);
+      
+      el.innerHTML = `<span style="color:${colors[idx]}">●</span> ${labels[idx]}`;
+    });
+  }
+});
+
+// Check for reset token in URL hash on page load
+function checkResetToken() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#reset-password') && hash.includes('token=')) {
+    document.getElementById('loginPage').style.display = 'flex';
+    showResetView();
+    return true;
+  }
+  return false;
 }
 
 // ============================================================

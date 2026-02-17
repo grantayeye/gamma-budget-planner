@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3000;
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = 'BudgetPlanner@gamma.tech';
 const FROM_NAME = 'Gamma Tech Budget Planner';
+const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 
 // ============================================================
 // DATABASE SETUP (SQLite with better-sqlite3)
@@ -127,11 +128,39 @@ db.exec(`
     access_count INTEGER DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS password_resets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE INDEX IF NOT EXISTS idx_budgets_modified ON budgets(modified_at DESC);
   CREATE INDEX IF NOT EXISTS idx_versions_budget ON budget_versions(budget_id);
   CREATE INDEX IF NOT EXISTS idx_views_budget ON budget_views(budget_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_password_resets_expires ON password_resets(expires_at);
 `);
+
+// Migrations — add email column to users if missing
+try {
+  db.prepare("SELECT email FROM users LIMIT 1").get();
+} catch {
+  db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run();
+  console.log('[DB] Added email column to users table');
+}
+
+// Migration — convert plain usernames to email format (username = email)
+const usersNeedingEmail = db.prepare("SELECT id, username FROM users WHERE email IS NULL OR email = ''").all();
+usersNeedingEmail.forEach(u => {
+  // If username is already an email, use it; otherwise leave email null (admin can update)
+  if (u.username.includes('@')) {
+    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(u.username, u.id);
+    console.log(`[DB] Set email for user ${u.username}`);
+  }
+});
 
 // ============================================================
 // RATE LIMITING
@@ -302,9 +331,9 @@ function getUserByUsername(username) {
 
 function saveUser(user) {
   db.prepare(`
-    INSERT OR REPLACE INTO users (id, username, name, password_hash)
-    VALUES (?, ?, ?, ?)
-  `).run(user.id, user.username, user.name, user.passwordHash);
+    INSERT OR REPLACE INTO users (id, username, name, password_hash, email)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(user.id, user.username, user.name, user.passwordHash, user.email || user.username);
 }
 
 // Session functions
@@ -353,20 +382,31 @@ function requireAuth(req, res, next) {
 // ============================================================
 const schemas = {
   login: z.object({
-    username: z.string().min(1).max(50),
+    username: z.string().min(1).max(254),
     password: z.string().min(1).max(100)
   }),
   
   createUser: z.object({
-    username: z.string().min(3).max(100).regex(/^[a-zA-Z0-9_@.+-]+$/),
+    username: z.string().email().max(254),
     password: z.string().min(8).max(100),
-    name: z.string().min(1).max(100)
+    name: z.string().min(1).max(100),
+    email: z.string().email().max(254).optional()
   }),
   
   updateUser: z.object({
-    username: z.string().min(3).max(100).regex(/^[a-zA-Z0-9_@.+-]+$/).optional(),
+    username: z.string().email().max(254).optional(),
     password: z.string().min(8).max(100).optional(),
-    name: z.string().min(1).max(100).optional()
+    name: z.string().min(1).max(100).optional(),
+    email: z.string().email().max(254).optional()
+  }),
+
+  forgotPassword: z.object({
+    email: z.string().email().max(254)
+  }),
+
+  resetPassword: z.object({
+    token: z.string().min(1),
+    password: z.string().min(8).max(100)
   }),
 
   createBudget: z.object({
@@ -479,6 +519,119 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
+// ============================================================
+// PASSWORD RESET (email-based)
+// ============================================================
+app.post('/api/auth/forgot-password', limits.auth, async (req, res) => {
+  try {
+    const { email } = schemas.forgotPassword.parse(req.body);
+    
+    // Always respond success to prevent email enumeration
+    const successMsg = { success: true, message: 'If an account with that email exists, a reset link has been sent.' };
+    
+    // Find user by email or username (username IS the email now)
+    const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE').get(email, email);
+    if (!user) {
+      return res.json(successMsg);
+    }
+    
+    // Clean up expired tokens for this user
+    db.prepare("DELETE FROM password_resets WHERE user_id = ? AND (expires_at < datetime('now') OR used_at IS NOT NULL)").run(user.id);
+    
+    // Check for recent active token (rate limit: 1 per 5 min per user)
+    const recent = db.prepare("SELECT * FROM password_resets WHERE user_id = ? AND used_at IS NULL AND created_at > datetime('now', '-5 minutes')").get(user.id);
+    if (recent) {
+      return res.json(successMsg); // Silently skip — already sent recently
+    }
+    
+    // Generate secure token
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const id = crypto.randomUUID();
+    
+    // Store hashed token (expires in 1 hour)
+    db.prepare("INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, datetime('now', '+1 hour'))").run(id, user.id, tokenHash);
+    
+    // Build reset link
+    const resetLink = `${APP_URL}/admin.html#reset-password?token=${token}`;
+    
+    // Send email
+    const { error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+      to: user.email || user.username,
+      subject: 'Reset Your Password — Gamma Tech Budget Planner',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+          <h2 style="color: #0F2F44; margin-bottom: 8px;">Password Reset</h2>
+          <p style="color: #5A5A5A; font-size: 15px;">Hi ${user.name},</p>
+          <p style="color: #5A5A5A; font-size: 15px;">We received a request to reset your password for the Budget Admin panel. Click the button below to set a new password:</p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${resetLink}" style="background: #017ED7; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">Reset Password</a>
+          </div>
+          <p style="color: #5A5A5A; font-size: 13px;">This link expires in <strong>1 hour</strong>. If you didn't request this, you can safely ignore this email.</p>
+          <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">Gamma Tech Budget Planner</p>
+        </div>
+      `
+    });
+    
+    if (error) {
+      console.error('Password reset email error:', error);
+      // Still return success to prevent enumeration
+    }
+    
+    res.json(successMsg);
+    
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+    console.error('Forgot password error:', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+app.post('/api/auth/reset-password-with-token', async (req, res) => {
+  try {
+    const { token, password } = schemas.resetPassword.parse(req.body);
+    
+    // Hash the provided token to compare with stored hash
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    
+    // Find valid, unused reset token
+    const reset = db.prepare(`
+      SELECT pr.*, u.username, u.name FROM password_resets pr
+      JOIN users u ON u.id = pr.user_id
+      WHERE pr.token_hash = ? AND pr.used_at IS NULL AND pr.expires_at > datetime('now')
+    `).get(tokenHash);
+    
+    if (!reset) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+    }
+    
+    // Hash new password and update user
+    const passwordHash = await bcrypt.hash(password, 10);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, reset.user_id);
+    
+    // Mark token as used
+    db.prepare("UPDATE password_resets SET used_at = datetime('now') WHERE id = ?").run(reset.id);
+    
+    // Invalidate all existing sessions for this user (force re-login)
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(reset.user_id);
+    
+    // Clean up old tokens for this user
+    db.prepare("DELETE FROM password_resets WHERE user_id = ? AND id != ?").run(reset.user_id, reset.id);
+    
+    res.json({ success: true, message: 'Password updated successfully. You can now sign in.' });
+    
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 app.post('/api/auth/logout', (req, res) => {
   const sessionId = req.cookies.session;
   if (sessionId) destroySession(sessionId);
@@ -522,6 +675,7 @@ app.post('/api/auth/users', async (req, res) => {
       id: crypto.randomUUID(),
       username: data.username,
       name: data.name,
+      email: data.email || data.username,
       passwordHash
     };
     
@@ -529,7 +683,7 @@ app.post('/api/auth/users', async (req, res) => {
     
     res.json({ 
       success: true, 
-      user: { id: user.id, username: user.username, name: user.name } 
+      user: { id: user.id, username: user.username, name: user.name, email: user.email } 
     });
     
   } catch (err) {
@@ -801,7 +955,7 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
 // Admin user routes
 app.get('/api/admin/users', requireAuth, (req, res) => {
   try {
-    const users = db.prepare('SELECT id, username, name, created_at FROM users').all();
+    const users = db.prepare('SELECT id, username, name, email, created_at FROM users').all();
     res.json(users);
   } catch (err) {
     console.error('List users error:', err);
@@ -823,8 +977,9 @@ app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
     const updates = [];
     const params = [];
     
-    if (data.username) { updates.push('username = ?'); params.push(data.username); }
+    if (data.username) { updates.push('username = ?'); params.push(data.username); updates.push('email = ?'); params.push(data.username); }
     if (data.name) { updates.push('name = ?'); params.push(data.name); }
+    if (data.email) { updates.push('email = ?'); params.push(data.email); }
     if (data.password) { updates.push('password_hash = ?'); params.push(await bcrypt.hash(data.password, 10)); }
     
     if (updates.length > 0) {
@@ -832,7 +987,7 @@ app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
       db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     }
     
-    const updatedUser = db.prepare('SELECT id, username, name FROM users WHERE id = ?').get(req.params.id);
+    const updatedUser = db.prepare('SELECT id, username, name, email FROM users WHERE id = ?').get(req.params.id);
     res.json({ success: true, user: updatedUser });
     
   } catch (err) {
