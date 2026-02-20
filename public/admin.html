@@ -594,6 +594,10 @@
       .header { flex-direction: column; gap: 12px; text-align: center; }
       .detail-grid { grid-template-columns: 1fr 1fr; }
     }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
   </style>
 </head>
 <body>
@@ -1728,6 +1732,7 @@ function saveCustomTierFeatures(index, tierKey) {
 }
 
 function toggleCategoryHidden(catId, hidden) {
+  markCatDirty();
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (editor) {
     editor.style.opacity = hidden ? '0.6' : '1';
@@ -1736,6 +1741,7 @@ function toggleCategoryHidden(catId, hidden) {
 }
 
 function toggleTierEnabled(catId, tierKey, enabled) {
+  markCatDirty();
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (editor) {
     const tierRow = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
@@ -1832,6 +1838,7 @@ function closeFeaturesModal() {
 
 let customCategoryCount = 0;
 function addCustomCategory() {
+  markCatDirty();
   const list = document.getElementById('customCategoriesList');
   const index = list.children.length;
   const html = renderCustomCategoryEditor({ id: `custom-${Date.now()}`, icon: '📦', name: '', tiers: {} }, index, null);
@@ -1839,6 +1846,7 @@ function addCustomCategory() {
 }
 
 function removeCustomCategory(index) {
+  markCatDirty();
   const el = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
   if (el) el.remove();
 }
@@ -2186,6 +2194,43 @@ document.getElementById('featuresModal').addEventListener('click', (e) => {
 // CATEGORY DEFAULTS EDITOR
 // ============================================================
 let catData = null; // full category data from API
+let catDirty = false; // track unsaved category changes
+
+// Unsaved changes guard
+window.addEventListener('beforeunload', (e) => {
+  if (catDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+function markCatDirty() {
+  catDirty = true;
+  const saveBtn = document.querySelector('#catEditorContainer .btn-primary[onclick*="saveCategoryDefaults"]') 
+    || document.querySelector('button[onclick*="saveCategoryDefaults"]');
+  if (saveBtn && !saveBtn.textContent.includes('●')) {
+    saveBtn.textContent = '● 💾 Save All (unsaved changes)';
+    saveBtn.style.animation = 'pulse 2s infinite';
+  }
+}
+
+function clearCatDirty() {
+  catDirty = false;
+  const saveBtn = document.querySelector('button[onclick*="saveCategoryDefaults"]');
+  if (saveBtn) {
+    saveBtn.textContent = '💾 Save All';
+    saveBtn.style.animation = '';
+  }
+}
+
+// Mark dirty on any input/select change inside the category editor
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('catEditorContainer');
+  if (container) {
+    container.addEventListener('input', () => markCatDirty());
+    container.addEventListener('change', () => markCatDirty());
+  }
+});
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
 const TIER_LABELS = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
 const TIER_COLORS = { good: '#4CAF50', standard: '#2196F3', better: '#FF9800', best: '#9C27B0' };
@@ -2360,6 +2405,7 @@ function loadCategoryEditor() {
 // TIER MANAGEMENT
 // ============================================================
 function enableTier(catId, tierKey, catIdx) {
+  markCatDirty();
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
@@ -2462,6 +2508,7 @@ function showAddSectionModal() {
 }
 
 function deleteSection(secName, itemCount) {
+  markCatDirty();
   if (itemCount > 0) {
     showToast(`❌ Cannot delete: section has ${itemCount} items. Remove items first.`);
     return;
@@ -2579,6 +2626,7 @@ function doAddItem() {
 }
 
 function deleteItem(catId, catIdx) {
+  markCatDirty();
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
@@ -2593,6 +2641,7 @@ function deleteItem(catId, catIdx) {
 }
 
 function moveItem(catIdx, direction) {
+  markCatDirty();
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
@@ -2645,6 +2694,7 @@ function editCatTierFeatures(catId, tierKey) {
 }
 
 function saveCatTierFeatures(catId, tierKey) {
+  markCatDirty();
   const features = document.getElementById('featuresTextarea').value.split('\n').map(f => f.trim()).filter(f => f);
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
@@ -2742,6 +2792,7 @@ async function saveCategoryDefaults() {
     const data = await res.json();
     if (res.ok && data.success) {
       showToast('✓ Categories & pricing saved');
+      clearCatDirty();
       loadCategoryData(); // refresh
     } else {
       showToast('❌ ' + (data.error || 'Failed to save'));
