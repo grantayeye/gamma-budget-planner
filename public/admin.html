@@ -735,11 +735,13 @@
     <!-- Categories & Pricing Section -->
     <div class="section-header" style="margin-top: 40px;">
       <h2>💰 Categories & Default Pricing</h2>
-      <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <select id="catPropertyType" onchange="loadCategoryEditor()" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;">
           <option value="residential">🏠 Residential</option>
           <option value="condo">🏢 Condo</option>
         </select>
+        <button class="btn btn-primary btn-small" onclick="showAddItemModal()">+ Add Item</button>
+        <button class="btn btn-small" style="background:#E8F5E9;color:#2E7D32;" onclick="showAddSectionModal()">+ Add Section</button>
         <button class="btn btn-primary btn-small" onclick="saveCategoryDefaults()">💾 Save All</button>
         <button class="btn btn-secondary btn-small" onclick="resetCategoryDefaults()">↺ Reset to Defaults</button>
       </div>
@@ -2226,9 +2228,21 @@ function loadCategoryEditor() {
   
   let html = '';
   for (const [secName, cats] of Object.entries(sections)) {
-    html += `<div class="cat-section-group"><h3>${secName}</h3>`;
+    const itemCount = cats.length;
+    html += `<div class="cat-section-group" data-section="${escAttr(secName)}">
+      <h3 style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span class="section-name-display" onclick="startRenameSection(this, '${escAttr(secName)}')" style="cursor:pointer;" title="Click to rename">${secName}</span>
+          <span style="font-size:11px;font-weight:400;color:var(--text-light);">(${itemCount} items)</span>
+        </span>
+        <span style="display:flex;gap:6px;">
+          <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#E3F2FD;color:#1565C0;" onclick="showAddItemModal('${escAttr(secName)}')">+ Item</button>
+          <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#FFEBEE;color:#C62828;" onclick="deleteSection('${escAttr(secName)}', ${itemCount})">🗑️</button>
+        </span>
+      </h3>`;
     cats.forEach(cat => {
-      const tierSummary = TIER_KEYS.filter(k => cat.tiers[k]).map(k => {
+      const configuredTiers = TIER_KEYS.filter(k => cat.tiers[k]);
+      const tierSummary = configuredTiers.map(k => {
         return `<span style="color:${TIER_COLORS[k]};">$${(cat.tiers[k].price || 0).toLocaleString()}</span>`;
       }).join(' / ');
       
@@ -2237,7 +2251,7 @@ function loadCategoryEditor() {
           <div class="cat-editor-header" onclick="this.parentElement.classList.toggle('open')">
             <div>
               <span class="cat-name">${cat.icon || ''} ${cat.name}</span>
-              <div class="cat-meta">Scale: ${cat.sizeScale ?? 0} · ${tierSummary}</div>
+              <div class="cat-meta">Scale: ${cat.sizeScale ?? 0} · ${configuredTiers.length}/4 tiers · ${tierSummary || 'No tiers'}</div>
             </div>
             <span style="color:var(--text-light);">▼</span>
           </div>
@@ -2264,12 +2278,20 @@ function loadCategoryEditor() {
                 ${TIER_KEYS.map(tk => {
                   const t = cat.tiers[tk];
                   if (!t) return `
-                    <div class="tier-edit-card" style="opacity:0.5;">
-                      <h4><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]} <span style="font-weight:normal;color:var(--text-light);">(not configured)</span></h4>
+                    <div class="tier-edit-card tier-not-configured" data-tier="${tk}" style="opacity:0.5;border:2px dashed var(--border);">
+                      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+                        <span><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</span>
+                        <button class="btn btn-small" style="padding:2px 10px;font-size:11px;background:#E8F5E9;color:#2E7D32;" onclick="enableTier('${cat.id}', '${tk}', ${cat._idx})">Enable</button>
+                      </h4>
+                      <div style="font-size:12px;color:var(--text-light);margin-top:4px;">Not configured</div>
                     </div>`;
+                  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k]).length;
                   return `
                     <div class="tier-edit-card" data-tier="${tk}">
-                      <h4><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</h4>
+                      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+                        <span><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</span>
+                        ${enabledCount > 1 ? `<button class="btn btn-small" style="padding:2px 8px;font-size:10px;background:#FFEBEE;color:#C62828;" onclick="disableTier('${cat.id}', '${tk}', ${cat._idx})">Disable</button>` : ''}
+                      </h4>
                       <div class="tier-fields">
                         <div>
                           <div class="field-label">Price ($)</div>
@@ -2293,6 +2315,10 @@ function loadCategoryEditor() {
                       </button>
                     </div>`;
                 }).join('')}
+              </div>
+              
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);text-align:right;">
+                <button class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteItem('${cat.id}', ${cat._idx})">🗑️ Delete Item</button>
               </div>
             </div>
           </div>
@@ -2322,6 +2348,242 @@ function loadCategoryEditor() {
   }
   
   document.getElementById('catEditorContainer').innerHTML = html;
+}
+
+// ============================================================
+// TIER MANAGEMENT
+// ============================================================
+function enableTier(catId, tierKey, catIdx) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  cat.tiers[tierKey] = {
+    price: 0,
+    label: TIER_LABELS[tierKey],
+    tag: TIER_LABELS[tierKey],
+    features: [],
+    brands: ''
+  };
+  
+  loadCategoryEditor();
+  // Re-open the card
+  setTimeout(() => {
+    const card = document.getElementById('catCard-' + catId);
+    if (card) card.classList.add('open');
+  }, 50);
+  showToast(`✓ ${TIER_LABELS[tierKey]} tier enabled for ${cat.name}`);
+}
+
+function disableTier(catId, tierKey, catIdx) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k]).length;
+  if (enabledCount <= 1) {
+    showToast('❌ Must keep at least 1 tier');
+    return;
+  }
+  
+  if (!confirm(`Disable ${TIER_LABELS[tierKey]} tier for ${cat.name}? This will remove its data.`)) return;
+  
+  delete cat.tiers[tierKey];
+  loadCategoryEditor();
+  setTimeout(() => {
+    const card = document.getElementById('catCard-' + catId);
+    if (card) card.classList.add('open');
+  }, 50);
+  showToast(`✓ ${TIER_LABELS[tierKey]} tier disabled`);
+}
+
+// ============================================================
+// SECTION MANAGEMENT
+// ============================================================
+function startRenameSection(el, oldName) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border:1px solid var(--accent);border-radius:4px;padding:2px 8px;font-family:inherit;';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  
+  const finish = () => {
+    const newName = input.value.trim();
+    if (newName && newName !== oldName) {
+      collectCategoryEditorData();
+      const propType = document.getElementById('catPropertyType').value;
+      const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+      categories.forEach(cat => {
+        if (cat.section === oldName) cat.section = newName;
+      });
+      loadCategoryEditor();
+      showToast(`✓ Section renamed to "${newName}"`);
+    } else {
+      loadCategoryEditor();
+    }
+  };
+  
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = oldName; input.blur(); }
+  });
+}
+
+function showAddSectionModal() {
+  const name = prompt('New section name:');
+  if (!name || !name.trim()) return;
+  
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  
+  // Check if section already exists
+  if (categories.some(c => c.section === name.trim())) {
+    showToast('❌ Section already exists');
+    return;
+  }
+  
+  // Add a placeholder item to create the section
+  showToast(`✓ Section "${name.trim()}" created — add items to it`);
+  showAddItemModal(name.trim());
+}
+
+function deleteSection(secName, itemCount) {
+  if (itemCount > 0) {
+    showToast(`❌ Cannot delete: section has ${itemCount} items. Remove items first.`);
+    return;
+  }
+  // Empty section — just refresh (it won't appear since no items)
+  showToast(`✓ Section "${secName}" removed`);
+  loadCategoryEditor();
+}
+
+// ============================================================
+// ITEM MANAGEMENT
+// ============================================================
+function showAddItemModal(presetSection) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  
+  // Get existing sections
+  const existingSections = [...new Set(categories.map(c => c.section).filter(Boolean))];
+  
+  const sectionOptions = existingSections.map(s => 
+    `<option value="${escAttr(s)}" ${s === presetSection ? 'selected' : ''}>${s}</option>`
+  ).join('');
+  
+  // Use a simple modal via the features modal
+  document.getElementById('featuresTitle').textContent = 'Add New Item';
+  document.getElementById('featuresBody').innerHTML = `
+    <div class="form-group">
+      <label>Item Name *</label>
+      <input type="text" id="newItemName" required placeholder="e.g., Smart Locks" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>Section *</label>
+      <div style="display:flex;gap:8px;">
+        <select id="newItemSection" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          ${sectionOptions}
+          <option value="__new__">+ New Section...</option>
+        </select>
+        <input type="text" id="newItemSectionCustom" placeholder="New section name" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;display:none;">
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:12px;">
+      <div class="form-group" style="flex:0 0 80px;">
+        <label>Icon</label>
+        <input type="text" id="newItemIcon" value="📦" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:18px;text-align:center;">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Description</label>
+        <input type="text" id="newItemDesc" placeholder="Brief description" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>Size Scale</label>
+      <input type="number" id="newItemScale" value="0.5" step="0.1" min="0" max="2" style="width:100px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+      <span style="font-size:12px;color:var(--text-light);margin-left:8px;">0 = no scaling, 1 = full scaling with sqft</span>
+    </div>
+    <p style="margin-top:16px;font-size:13px;color:var(--text-light);">Item will start with no tiers. Enable tiers after creating.</p>
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <button class="btn btn-primary" onclick="doAddItem()" style="flex:1;">Create Item</button>
+      <button class="btn btn-secondary" onclick="closeFeaturesModal()">Cancel</button>
+    </div>
+  `;
+  
+  // Toggle new section input
+  document.getElementById('newItemSection').addEventListener('change', function() {
+    document.getElementById('newItemSectionCustom').style.display = this.value === '__new__' ? 'block' : 'none';
+  });
+  
+  document.getElementById('featuresModal').classList.add('active');
+  document.getElementById('newItemName').focus();
+}
+
+function doAddItem() {
+  const name = document.getElementById('newItemName').value.trim();
+  if (!name) { showToast('❌ Name is required'); return; }
+  
+  let section = document.getElementById('newItemSection').value;
+  if (section === '__new__') {
+    section = document.getElementById('newItemSectionCustom').value.trim();
+    if (!section) { showToast('❌ Section name is required'); return; }
+  }
+  
+  const icon = document.getElementById('newItemIcon').value.trim() || '📦';
+  const desc = document.getElementById('newItemDesc').value.trim();
+  const sizeScale = parseFloat(document.getElementById('newItemScale').value) || 0;
+  
+  // Generate ID from name
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36);
+  
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  
+  categories.push({
+    id,
+    section,
+    name,
+    icon,
+    desc,
+    sizeScale,
+    tiers: {}
+  });
+  
+  closeFeaturesModal();
+  loadCategoryEditor();
+  showToast(`✓ "${name}" added to ${section}`);
+  
+  // Open the new card
+  setTimeout(() => {
+    const card = document.getElementById('catCard-' + id);
+    if (card) {
+      card.classList.add('open');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 100);
+}
+
+function deleteItem(catId, catIdx) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  if (!confirm(`Delete "${cat.name}"? This cannot be undone (save required).`)) return;
+  
+  categories.splice(catIdx, 1);
+  loadCategoryEditor();
+  showToast(`✓ "${cat.name}" deleted`);
 }
 
 function escAttr(s) {
