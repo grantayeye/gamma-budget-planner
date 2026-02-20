@@ -810,7 +810,7 @@ function showDashboard() {
 async function handleLogin(e) {
   e.preventDefault();
   
-  const username = document.getElementById('loginUsername').value;
+  const email = document.getElementById('loginUsername').value;
   const password = document.getElementById('loginPassword').value;
   const errorEl = document.getElementById('loginError');
   
@@ -819,7 +819,7 @@ async function handleLogin(e) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ email, password })
     });
     
     const data = await res.json();
@@ -1876,7 +1876,7 @@ async function handleUserSubmit(e) {
   
   const isEdit = !!editId;
   
-  const body = { username, name };
+  const body = { email: username, name };
   if (password) body.password = password;
   
   try {

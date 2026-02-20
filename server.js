@@ -2,14 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const { Resend } = require('resend');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
-const Database = require('better-sqlite3');
 const { z } = require('zod');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,146 +19,12 @@ const FROM_NAME = 'Gamma Tech Budget Planner';
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 
 // ============================================================
-// DATABASE SETUP (SQLite with better-sqlite3)
+// SUPABASE SETUP
 // ============================================================
-const DB_PATH = path.join(__dirname, 'data', 'app.db');
-
-// Ensure data directory exists
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
-}
-
-// Auto-backup DB before startup (keeps last 5 backups)
-const BACKUP_DIR = path.join(__dirname, 'data', 'backups');
-if (!fs.existsSync(BACKUP_DIR)) {
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
-}
-if (fs.existsSync(DB_PATH)) {
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const backupPath = path.join(BACKUP_DIR, `app-${ts}.db`);
-  try {
-    fs.copyFileSync(DB_PATH, backupPath);
-    // Also copy WAL/SHM if they exist
-    if (fs.existsSync(DB_PATH + '-wal')) fs.copyFileSync(DB_PATH + '-wal', backupPath + '-wal');
-    if (fs.existsSync(DB_PATH + '-shm')) fs.copyFileSync(DB_PATH + '-shm', backupPath + '-shm');
-    console.log(`[BACKUP] Database backed up to ${backupPath}`);
-    
-    // Prune old backups — keep last 5
-    const backups = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.startsWith('app-') && f.endsWith('.db') && !f.includes('-wal') && !f.includes('-shm'))
-      .sort()
-      .reverse();
-    for (const old of backups.slice(5)) {
-      fs.unlinkSync(path.join(BACKUP_DIR, old));
-      if (fs.existsSync(path.join(BACKUP_DIR, old + '-wal'))) fs.unlinkSync(path.join(BACKUP_DIR, old + '-wal'));
-      if (fs.existsSync(path.join(BACKUP_DIR, old + '-shm'))) fs.unlinkSync(path.join(BACKUP_DIR, old + '-shm'));
-      console.log(`[BACKUP] Pruned old backup: ${old}`);
-    }
-  } catch (err) {
-    console.error('[BACKUP] Failed to backup database:', err.message);
-  }
-}
-
-const db = new Database(DB_PATH);
-
-// Enable WAL mode for better concurrency
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-// Initialize tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS budgets (
-    id TEXT PRIMARY KEY,
-    client_name TEXT,
-    builder TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    modified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    views_count INTEGER DEFAULT 0,
-    last_viewed_at DATETIME,
-    current_state JSON,
-    is_customized INTEGER DEFAULT 0,
-    sqft_locked INTEGER,
-    property_type_locked TEXT,
-    category_config JSON,
-    custom_categories JSON,
-    customized_at TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS budget_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    budget_id TEXT REFERENCES budgets(id) ON DELETE CASCADE,
-    version_number INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    state JSON,
-    note TEXT,
-    is_pinned INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS budget_views (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    budget_id TEXT REFERENCES budgets(id) ON DELETE CASCADE,
-    viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    ip_address TEXT,
-    user_agent TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS short_links (
-    code TEXT PRIMARY KEY,
-    config TEXT NOT NULL,
-    client_name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_accessed_at DATETIME,
-    access_count INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS password_resets (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL,
-    expires_at DATETIME NOT NULL,
-    used_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_budgets_modified ON budgets(modified_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_versions_budget ON budget_versions(budget_id);
-  CREATE INDEX IF NOT EXISTS idx_views_budget ON budget_views(budget_id);
-  CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
-  CREATE INDEX IF NOT EXISTS idx_password_resets_expires ON password_resets(expires_at);
-`);
-
-// Migrations — add email column to users if missing
-try {
-  db.prepare("SELECT email FROM users LIMIT 1").get();
-} catch {
-  db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run();
-  console.log('[DB] Added email column to users table');
-}
-
-// Migration — convert plain usernames to email format (username = email)
-const usersNeedingEmail = db.prepare("SELECT id, username FROM users WHERE email IS NULL OR email = ''").all();
-usersNeedingEmail.forEach(u => {
-  // If username is already an email, use it; otherwise leave email null (admin can update)
-  if (u.username.includes('@')) {
-    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(u.username, u.id);
-    console.log(`[DB] Set email for user ${u.username}`);
-  }
-});
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
 // ============================================================
 // RATE LIMITING
@@ -215,9 +79,6 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
-// Session secret from env
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
@@ -231,10 +92,36 @@ function generateCode(length = 6) {
   return code;
 }
 
+// Extract Supabase auth token from request
+function getToken(req) {
+  // Check cookie first, then Authorization header
+  if (req.cookies.sb_token) return req.cookies.sb_token;
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) return auth.slice(7);
+  return null;
+}
+
 // Budget functions
-function loadBudget(id) {
-  const budget = db.prepare('SELECT * FROM budgets WHERE id = ?').get(id);
-  if (!budget) return null;
+async function loadBudget(id) {
+  const { data: budget, error } = await supabase
+    .from('budgets')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error || !budget) return null;
+  
+  const { data: views } = await supabase
+    .from('budget_views')
+    .select('*')
+    .eq('budget_id', id)
+    .order('viewed_at', { ascending: false });
+  
+  const { data: versions } = await supabase
+    .from('budget_versions')
+    .select('*')
+    .eq('budget_id', id)
+    .order('version_number', { ascending: true });
   
   return {
     id: budget.id,
@@ -242,53 +129,70 @@ function loadBudget(id) {
     builder: budget.builder,
     created: budget.created_at,
     lastModified: budget.modified_at,
-    views: db.prepare('SELECT * FROM budget_views WHERE budget_id = ? ORDER BY viewed_at DESC').all(id),
-    versions: db.prepare('SELECT * FROM budget_versions WHERE budget_id = ? ORDER BY version_number ASC').all(id).map(v => ({
+    views: views || [],
+    versions: (versions || []).map(v => ({
       version: v.version_number,
       timestamp: v.created_at,
-      state: JSON.parse(v.state),
+      state: v.state, // JSONB, no parse needed
       note: v.note,
       pinned: !!v.is_pinned
     })),
-    currentState: JSON.parse(budget.current_state),
+    currentState: budget.current_state, // JSONB, no parse needed
     isCustomized: !!budget.is_customized,
     sqftLocked: budget.sqft_locked,
     propertyTypeLocked: budget.property_type_locked,
-    categoryConfig: budget.category_config ? JSON.parse(budget.category_config) : null,
-    customCategories: budget.custom_categories ? JSON.parse(budget.custom_categories) : null
+    categoryConfig: budget.category_config, // JSONB
+    customCategories: budget.custom_categories // JSONB
   };
 }
 
-function saveBudget(budget) {
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO budgets 
-    (id, client_name, builder, modified_at, current_state, is_customized, sqft_locked, property_type_locked, category_config, custom_categories)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
-  `);
+async function saveBudget(budget) {
+  const { error } = await supabase
+    .from('budgets')
+    .upsert({
+      id: budget.id,
+      client_name: budget.clientName || null,
+      builder: budget.builder || null,
+      modified_at: new Date().toISOString(),
+      current_state: budget.currentState, // JSONB, no stringify needed
+      is_customized: !!budget.isCustomized,
+      sqft_locked: budget.sqftLocked || null,
+      property_type_locked: budget.propertyTypeLocked || null,
+      category_config: budget.categoryConfig || null, // JSONB
+      custom_categories: budget.customCategories || null // JSONB
+    });
   
-  stmt.run(
-    budget.id,
-    budget.clientName || null,
-    budget.builder || null,
-    JSON.stringify(budget.currentState),
-    budget.isCustomized ? 1 : 0,
-    budget.sqftLocked || null,
-    budget.propertyTypeLocked || null,
-    budget.categoryConfig ? JSON.stringify(budget.categoryConfig) : null,
-    budget.customCategories ? JSON.stringify(budget.customCategories) : null
-  );
+  if (error) console.error('saveBudget error:', error);
 }
 
-function listBudgets() {
-  const budgets = db.prepare(`
-    SELECT id, client_name, builder, created_at, modified_at, 
-           views_count, last_viewed_at, 
-           (SELECT COUNT(*) FROM budget_versions WHERE budget_id = budgets.id) as version_count,
-           json_extract(current_state, '$.total') as current_total,
-           is_customized, sqft_locked, property_type_locked
-    FROM budgets 
-    ORDER BY modified_at DESC
-  `).all();
+async function listBudgets() {
+  const { data: budgets, error } = await supabase
+    .from('budgets')
+    .select('id, client_name, builder, created_at, modified_at, views_count, last_viewed_at, is_customized, sqft_locked, property_type_locked, current_state')
+    .order('modified_at', { ascending: false });
+  
+  if (error) { console.error('listBudgets error:', error); return []; }
+  
+  // Get version counts
+  const ids = budgets.map(b => b.id);
+  const { data: versionCounts } = await supabase
+    .rpc('get_version_counts', { budget_ids: ids })
+    .catch(() => ({ data: null }));
+  
+  // Fallback: count versions per budget individually if RPC doesn't exist
+  const vcMap = {};
+  if (versionCounts) {
+    versionCounts.forEach(vc => { vcMap[vc.budget_id] = vc.count; });
+  } else {
+    // Individual counts
+    for (const b of budgets) {
+      const { count } = await supabase
+        .from('budget_versions')
+        .select('*', { count: 'exact', head: true })
+        .eq('budget_id', b.id);
+      vcMap[b.id] = count || 0;
+    }
+  }
   
   return budgets.map(b => ({
     id: b.id,
@@ -296,82 +200,59 @@ function listBudgets() {
     builder: b.builder,
     created: b.created_at,
     lastModified: b.modified_at,
-    viewCount: b.views_count,
+    viewCount: b.views_count || 0,
     lastViewed: b.last_viewed_at,
-    versionCount: b.version_count,
-    currentTotal: b.current_total || 0,
+    versionCount: vcMap[b.id] || 0,
+    currentTotal: b.current_state?.total || 0,
     isCustomized: !!b.is_customized,
     sqftLocked: b.sqft_locked,
     propertyTypeLocked: b.property_type_locked
   }));
 }
 
-function recordView(budgetId, ip, userAgent) {
-  db.prepare('INSERT INTO budget_views (budget_id, ip_address, user_agent) VALUES (?, ?, ?)')
-    .run(budgetId, ip || null, userAgent || null);
+async function recordView(budgetId, ip, userAgent) {
+  await supabase
+    .from('budget_views')
+    .insert({ budget_id: budgetId, ip_address: ip || null, user_agent: userAgent || null });
   
-  db.prepare(`
-    UPDATE budgets 
-    SET views_count = views_count + 1, last_viewed_at = CURRENT_TIMESTAMP 
-    WHERE id = ?
-  `).run(budgetId);
-}
-
-function addVersion(budgetId, versionNum, state, note, isPinned) {
-  db.prepare(`
-    INSERT INTO budget_versions (budget_id, version_number, state, note, is_pinned)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(budgetId, versionNum, JSON.stringify(state), note || '', isPinned ? 1 : 0);
-}
-
-// User functions
-function getUserByUsername(username) {
-  return db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
-}
-
-function saveUser(user) {
-  db.prepare(`
-    INSERT OR REPLACE INTO users (id, username, name, password_hash, email)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(user.id, user.username, user.name, user.passwordHash, user.email || user.username);
-}
-
-// Session functions
-function createSession(userId) {
-  const sessionId = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  await supabase
+    .from('budgets')
+    .update({ views_count: supabase.rpc ? undefined : undefined, last_viewed_at: new Date().toISOString() })
+    .eq('id', budgetId);
   
-  db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(sessionId, userId, expiresAt);
+  // Increment views_count via raw update
+  await supabase.rpc('increment_views', { bid: budgetId }).catch(async () => {
+    // Fallback: read and write
+    const { data } = await supabase.from('budgets').select('views_count').eq('id', budgetId).single();
+    if (data) {
+      await supabase.from('budgets').update({ views_count: (data.views_count || 0) + 1, last_viewed_at: new Date().toISOString() }).eq('id', budgetId);
+    }
+  });
+}
+
+async function addVersion(budgetId, versionNum, state, note, isPinned) {
+  const { error } = await supabase
+    .from('budget_versions')
+    .insert({
+      budget_id: budgetId,
+      version_number: versionNum,
+      state: state, // JSONB
+      note: note || '',
+      is_pinned: !!isPinned
+    });
   
-  return sessionId;
-}
-
-function validateSession(sessionId) {
-  if (!sessionId) return null;
-  db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
-  return db.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')").get(sessionId);
-}
-
-function destroySession(sessionId) {
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+  if (error) console.error('addVersion error:', error);
 }
 
 // ============================================================
 // AUTH MIDDLEWARE
 // ============================================================
-function requireAuth(req, res, next) {
-  const sessionId = req.cookies.session;
-  const session = validateSession(sessionId);
+async function requireAuth(req, res, next) {
+  const token = getToken(req);
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
   
-  if (!session) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const user = db.prepare('SELECT id, username, name FROM users WHERE id = ?').get(session.user_id);
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
   
   req.user = user;
   next();
@@ -382,31 +263,12 @@ function requireAuth(req, res, next) {
 // ============================================================
 const schemas = {
   login: z.object({
-    username: z.string().min(1).max(254),
+    email: z.string().email().max(254),
     password: z.string().min(1).max(100)
-  }),
-  
-  createUser: z.object({
-    username: z.string().email().max(254),
-    password: z.string().min(8).max(100),
-    name: z.string().min(1).max(100),
-    email: z.string().email().max(254).optional()
-  }),
-  
-  updateUser: z.object({
-    username: z.string().email().max(254).optional(),
-    password: z.string().min(8).max(100).optional(),
-    name: z.string().min(1).max(100).optional(),
-    email: z.string().email().max(254).optional()
   }),
 
   forgotPassword: z.object({
     email: z.string().email().max(254)
-  }),
-
-  resetPassword: z.object({
-    token: z.string().min(1),
-    password: z.string().min(8).max(100)
   }),
 
   createBudget: z.object({
@@ -418,11 +280,6 @@ const schemas = {
     state: z.any(),
     note: z.string().max(500).optional(),
     pin: z.boolean().optional()
-  }),
-
-  customizeBudget: z.object({
-    categoryConfig: z.record(z.any()).optional(),
-    customCategories: z.array(z.any()).optional()
   }),
 
   createLink: z.object({
@@ -443,11 +300,19 @@ const schemas = {
 // ============================================================
 // SHORT LINK ROUTES
 // ============================================================
-app.get('/s/:code', (req, res) => {
-  const link = db.prepare('SELECT * FROM short_links WHERE code = ?').get(req.params.code);
+app.get('/s/:code', async (req, res) => {
+  const { data: link } = await supabase
+    .from('short_links')
+    .select('*')
+    .eq('code', req.params.code)
+    .single();
   
   if (link) {
-    db.prepare(`UPDATE short_links SET last_accessed_at = CURRENT_TIMESTAMP, access_count = access_count + 1 WHERE code = ?`).run(req.params.code);
+    // Update access stats
+    await supabase
+      .from('short_links')
+      .update({ last_accessed_at: new Date().toISOString(), access_count: (link.access_count || 0) + 1 })
+      .eq('code', req.params.code);
     res.redirect('/?' + link.config);
   } else {
     res.status(404).send('Short link not found');
@@ -459,21 +324,17 @@ app.get('/s/:code', (req, res) => {
 // ============================================================
 app.post('/api/auth/login', limits.auth, async (req, res) => {
   try {
-    const { username, password } = schemas.login.parse(req.body);
-    const user = getUserByUsername(username);
+    const { email, password } = schemas.login.parse(req.body);
     
-    if (!user) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    if (error) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    const token = data.session.access_token;
     
-    const sessionId = createSession(user.id);
-    
-    res.cookie('session', sessionId, {
+    res.cookie('sb_token', token, {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
@@ -483,7 +344,11 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
     
     res.json({ 
       success: true, 
-      user: { id: user.id, username: user.username, name: user.name } 
+      user: { 
+        id: data.user.id, 
+        email: data.user.email, 
+        name: data.user.user_metadata?.name || data.user.email 
+      } 
     });
     
   } catch (err) {
@@ -495,92 +360,16 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
   }
 });
 
-// Emergency password reset via secret token (set RESET_TOKEN env var)
-app.post('/api/auth/reset-password', async (req, res) => {
-  try {
-    const { token, username, newPassword } = req.body;
-    const resetToken = process.env.RESET_TOKEN;
-    if (!resetToken || token !== resetToken) {
-      return res.status(403).json({ error: 'Invalid reset token' });
-    }
-    const hash = await bcrypt.hash(newPassword, 10);
-    const user = getUserByUsername(username);
-    if (!user) {
-      const id = crypto.randomUUID();
-      db.prepare('INSERT INTO users (id, username, name, password_hash) VALUES (?, ?, ?, ?)')
-        .run(id, username, username.charAt(0).toUpperCase() + username.slice(1), hash);
-    } else {
-      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
-    }
-    res.json({ success: true, message: `Password reset for ${username}` });
-  } catch (err) {
-    console.error('Reset error:', err);
-    res.status(500).json({ error: 'Reset failed' });
-  }
-});
-
-// ============================================================
-// PASSWORD RESET (email-based)
-// ============================================================
 app.post('/api/auth/forgot-password', limits.auth, async (req, res) => {
   try {
     const { email } = schemas.forgotPassword.parse(req.body);
-    
-    // Always respond success to prevent email enumeration
     const successMsg = { success: true, message: 'If an account with that email exists, a reset link has been sent.' };
     
-    // Find user by email or username (username IS the email now)
-    const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE').get(email, email);
-    if (!user) {
-      return res.json(successMsg);
-    }
-    
-    // Clean up expired tokens for this user
-    db.prepare("DELETE FROM password_resets WHERE user_id = ? AND (expires_at < datetime('now') OR used_at IS NOT NULL)").run(user.id);
-    
-    // Check for recent active token (rate limit: 1 per 5 min per user)
-    const recent = db.prepare("SELECT * FROM password_resets WHERE user_id = ? AND used_at IS NULL AND created_at > datetime('now', '-5 minutes')").get(user.id);
-    if (recent) {
-      return res.json(successMsg); // Silently skip — already sent recently
-    }
-    
-    // Generate secure token
-    const token = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const id = crypto.randomUUID();
-    
-    // Store hashed token (expires in 1 hour)
-    db.prepare("INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, datetime('now', '+1 hour'))").run(id, user.id, tokenHash);
-    
-    // Build reset link
-    const resetLink = `${APP_URL}/admin.html#reset-password?token=${token}`;
-    
-    // Send email
-    const { error } = await resend.emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
-      to: user.email || user.username,
-      subject: 'Reset Your Password — Gamma Tech Budget Planner',
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
-          <h2 style="color: #0F2F44; margin-bottom: 8px;">Password Reset</h2>
-          <p style="color: #5A5A5A; font-size: 15px;">Hi ${user.name},</p>
-          <p style="color: #5A5A5A; font-size: 15px;">We received a request to reset your password for the Budget Admin panel. Click the button below to set a new password:</p>
-          <div style="text-align: center; margin: 32px 0;">
-            <a href="${resetLink}" style="background: #017ED7; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">Reset Password</a>
-          </div>
-          <p style="color: #5A5A5A; font-size: 13px;">This link expires in <strong>1 hour</strong>. If you didn't request this, you can safely ignore this email.</p>
-          <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">Gamma Tech Budget Planner</p>
-        </div>
-      `
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${APP_URL}/admin.html#reset-password`
     });
     
-    if (error) {
-      console.error('Password reset email error:', error);
-      // Still return success to prevent enumeration
-    }
-    
     res.json(successMsg);
-    
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'Please enter a valid email address' });
@@ -590,108 +379,108 @@ app.post('/api/auth/forgot-password', limits.auth, async (req, res) => {
   }
 });
 
-app.post('/api/auth/reset-password-with-token', async (req, res) => {
-  try {
-    const { token, password } = schemas.resetPassword.parse(req.body);
-    
-    // Hash the provided token to compare with stored hash
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    
-    // Find valid, unused reset token
-    const reset = db.prepare(`
-      SELECT pr.*, u.username, u.name FROM password_resets pr
-      JOIN users u ON u.id = pr.user_id
-      WHERE pr.token_hash = ? AND pr.used_at IS NULL AND pr.expires_at > datetime('now')
-    `).get(tokenHash);
-    
-    if (!reset) {
-      return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
-    }
-    
-    // Hash new password and update user
-    const passwordHash = await bcrypt.hash(password, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, reset.user_id);
-    
-    // Mark token as used
-    db.prepare("UPDATE password_resets SET used_at = datetime('now') WHERE id = ?").run(reset.id);
-    
-    // Invalidate all existing sessions for this user (force re-login)
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(reset.user_id);
-    
-    // Clean up old tokens for this user
-    db.prepare("DELETE FROM password_resets WHERE user_id = ? AND id != ?").run(reset.user_id, reset.id);
-    
-    res.json({ success: true, message: 'Password updated successfully. You can now sign in.' });
-    
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-    console.error('Reset password error:', err);
-    res.status(500).json({ error: 'Something went wrong. Please try again.' });
-  }
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  const sessionId = req.cookies.session;
-  if (sessionId) destroySession(sessionId);
-  res.clearCookie('session');
+app.post('/api/auth/logout', async (req, res) => {
+  res.clearCookie('sb_token');
   res.json({ success: true });
 });
 
-app.get('/api/auth/me', (req, res) => {
-  const sessionId = req.cookies.session;
-  const session = validateSession(sessionId);
+app.get('/api/auth/me', async (req, res) => {
+  const token = getToken(req);
+  if (!token) return res.json({ authenticated: false });
   
-  if (!session) {
-    return res.json({ authenticated: false });
-  }
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.json({ authenticated: false });
   
-  const user = db.prepare('SELECT id, username, name FROM users WHERE id = ?').get(session.user_id);
-  if (!user) return res.json({ authenticated: false });
-  
-  res.json({ authenticated: true, user });
+  res.json({ 
+    authenticated: true, 
+    user: { 
+      id: user.id, 
+      email: user.email, 
+      name: user.user_metadata?.name || user.email,
+      username: user.email
+    } 
+  });
 });
 
-app.post('/api/auth/users', async (req, res) => {
+// ============================================================
+// ADMIN USER ROUTES (via Supabase Auth Admin)
+// ============================================================
+app.get('/api/admin/users', requireAuth, async (req, res) => {
   try {
-    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    const { data: { users }, error } = await supabase.auth.admin.listUsers();
+    if (error) throw error;
     
-    if (userCount > 0) {
-      const sessionId = req.cookies.session;
-      if (!validateSession(sessionId)) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-    }
+    res.json(users.map(u => ({
+      id: u.id,
+      username: u.email,
+      email: u.email,
+      name: u.user_metadata?.name || u.email,
+      created: u.created_at
+    })));
+  } catch (err) {
+    console.error('List users error:', err);
+    res.status(500).json({ error: 'Failed to list users' });
+  }
+});
+
+app.post('/api/auth/users', requireAuth, async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
     
-    const data = schemas.createUser.parse(req.body);
-    const existing = getUserByUsername(data.username);
-    if (existing) {
-      return res.status(400).json({ error: 'Username already exists' });
-    }
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name: name || email }
+    });
     
-    const passwordHash = await bcrypt.hash(data.password, 10);
-    const user = {
-      id: crypto.randomUUID(),
-      username: data.username,
-      name: data.name,
-      email: data.email || data.username,
-      passwordHash
-    };
-    
-    saveUser(user);
+    if (error) return res.status(400).json({ error: error.message });
     
     res.json({ 
       success: true, 
-      user: { id: user.id, username: user.username, name: user.name, email: user.email } 
+      user: { id: data.user.id, email: data.user.email, name: name || email } 
     });
-    
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
-    }
     console.error('Create user error:', err);
     res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+    const updates = {};
+    if (email) updates.email = email;
+    if (password) updates.password = password;
+    if (name) updates.user_metadata = { name };
+    
+    const { data, error } = await supabase.auth.admin.updateUserById(req.params.id, updates);
+    if (error) return res.status(400).json({ error: error.message });
+    
+    res.json({ 
+      success: true, 
+      user: { id: data.user.id, email: data.user.email, name: data.user.user_metadata?.name || data.user.email } 
+    });
+  } catch (err) {
+    console.error('Update user error:', err);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+app.delete('/api/admin/users/:id', requireAuth, async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    
+    const { error } = await supabase.auth.admin.deleteUser(req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
@@ -706,10 +495,10 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     let exists;
     do {
       id = generateCode(8);
-      exists = db.prepare('SELECT 1 FROM budgets WHERE id = ?').get(id);
+      const { data: check } = await supabase.from('budgets').select('id').eq('id', id).single();
+      exists = !!check;
     } while (exists);
     
-    const now = new Date().toISOString();
     const budget = {
       id,
       clientName: data.clientName || data.state.clientName || null,
@@ -721,8 +510,8 @@ app.post('/api/budgets', limits.api, async (req, res) => {
       customCategories: null
     };
     
-    saveBudget(budget);
-    addVersion(id, 1, data.state, 'Initial budget', true);
+    await saveBudget(budget);
+    await addVersion(id, 1, data.state, 'Initial budget', true);
     
     res.json({ success: true, id, url: `/b/${id}` });
     
@@ -735,9 +524,9 @@ app.post('/api/budgets', limits.api, async (req, res) => {
   }
 });
 
-app.get('/api/budgets/:id', (req, res) => {
+app.get('/api/budgets/:id', async (req, res) => {
   try {
-    const budget = loadBudget(req.params.id);
+    const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
     if (!req.query.admin) {
@@ -770,7 +559,7 @@ const VERSION_CONSOLIDATION_MS = 15 * 60 * 1000;
 app.put('/api/budgets/:id', limits.api, async (req, res) => {
   try {
     const data = schemas.updateBudget.parse(req.body);
-    const budget = loadBudget(req.params.id);
+    const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
     const now = new Date();
@@ -784,8 +573,11 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     
     if (normalizeState(lastVersion.state) === normalizeState(data.state)) {
       if (data.pin && !lastVersion.pinned) {
-        db.prepare('UPDATE budget_versions SET is_pinned = 1, note = ? WHERE budget_id = ? AND version_number = ?')
-          .run(data.note || lastVersion.note, req.params.id, lastVersion.version);
+        await supabase
+          .from('budget_versions')
+          .update({ is_pinned: true, note: data.note || lastVersion.note })
+          .eq('budget_id', req.params.id)
+          .eq('version_number', lastVersion.version);
         return res.json({ success: true, message: 'Version pinned', versionCount: budget.versions.length });
       }
       return res.json({ success: true, message: 'No changes detected', versionCount: budget.versions.length });
@@ -796,16 +588,19 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     const shouldConsolidate = !lastVersion.pinned && timeSinceLastVersion < VERSION_CONSOLIDATION_MS;
     
     if (shouldConsolidate && !data.pin) {
-      db.prepare('UPDATE budget_versions SET state = ?, created_at = ? WHERE budget_id = ? AND version_number = ?')
-        .run(JSON.stringify(data.state), nowISO, req.params.id, lastVersion.version);
+      await supabase
+        .from('budget_versions')
+        .update({ state: data.state, created_at: nowISO })
+        .eq('budget_id', req.params.id)
+        .eq('version_number', lastVersion.version);
     } else {
       const newVersionNum = budget.versions.length + 1;
-      addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin);
+      await addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin);
     }
     
     budget.currentState = data.state;
     if (data.state.clientName) budget.clientName = data.state.clientName;
-    saveBudget(budget);
+    await saveBudget(budget);
     
     res.json({
       success: true,
@@ -823,8 +618,8 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
   }
 });
 
-app.get('/b/:id', (req, res) => {
-  const budget = db.prepare('SELECT 1 FROM budgets WHERE id = ?').get(req.params.id);
+app.get('/b/:id', async (req, res) => {
+  const { data: budget } = await supabase.from('budgets').select('id').eq('id', req.params.id).single();
   if (!budget) return res.status(404).send('Budget not found');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -832,24 +627,24 @@ app.get('/b/:id', (req, res) => {
 // ============================================================
 // ADMIN API ROUTES
 // ============================================================
-app.get('/api/admin/budgets', requireAuth, (req, res) => {
+app.get('/api/admin/budgets', requireAuth, async (req, res) => {
   try {
-    res.json(listBudgets());
+    res.json(await listBudgets());
   } catch (err) {
     console.error('List budgets error:', err);
     res.status(500).json({ error: 'Failed to list budgets' });
   }
 });
 
-app.get('/api/admin/budgets/:id', requireAuth, (req, res) => {
-  const budget = loadBudget(req.params.id);
+app.get('/api/admin/budgets/:id', requireAuth, async (req, res) => {
+  const budget = await loadBudget(req.params.id);
   if (!budget) return res.status(404).json({ error: 'Budget not found' });
   res.json(budget);
 });
 
 app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res) => {
   try {
-    const budget = loadBudget(req.params.id);
+    const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
     const versionNum = parseInt(req.params.version);
@@ -857,10 +652,12 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
     if (!targetVersion) return res.status(404).json({ error: 'Version not found' });
     
     const newVersionNum = budget.versions.length + 1;
-    addVersion(req.params.id, newVersionNum, targetVersion.state, `Restored to version ${versionNum}`, true);
+    await addVersion(req.params.id, newVersionNum, targetVersion.state, `Restored to version ${versionNum}`, true);
     
-    db.prepare("UPDATE budgets SET current_state = ?, modified_at = datetime('now') WHERE id = ?")    
-      .run(JSON.stringify(targetVersion.state), req.params.id);
+    await supabase
+      .from('budgets')
+      .update({ current_state: targetVersion.state, modified_at: new Date().toISOString() })
+      .eq('id', req.params.id);
     
     res.json({ success: true, newVersion: newVersionNum });
     
@@ -870,10 +667,10 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
   }
 });
 
-app.delete('/api/admin/budgets/:id', requireAuth, (req, res) => {
+app.delete('/api/admin/budgets/:id', requireAuth, async (req, res) => {
   try {
-    const result = db.prepare('DELETE FROM budgets WHERE id = ?').run(req.params.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Budget not found' });
+    const { error } = await supabase.from('budgets').delete().eq('id', req.params.id);
+    if (error) return res.status(404).json({ error: 'Budget not found' });
     res.json({ success: true });
   } catch (err) {
     console.error('Delete budget error:', err);
@@ -892,10 +689,10 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
     let exists;
     do {
       id = generateCode(8);
-      exists = db.prepare('SELECT 1 FROM budgets WHERE id = ?').get(id);
+      const { data: check } = await supabase.from('budgets').select('id').eq('id', id).single();
+      exists = !!check;
     } while (exists);
     
-    const now = new Date().toISOString();
     const state = {
       selections: {}, extras: {}, modifiers: [], catMods: {},
       homeSize: parseInt(homeSize), propertyType,
@@ -903,8 +700,8 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
     };
     
     const budget = { id, clientName: clientName || null, builder: builder || null, currentState: state };
-    saveBudget(budget);
-    addVersion(id, 1, state, 'Initial blank budget', true);
+    await saveBudget(budget);
+    await addVersion(id, 1, state, 'Initial blank budget', true);
     
     res.json({ success: true, id, url: `/b/${id}` });
     
@@ -916,106 +713,35 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
 
 app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
   try {
-    const data = req.body; // Skip Zod validation - admin-only endpoint
-    const budget = loadBudget(req.params.id);
+    const data = req.body;
+    const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
     const now = new Date().toISOString();
     
-    db.prepare(`
-      UPDATE budgets SET
-        is_customized = 1, customized_at = ?,
-        sqft_locked = ?, property_type_locked = ?,
-        category_config = ?, custom_categories = ?, modified_at = ?
-      WHERE id = ?
-    `).run(
-      now,
-      budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize,
-      budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType,
-      data.categoryConfig ? JSON.stringify(data.categoryConfig) : null,
-      data.customCategories ? JSON.stringify(data.customCategories) : null,
-      now, req.params.id
-    );
+    await supabase
+      .from('budgets')
+      .update({
+        is_customized: true,
+        customized_at: now,
+        sqft_locked: budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize,
+        property_type_locked: budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType,
+        category_config: data.categoryConfig || null,
+        custom_categories: data.customCategories || null,
+        modified_at: now
+      })
+      .eq('id', req.params.id);
     
-    db.prepare('DELETE FROM budget_versions WHERE budget_id = ?').run(req.params.id);
+    // Wipe versions and create fresh one
+    await supabase.from('budget_versions').delete().eq('budget_id', req.params.id);
     const currentState = budget.currentState || budget.versions[budget.versions.length - 1]?.state;
-    addVersion(req.params.id, 1, currentState, 'Customization applied', true);
+    await addVersion(req.params.id, 1, currentState, 'Customization applied', true);
     
     res.json({ success: true, message: 'Budget customized successfully', versionsWiped: true });
     
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
-    }
     console.error('Customize budget error:', err);
     res.status(500).json({ error: 'Failed to customize budget' });
-  }
-});
-
-// Admin user routes
-app.get('/api/admin/users', requireAuth, (req, res) => {
-  try {
-    const users = db.prepare('SELECT id, username, name, email, created_at FROM users').all();
-    res.json(users);
-  } catch (err) {
-    console.error('List users error:', err);
-    res.status(500).json({ error: 'Failed to list users' });
-  }
-});
-
-app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
-  try {
-    const data = schemas.updateUser.parse(req.body);
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    
-    if (data.username && data.username.toLowerCase() !== user.username.toLowerCase()) {
-      const existing = getUserByUsername(data.username);
-      if (existing) return res.status(400).json({ error: 'Username already exists' });
-    }
-    
-    const updates = [];
-    const params = [];
-    
-    if (data.username) { updates.push('username = ?'); params.push(data.username); updates.push('email = ?'); params.push(data.username); }
-    if (data.name) { updates.push('name = ?'); params.push(data.name); }
-    if (data.email) { updates.push('email = ?'); params.push(data.email); }
-    if (data.password) { updates.push('password_hash = ?'); params.push(await bcrypt.hash(data.password, 10)); }
-    
-    if (updates.length > 0) {
-      params.push(req.params.id);
-      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    }
-    
-    const updatedUser = db.prepare('SELECT id, username, name, email FROM users WHERE id = ?').get(req.params.id);
-    res.json({ success: true, user: updatedUser });
-    
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
-    }
-    console.error('Update user error:', err);
-    res.status(500).json({ error: 'Failed to update user' });
-  }
-});
-
-app.delete('/api/admin/users/:id', requireAuth, (req, res) => {
-  try {
-    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-    if (userCount <= 1) return res.status(400).json({ error: 'Cannot delete the last user' });
-    
-    const sessionId = req.cookies.session;
-    const session = validateSession(sessionId);
-    if (session && session.user_id === req.params.id) {
-      return res.status(400).json({ error: 'Cannot delete your own account' });
-    }
-    
-    db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
-    
-  } catch (err) {
-    console.error('Delete user error:', err);
-    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
@@ -1029,15 +755,20 @@ app.post('/api/shorten', limits.api, async (req, res) => {
     let code = data.customCode?.toLowerCase().replace(/[^a-z0-9-]/g, '');
     
     if (code) {
-      const existing = db.prepare('SELECT 1 FROM short_links WHERE code = ?').get(code);
+      const { data: existing } = await supabase.from('short_links').select('code').eq('code', code).single();
       if (existing) return res.status(400).json({ error: 'Custom code already in use' });
     } else {
-      do { code = generateCode(); }
-      while (db.prepare('SELECT 1 FROM short_links WHERE code = ?').get(code));
+      let exists;
+      do {
+        code = generateCode();
+        const { data: check } = await supabase.from('short_links').select('code').eq('code', code).single();
+        exists = !!check;
+      } while (exists);
     }
     
-    db.prepare(`INSERT INTO short_links (code, config, client_name) VALUES (?, ?, ?)`)
-      .run(code, data.config, data.clientName || null);
+    await supabase
+      .from('short_links')
+      .insert({ code, config: data.config, client_name: data.clientName || null });
     
     res.json({ success: true, code, shortUrl: `/s/${code}` });
     
@@ -1050,10 +781,16 @@ app.post('/api/shorten', limits.api, async (req, res) => {
   }
 });
 
-app.get('/api/links', requireAuth, (req, res) => {
+app.get('/api/links', requireAuth, async (req, res) => {
   try {
-    const links = db.prepare('SELECT * FROM short_links ORDER BY created_at DESC').all();
-    res.json(links.map(l => ({
+    const { data: links, error } = await supabase
+      .from('short_links')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json((links || []).map(l => ({
       code: l.code, shortUrl: `/s/${l.code}`, config: l.config,
       clientName: l.client_name, created: l.created_at,
       lastAccessed: l.last_accessed_at, accessCount: l.access_count
@@ -1128,13 +865,13 @@ app.get('/admin/*', (req, res) => {
 // ============================================================
 // HEALTH CHECK
 // ============================================================
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   try {
-    db.prepare('SELECT 1').get();
+    const { error } = await supabase.from('budgets').select('id').limit(1);
     res.json({ 
-      status: 'ok', 
+      status: error ? 'degraded' : 'ok', 
       timestamp: new Date().toISOString(),
-      services: { database: true, email: !!process.env.RESEND_API_KEY }
+      services: { database: !error, email: !!process.env.RESEND_API_KEY }
     });
   } catch (err) {
     res.status(500).json({ status: 'error', message: 'Database error' });
@@ -1165,17 +902,10 @@ app.use((req, res) => {
 });
 
 // ============================================================
-// GRACEFUL SHUTDOWN
-// ============================================================
-process.on('SIGTERM', () => { console.log('SIGTERM received, closing database...'); db.close(); process.exit(0); });
-process.on('SIGINT', () => { console.log('SIGINT received, closing database...'); db.close(); process.exit(0); });
-
-// ============================================================
 // START SERVER
 // ============================================================
 app.listen(PORT, () => {
   console.log(`Budget Planner server running on http://localhost:${PORT}`);
   console.log(`Email from: ${FROM_NAME} <${FROM_EMAIL}>`);
-  console.log(`Database: ${DB_PATH}`);
+  console.log(`Supabase: ${process.env.SUPABASE_URL}`);
 });
-
