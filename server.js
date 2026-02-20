@@ -298,6 +298,141 @@ const schemas = {
 };
 
 // ============================================================
+// CATEGORY DEFAULTS — load static seed data
+// ============================================================
+const categoriesDataPath = path.join(__dirname, 'public', 'categories-data.js');
+function loadStaticCategoryData() {
+  const vm = require('vm');
+  const fs = require('fs');
+  const code = fs.readFileSync(categoriesDataPath, 'utf8');
+  // Replace const/let with var so they become context properties
+  const modCode = code.replace(/^const /gm, 'var ').replace(/^let /gm, 'var ');
+  const sandbox = { JSON, Object, Math, Array, console };
+  vm.createContext(sandbox);
+  vm.runInContext(modCode, sandbox);
+  return {
+    residential_categories: sandbox.RESIDENTIAL_CATEGORIES,
+    residential_extras: sandbox.RESIDENTIAL_EXTRAS,
+    condo_categories: sandbox.CONDO_CATEGORIES,
+    condo_extras: sandbox.CONDO_EXTRAS,
+    base_sqft: 4000
+  };
+}
+
+// Check if category_defaults table exists and seed if needed
+async function seedCategoryDefaults() {
+  try {
+    const { data, error } = await supabase.from('category_defaults').select('id').eq('id', 'current').single();
+    if (error && error.code === 'PGRST116') {
+      // No rows - seed from static data
+      console.log('[Categories] Seeding category_defaults from static data...');
+      const seed = loadStaticCategoryData();
+      const { error: insertErr } = await supabase.from('category_defaults').insert({
+        id: 'current',
+        ...seed,
+        updated_by: 'system-seed'
+      });
+      if (insertErr) console.error('[Categories] Seed error:', insertErr.message);
+      else console.log('[Categories] Seeded successfully');
+    } else if (error) {
+      // Table probably doesn't exist
+      console.warn('[Categories] Table may not exist. Run migrations/001_category_defaults.sql in Supabase SQL Editor.');
+    } else {
+      console.log('[Categories] category_defaults table ready');
+    }
+  } catch (err) {
+    console.warn('[Categories] Init check failed:', err.message);
+  }
+}
+
+// Seed on startup (non-blocking)
+seedCategoryDefaults();
+
+// ============================================================
+// CATEGORY API — PUBLIC
+// ============================================================
+app.get('/api/categories', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
+    if (error || !data) {
+      // Fallback to static file data
+      const staticData = loadStaticCategoryData();
+      return res.json(staticData);
+    }
+    res.json({
+      residential_categories: data.residential_categories,
+      residential_extras: data.residential_extras,
+      condo_categories: data.condo_categories,
+      condo_extras: data.condo_extras,
+      base_sqft: data.base_sqft
+    });
+  } catch (err) {
+    console.error('GET /api/categories error:', err);
+    const staticData = loadStaticCategoryData();
+    res.json(staticData);
+  }
+});
+
+// ============================================================
+// CATEGORY API — ADMIN (requireAuth)
+// ============================================================
+app.get('/api/admin/categories', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
+    if (error || !data) {
+      // Return static defaults
+      const staticData = loadStaticCategoryData();
+      return res.json({ ...staticData, updated_at: null, updated_by: null, source: 'static' });
+    }
+    res.json({ ...data, source: 'database' });
+  } catch (err) {
+    console.error('GET /api/admin/categories error:', err);
+    res.status(500).json({ error: 'Failed to load categories' });
+  }
+});
+
+app.put('/api/admin/categories', requireAuth, async (req, res) => {
+  try {
+    const { residential_categories, residential_extras, condo_categories, condo_extras, base_sqft } = req.body;
+    if (!residential_categories || !condo_categories) {
+      return res.status(400).json({ error: 'Missing required category data' });
+    }
+    const { error } = await supabase.from('category_defaults').upsert({
+      id: 'current',
+      residential_categories,
+      residential_extras: residential_extras || [],
+      condo_categories,
+      condo_extras: condo_extras || [],
+      base_sqft: base_sqft || 4000,
+      updated_at: new Date().toISOString(),
+      updated_by: req.user.email
+    });
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('PUT /api/admin/categories error:', err);
+    res.status(500).json({ error: 'Failed to save categories' });
+  }
+});
+
+app.post('/api/admin/categories/reset', requireAuth, async (req, res) => {
+  try {
+    const staticData = loadStaticCategoryData();
+    const { error } = await supabase.from('category_defaults').upsert({
+      id: 'current',
+      ...staticData,
+      updated_at: new Date().toISOString(),
+      updated_by: req.user.email + ' (reset)'
+    });
+    if (error) throw error;
+    res.json({ success: true, message: 'Reset to factory defaults' });
+  } catch (err) {
+    console.error('POST /api/admin/categories/reset error:', err);
+    res.status(500).json({ error: 'Failed to reset categories' });
+  }
+});
+
+// ============================================================
 // SHORT LINK ROUTES
 // ============================================================
 app.get('/s/:code', async (req, res) => {

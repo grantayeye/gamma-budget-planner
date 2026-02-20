@@ -447,6 +447,147 @@
       transform: translateX(-50%) translateY(0);
     }
     
+    /* CATEGORY EDITOR */
+    .cat-section-group {
+      margin-bottom: 24px;
+    }
+    .cat-section-group h3 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-light);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .cat-editor-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      overflow: hidden;
+    }
+    .cat-editor-header {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .cat-editor-header:hover {
+      background: var(--bg);
+    }
+    .cat-editor-header .cat-name {
+      font-weight: 600;
+      font-size: 15px;
+    }
+    .cat-editor-header .cat-meta {
+      font-size: 12px;
+      color: var(--text-light);
+    }
+    .cat-editor-body {
+      display: none;
+      padding: 0 16px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .cat-editor-card.open .cat-editor-body {
+      display: block;
+    }
+    .cat-editor-card.open .cat-editor-header {
+      background: var(--bg);
+    }
+    .cat-field-row {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .cat-field-row label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-light);
+    }
+    .cat-field-row input, .cat-field-row textarea {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .tier-edit-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .tier-edit-card {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .tier-edit-card h4 {
+      font-size: 13px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tier-edit-card .tier-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+    .tier-edit-card .tier-fields input {
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 13px;
+      width: 100%;
+    }
+    .tier-edit-card .tier-fields .field-label {
+      font-size: 11px;
+      color: var(--text-light);
+      margin-bottom: 2px;
+    }
+    .tier-features-btn {
+      margin-top: 8px;
+      padding: 4px 10px;
+      font-size: 12px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .tier-features-btn:hover { background: #F5F5F5; }
+    
+    .extras-editor {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .extra-row {
+      display: grid;
+      grid-template-columns: 1fr 200px 80px 80px 60px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .extra-row:last-child { border-bottom: none; }
+    .extra-row input {
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    
     @media (max-width: 768px) {
       .budget-table { overflow-x: auto; }
       .budget-table table { min-width: 600px; }
@@ -591,6 +732,30 @@
       </table>
     </div>
     
+    <!-- Categories & Pricing Section -->
+    <div class="section-header" style="margin-top: 40px;">
+      <h2>💰 Categories & Default Pricing</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="catPropertyType" onchange="loadCategoryEditor()" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;">
+          <option value="residential">🏠 Residential</option>
+          <option value="condo">🏢 Condo</option>
+        </select>
+        <button class="btn btn-primary btn-small" onclick="saveCategoryDefaults()">💾 Save All</button>
+        <button class="btn btn-secondary btn-small" onclick="resetCategoryDefaults()">↺ Reset to Defaults</button>
+      </div>
+    </div>
+    
+    <div id="catEditorInfo" style="background:#E3F2FD;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;display:none;">
+      <strong>ℹ️ Base Square Footage:</strong> 
+      <input type="number" id="catBaseSqft" value="4000" min="1000" max="20000" style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;margin:0 4px;">
+      sqft — All prices are calibrated to this baseline. Changes here affect how the budget tool scales prices.
+      <span id="catLastUpdated" style="float:right;color:var(--text-light);"></span>
+    </div>
+    
+    <div id="catEditorContainer" style="margin-bottom:24px;">
+      <div style="text-align:center;padding:40px;color:var(--text-light);">Loading category data...</div>
+    </div>
+
     <!-- Users Section -->
     <div class="section-header" style="margin-top: 40px;">
       <h2>👤 Users</h2>
@@ -2015,8 +2180,311 @@ document.getElementById('featuresModal').addEventListener('click', (e) => {
   if (e.target.id === 'featuresModal') closeFeaturesModal();
 });
 
+// ============================================================
+// CATEGORY DEFAULTS EDITOR
+// ============================================================
+let catData = null; // full category data from API
+const TIER_KEYS = ['good', 'standard', 'better', 'best'];
+const TIER_LABELS = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+const TIER_COLORS = { good: '#4CAF50', standard: '#2196F3', better: '#FF9800', best: '#9C27B0' };
+
+async function loadCategoryData() {
+  try {
+    const res = await fetch(api('/api/admin/categories'), { credentials: 'include' });
+    if (res.status === 401) return;
+    catData = await res.json();
+    document.getElementById('catEditorInfo').style.display = 'block';
+    document.getElementById('catBaseSqft').value = catData.base_sqft || 4000;
+    if (catData.updated_at) {
+      document.getElementById('catLastUpdated').textContent = 'Last updated: ' + formatRelative(catData.updated_at) + (catData.updated_by ? ' by ' + catData.updated_by : '');
+    }
+    loadCategoryEditor();
+  } catch (err) {
+    console.error('Load category data error:', err);
+    document.getElementById('catEditorContainer').innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);">Failed to load category data. The category_defaults table may not exist yet.</div>';
+  }
+}
+
+function loadCategoryEditor() {
+  if (!catData) return;
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const extras = propType === 'condo' ? catData.condo_extras : catData.residential_extras;
+  
+  if (!categories || categories.length === 0) {
+    document.getElementById('catEditorContainer').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-light);">No categories found. Click "Reset to Defaults" to seed from factory defaults.</div>';
+    return;
+  }
+  
+  // Group by section
+  const sections = {};
+  categories.forEach((cat, idx) => {
+    const sec = cat.section || 'Other';
+    if (!sections[sec]) sections[sec] = [];
+    sections[sec].push({ ...cat, _idx: idx });
+  });
+  
+  let html = '';
+  for (const [secName, cats] of Object.entries(sections)) {
+    html += `<div class="cat-section-group"><h3>${secName}</h3>`;
+    cats.forEach(cat => {
+      const tierSummary = TIER_KEYS.filter(k => cat.tiers[k]).map(k => {
+        return `<span style="color:${TIER_COLORS[k]};">$${(cat.tiers[k].price || 0).toLocaleString()}</span>`;
+      }).join(' / ');
+      
+      html += `
+        <div class="cat-editor-card" data-cat-idx="${cat._idx}" id="catCard-${cat.id}">
+          <div class="cat-editor-header" onclick="this.parentElement.classList.toggle('open')">
+            <div>
+              <span class="cat-name">${cat.icon || ''} ${cat.name}</span>
+              <div class="cat-meta">Scale: ${cat.sizeScale ?? 0} · ${tierSummary}</div>
+            </div>
+            <span style="color:var(--text-light);">▼</span>
+          </div>
+          <div class="cat-editor-body">
+            <div style="padding-top:12px;">
+              <div class="cat-field-row">
+                <label>Name</label>
+                <input type="text" data-field="name" value="${escAttr(cat.name)}">
+              </div>
+              <div class="cat-field-row">
+                <label>Icon</label>
+                <input type="text" data-field="icon" value="${escAttr(cat.icon || '')}" style="width:60px;">
+              </div>
+              <div class="cat-field-row">
+                <label>Description</label>
+                <input type="text" data-field="desc" value="${escAttr(cat.desc || '')}">
+              </div>
+              <div class="cat-field-row">
+                <label>Size Scale</label>
+                <input type="number" data-field="sizeScale" value="${cat.sizeScale ?? 0}" step="0.1" min="0" max="2" style="width:80px;">
+              </div>
+              
+              <div class="tier-edit-grid">
+                ${TIER_KEYS.map(tk => {
+                  const t = cat.tiers[tk];
+                  if (!t) return `
+                    <div class="tier-edit-card" style="opacity:0.5;">
+                      <h4><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]} <span style="font-weight:normal;color:var(--text-light);">(not configured)</span></h4>
+                    </div>`;
+                  return `
+                    <div class="tier-edit-card" data-tier="${tk}">
+                      <h4><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</h4>
+                      <div class="tier-fields">
+                        <div>
+                          <div class="field-label">Price ($)</div>
+                          <input type="number" data-tf="price" value="${t.price || 0}" min="0" step="100">
+                        </div>
+                        <div>
+                          <div class="field-label">Label</div>
+                          <input type="text" data-tf="label" value="${escAttr(t.label || '')}">
+                        </div>
+                        <div>
+                          <div class="field-label">Scale Override</div>
+                          <input type="number" data-tf="sizeScale" value="${t.sizeScale ?? ''}" step="0.1" min="0" max="2" placeholder="inherit">
+                        </div>
+                      </div>
+                      <div style="margin-top:6px;">
+                        <div class="field-label">Brands</div>
+                        <input type="text" data-tf="brands" value="${escAttr(t.brands || '')}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+                      </div>
+                      <button class="tier-features-btn" onclick="editCatTierFeatures('${cat.id}', '${tk}')">
+                        ✏️ Edit Features (${(t.features || []).length})
+                      </button>
+                    </div>`;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+    html += '</div>';
+  }
+  
+  // Extras editor
+  if (extras && extras.length > 0) {
+    html += `
+      <div class="extras-editor">
+        <h3 style="margin-bottom:12px;">➕ Extras / Add-ons</h3>
+        <div class="extra-row" style="font-weight:600;font-size:12px;color:var(--text-light);border-bottom:2px solid var(--border);">
+          <span>Name</span><span>Note</span><span>Price</span><span>Scale</span><span>Default</span>
+        </div>
+        ${extras.map((ex, i) => `
+          <div class="extra-row" data-extra-idx="${i}">
+            <input type="text" data-ef="name" value="${escAttr(ex.name || '')}">
+            <input type="text" data-ef="note" value="${escAttr(ex.note || '')}">
+            <input type="number" data-ef="price" value="${ex.price || 0}" min="0" step="100">
+            <input type="number" data-ef="sizeScale" value="${ex.sizeScale ?? 0}" step="0.1" min="0" max="2">
+            <input type="checkbox" data-ef="default" ${ex.default ? 'checked' : ''}>
+          </div>
+        `).join('')}
+      </div>`;
+  }
+  
+  document.getElementById('catEditorContainer').innerHTML = html;
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function editCatTierFeatures(catId, tierKey) {
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories.find(c => c.id === catId);
+  if (!cat || !cat.tiers[tierKey]) return;
+  
+  const t = cat.tiers[tierKey];
+  featureEditorCatId = catId;
+  featureEditorTierKey = tierKey;
+  
+  document.getElementById('featuresTitle').textContent = `${cat.icon} ${cat.name} → ${t.label || TIER_LABELS[tierKey]}`;
+  document.getElementById('featuresBody').innerHTML = `
+    <div style="margin-bottom:20px;">
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${(t.features || []).join('\n')}</textarea>
+    </div>
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-primary" onclick="saveCatTierFeatures('${catId}', '${tierKey}')" style="flex:1;">Save Features</button>
+      <button class="btn btn-secondary" onclick="closeFeaturesModal()">Cancel</button>
+    </div>
+  `;
+  document.getElementById('featuresModal').classList.add('active');
+}
+
+function saveCatTierFeatures(catId, tierKey) {
+  const features = document.getElementById('featuresTextarea').value.split('\n').map(f => f.trim()).filter(f => f);
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories.find(c => c.id === catId);
+  if (cat && cat.tiers[tierKey]) {
+    cat.tiers[tierKey].features = features;
+    // Update the button text
+    const card = document.getElementById('catCard-' + catId);
+    if (card) {
+      const btn = card.querySelector(`.tier-edit-card[data-tier="${tierKey}"] .tier-features-btn`);
+      if (btn) btn.textContent = `✏️ Edit Features (${features.length})`;
+    }
+  }
+  closeFeaturesModal();
+  showToast('✓ Features updated');
+}
+
+function collectCategoryEditorData() {
+  // Read current editor state back into catData
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const extras = propType === 'condo' ? catData.condo_extras : catData.residential_extras;
+  
+  document.querySelectorAll('.cat-editor-card').forEach(card => {
+    const idx = parseInt(card.dataset.catIdx);
+    const cat = categories[idx];
+    if (!cat) return;
+    
+    // Category-level fields
+    const nameEl = card.querySelector('[data-field="name"]');
+    if (nameEl) cat.name = nameEl.value;
+    const iconEl = card.querySelector('[data-field="icon"]');
+    if (iconEl) cat.icon = iconEl.value;
+    const descEl = card.querySelector('[data-field="desc"]');
+    if (descEl) cat.desc = descEl.value;
+    const scaleEl = card.querySelector('[data-field="sizeScale"]');
+    if (scaleEl) cat.sizeScale = parseFloat(scaleEl.value) || 0;
+    
+    // Tier fields
+    card.querySelectorAll('.tier-edit-card[data-tier]').forEach(tc => {
+      const tk = tc.dataset.tier;
+      if (!cat.tiers[tk]) return;
+      const priceEl = tc.querySelector('[data-tf="price"]');
+      if (priceEl) cat.tiers[tk].price = parseInt(priceEl.value) || 0;
+      const labelEl = tc.querySelector('[data-tf="label"]');
+      if (labelEl) cat.tiers[tk].label = labelEl.value;
+      const tierScaleEl = tc.querySelector('[data-tf="sizeScale"]');
+      if (tierScaleEl) {
+        const v = tierScaleEl.value.trim();
+        if (v === '') delete cat.tiers[tk].sizeScale;
+        else cat.tiers[tk].sizeScale = parseFloat(v);
+      }
+      const brandsEl = tc.querySelector('[data-tf="brands"]');
+      if (brandsEl) cat.tiers[tk].brands = brandsEl.value;
+    });
+  });
+  
+  // Extras
+  document.querySelectorAll('.extra-row[data-extra-idx]').forEach(row => {
+    const idx = parseInt(row.dataset.extraIdx);
+    if (!extras[idx]) return;
+    const nameEl = row.querySelector('[data-ef="name"]');
+    if (nameEl) extras[idx].name = nameEl.value;
+    const noteEl = row.querySelector('[data-ef="note"]');
+    if (noteEl) extras[idx].note = noteEl.value;
+    const priceEl = row.querySelector('[data-ef="price"]');
+    if (priceEl) extras[idx].price = parseInt(priceEl.value) || 0;
+    const scaleEl = row.querySelector('[data-ef="sizeScale"]');
+    if (scaleEl) extras[idx].sizeScale = parseFloat(scaleEl.value) || 0;
+    const defEl = row.querySelector('[data-ef="default"]');
+    if (defEl) extras[idx].default = defEl.checked;
+  });
+  
+  catData.base_sqft = parseInt(document.getElementById('catBaseSqft').value) || 4000;
+}
+
+async function saveCategoryDefaults() {
+  collectCategoryEditorData();
+  
+  if (!confirm('Save all category & pricing changes? This will immediately affect the public budget tool.')) return;
+  
+  try {
+    const res = await fetch(api('/api/admin/categories'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        residential_categories: catData.residential_categories,
+        residential_extras: catData.residential_extras,
+        condo_categories: catData.condo_categories,
+        condo_extras: catData.condo_extras,
+        base_sqft: catData.base_sqft
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('✓ Categories & pricing saved');
+      loadCategoryData(); // refresh
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to save'));
+    }
+  } catch (err) {
+    console.error('Save categories error:', err);
+    showToast('Failed to save categories');
+  }
+}
+
+async function resetCategoryDefaults() {
+  if (!confirm('Reset ALL categories & pricing to factory defaults? This will overwrite any custom changes.')) return;
+  if (!confirm('Are you sure? This cannot be undone.')) return;
+  
+  try {
+    const res = await fetch(api('/api/admin/categories/reset'), {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('✓ Reset to factory defaults');
+      loadCategoryData();
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to reset'));
+    }
+  } catch (err) {
+    console.error('Reset error:', err);
+    showToast('Failed to reset');
+  }
+}
+
 // Initialize
 init();
+loadCategoryData();
 </script>
 </body>
 </html>
