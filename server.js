@@ -175,9 +175,13 @@ async function listBudgets() {
   
   // Get version counts
   const ids = budgets.map(b => b.id);
-  const { data: versionCounts } = await supabase
-    .rpc('get_version_counts', { budget_ids: ids })
-    .catch(() => ({ data: null }));
+  let versionCounts = null;
+  try {
+    const { data } = await supabase.rpc('get_version_counts', { budget_ids: ids });
+    versionCounts = data;
+  } catch (e) {
+    // RPC may not exist, fall through to individual counts
+  }
   
   // Fallback: count versions per budget individually if RPC doesn't exist
   const vcMap = {};
