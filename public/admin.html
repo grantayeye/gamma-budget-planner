@@ -753,8 +753,8 @@
     
     <div id="catEditorInfo" style="background:#E3F2FD;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;display:none;">
       <strong>ℹ️ Base Square Footage:</strong> 
-      <input type="number" id="catBaseSqft" value="4000" min="1000" max="20000" style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;margin:0 4px;">
-      sqft — All prices are calibrated to this baseline. Changes here affect how the budget tool scales prices.
+      <span id="catBaseSqft" style="font-weight:600;">4,000</span>
+      sqft — All prices are calibrated to this baseline.
       <span id="catLastUpdated" style="float:right;color:var(--text-light);"></span>
     </div>
     
@@ -2241,7 +2241,7 @@ async function loadCategoryData() {
     if (res.status === 401) return;
     catData = await res.json();
     document.getElementById('catEditorInfo').style.display = 'block';
-    document.getElementById('catBaseSqft').value = catData.base_sqft || 4000;
+    document.getElementById('catBaseSqft').textContent = (catData.base_sqft || 4000).toLocaleString();
     if (catData.updated_at) {
       document.getElementById('catLastUpdated').textContent = 'Last updated: ' + formatRelative(catData.updated_at) + (catData.updated_by ? ' by ' + catData.updated_by : '');
     }
@@ -2768,7 +2768,7 @@ function collectCategoryEditorData() {
     if (defEl) extras[idx].default = defEl.checked;
   });
   
-  catData.base_sqft = parseInt(document.getElementById('catBaseSqft').value) || 4000;
+  // base_sqft is read-only (always 4000)
 }
 
 async function saveCategoryDefaults() {
