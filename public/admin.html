@@ -2240,19 +2240,25 @@ function loadCategoryEditor() {
           <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#FFEBEE;color:#C62828;" onclick="deleteSection('${escAttr(secName)}', ${itemCount})">🗑️</button>
         </span>
       </h3>`;
-    cats.forEach(cat => {
+    cats.forEach((cat, secIdx) => {
       const configuredTiers = TIER_KEYS.filter(k => cat.tiers[k]);
       const tierSummary = configuredTiers.map(k => {
         return `<span style="color:${TIER_COLORS[k]};">$${(cat.tiers[k].price || 0).toLocaleString()}</span>`;
       }).join(' / ');
+      const isFirst = secIdx === 0;
+      const isLast = secIdx === cats.length - 1;
       
       html += `
         <div class="cat-editor-card" data-cat-idx="${cat._idx}" id="catCard-${cat.id}">
-          <div class="cat-editor-header" onclick="this.parentElement.classList.toggle('open')">
-            <div>
+          <div class="cat-editor-header" onclick="if(event.target.closest('.reorder-btns'))return;this.parentElement.classList.toggle('open')">
+            <div style="flex:1;min-width:0;">
               <span class="cat-name">${cat.icon || ''} ${cat.name}</span>
               <div class="cat-meta">Scale: ${cat.sizeScale ?? 0} · ${configuredTiers.length}/4 tiers · ${tierSummary || 'No tiers'}</div>
             </div>
+            <span class="reorder-btns" style="display:flex;gap:2px;margin-right:8px;">
+              <button class="btn btn-small" style="padding:2px 6px;font-size:12px;line-height:1;${isFirst ? 'opacity:0.3;pointer-events:none;' : ''}" onclick="moveItem(${cat._idx}, -1)" title="Move up">▲</button>
+              <button class="btn btn-small" style="padding:2px 6px;font-size:12px;line-height:1;${isLast ? 'opacity:0.3;pointer-events:none;' : ''}" onclick="moveItem(${cat._idx}, 1)" title="Move down">▼</button>
+            </span>
             <span style="color:var(--text-light);">▼</span>
           </div>
           <div class="cat-editor-body">
@@ -2584,6 +2590,30 @@ function deleteItem(catId, catIdx) {
   categories.splice(catIdx, 1);
   loadCategoryEditor();
   showToast(`✓ "${cat.name}" deleted`);
+}
+
+function moveItem(catIdx, direction) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  // Find all items in same section, in array order
+  const section = cat.section;
+  const sectionItems = categories
+    .map((c, i) => ({ c, i }))
+    .filter(x => x.c.section === section);
+  
+  const posInSection = sectionItems.findIndex(x => x.i === catIdx);
+  const targetPosInSection = posInSection + direction;
+  if (targetPosInSection < 0 || targetPosInSection >= sectionItems.length) return;
+  
+  // Swap in the main array
+  const targetIdx = sectionItems[targetPosInSection].i;
+  [categories[catIdx], categories[targetIdx]] = [categories[targetIdx], categories[catIdx]];
+  
+  loadCategoryEditor();
 }
 
 function escAttr(s) {
