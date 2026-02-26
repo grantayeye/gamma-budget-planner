@@ -1213,6 +1213,7 @@ function showDashboard() {
   document.getElementById('userInfo').textContent = `👤 ${currentUser.name}`;
   loadBudgets();
   loadUsers();
+  loadCategoryData();
 }
 
 // ============================================================
@@ -3079,7 +3080,6 @@ function switchTab(tabName) {
 
 // Initialize
 init();
-loadCategoryData();
 </script>
 </body>
 </html>
