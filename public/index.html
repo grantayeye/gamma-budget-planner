@@ -921,6 +921,38 @@ main {
 
 <script src="categories-data.js"></script>
 <script>
+// Fetch live category data from API (overrides static file if available)
+(function() {
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/categories', false); // synchronous to ensure data is ready before render
+    xhr.timeout = 3000;
+    xhr.send();
+    if (xhr.status === 200) {
+      const d = JSON.parse(xhr.responseText);
+      if (d.residential_categories && d.residential_categories.length > 0) {
+        RESIDENTIAL_CATEGORIES.length = 0;
+        d.residential_categories.forEach(c => RESIDENTIAL_CATEGORIES.push(c));
+        RESIDENTIAL_EXTRAS.length = 0;
+        (d.residential_extras || []).forEach(e => RESIDENTIAL_EXTRAS.push(e));
+        CONDO_CATEGORIES.length = 0;
+        (d.condo_categories || []).forEach(c => CONDO_CATEGORIES.push(c));
+        CONDO_EXTRAS.length = 0;
+        (d.condo_extras || []).forEach(e => CONDO_EXTRAS.push(e));
+        // Update CONFIGS references
+        CONFIGS.residential.categories = RESIDENTIAL_CATEGORIES;
+        CONFIGS.residential.extras = RESIDENTIAL_EXTRAS;
+        CONFIGS.condo.categories = CONDO_CATEGORIES;
+        CONFIGS.condo.extras = CONDO_EXTRAS;
+        console.log('[Budget] Loaded live category data from API');
+      }
+    }
+  } catch (e) {
+    console.log('[Budget] Using static category data (API unavailable)');
+  }
+})();
+</script>
+<script>
 // ============================================================
 // BASE PATH DETECTION (for reverse proxy / Tailscale serve)
 // ============================================================

@@ -11,15 +11,24 @@
       --primary: #0F2F44;
       --primary-light: #133F5C;
       --accent: #017ED7;
-      --bg: #F5F7FA;
+      --accent-hover: #0069B4;
+      --bg: #F0F2F5;
       --card: #FFFFFF;
-      --border: #E0E0E0;
-      --text: #393939;
-      --text-light: #5A5A5A;
-      --success: #2E7D32;
-      --warning: #F57C00;
-      --danger: #D32F2F;
+      --border: #E2E8F0;
+      --border-light: #EDF2F7;
+      --text: #1A202C;
+      --text-light: #718096;
+      --text-muted: #A0AEC0;
+      --success: #38A169;
+      --warning: #DD6B20;
+      --danger: #E53E3E;
       --radius: 12px;
+      --radius-sm: 8px;
+      --radius-xs: 6px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.03);
+      --shadow-lg: 0 10px 25px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.04);
+      --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,6 +38,7 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
     
     /* LOGIN PAGE */
@@ -38,80 +48,98 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
+      background: linear-gradient(135deg, #0F2F44 0%, #1a4a6e 50%, #017ED7 100%);
     }
     
     .login-card {
       background: var(--card);
-      border-radius: var(--radius);
-      padding: 40px;
+      border-radius: 16px;
+      padding: 48px 40px;
       width: 100%;
-      max-width: 400px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
     }
     
     .login-card h1 {
-      font-size: 24px;
+      font-size: 26px;
       margin-bottom: 8px;
       color: var(--primary);
+      font-weight: 700;
     }
     
     .login-card p {
       color: var(--text-light);
-      margin-bottom: 24px;
+      margin-bottom: 28px;
       font-size: 14px;
+      line-height: 1.5;
     }
     
     .form-group {
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
     
     .form-group label {
       display: block;
       font-weight: 600;
       margin-bottom: 6px;
-      font-size: 14px;
+      font-size: 13px;
+      color: var(--text);
     }
     
-    .form-group input {
+    .form-group input, .form-group select {
       width: 100%;
       padding: 12px 16px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
       font-size: 15px;
       font-family: inherit;
-      transition: border-color 0.2s;
+      transition: all var(--transition);
+      background: #FAFBFC;
     }
     
-    .form-group input:focus {
+    .form-group input:focus, .form-group select:focus {
       outline: none;
       border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(1,126,215,0.12);
+      background: white;
     }
     
     .btn {
       padding: 12px 24px;
       border: none;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all var(--transition);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
+    
+    .btn:active { transform: scale(0.98); }
     
     .btn-primary {
       background: var(--accent);
       color: white;
-      width: 100%;
     }
     
     .btn-primary:hover {
-      background: #0069AF;
+      background: var(--accent-hover);
+      box-shadow: 0 2px 8px rgba(1,126,215,0.3);
     }
     
     .btn-secondary {
-      background: var(--bg);
+      background: white;
       color: var(--text);
-      border: 1px solid var(--border);
+      border: 1.5px solid var(--border);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--bg);
+      border-color: #CBD5E0;
     }
     
     .btn-danger {
@@ -119,14 +147,19 @@
       color: white;
     }
     
+    .btn-danger:hover {
+      background: #C53030;
+    }
+    
     .error-message {
-      background: #FFEBEE;
+      background: #FFF5F5;
       color: var(--danger);
-      padding: 12px;
-      border-radius: 8px;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
       margin-bottom: 16px;
       font-size: 14px;
       display: none;
+      border: 1px solid #FED7D7;
     }
     
     /* DASHBOARD */
@@ -141,84 +174,157 @@
     .header {
       background: var(--primary);
       color: white;
-      padding: 16px 24px;
+      padding: 0 32px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      height: 64px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
     
     .header h1 {
       font-size: 18px;
       font-weight: 600;
+      letter-spacing: -0.3px;
     }
     
     .header-actions {
       display: flex;
-      gap: 12px;
+      gap: 16px;
       align-items: center;
     }
     
     .user-info {
-      font-size: 14px;
-      opacity: 0.8;
+      font-size: 13px;
+      opacity: 0.7;
+      font-weight: 400;
     }
     
     .header .btn {
-      padding: 8px 16px;
+      padding: 7px 16px;
       font-size: 13px;
+      background: rgba(255,255,255,0.12);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .header .btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    /* TAB NAVIGATION */
+    .tab-bar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    
+    .tab-btn {
+      padding: 16px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      color: var(--text-light);
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+    }
+    
+    .tab-btn:hover {
+      color: var(--text);
+      background: #F7FAFC;
+    }
+    
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+    
+    .tab-panel {
+      display: none;
+    }
+    
+    .tab-panel.active {
+      display: block;
     }
     
     .content {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 32px;
     }
     
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
     }
     
     .stat-card {
       background: var(--card);
       border-radius: var(--radius);
-      padding: 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      border-top: 3px solid var(--accent);
+      transition: box-shadow var(--transition);
+    }
+    
+    .stat-card:hover {
+      box-shadow: var(--shadow-md);
     }
     
     .stat-card .label {
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-light);
-      margin-bottom: 4px;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 600;
     }
     
     .stat-card .value {
-      font-size: 28px;
+      font-size: 32px;
       font-weight: 700;
       color: var(--primary);
+      letter-spacing: -0.5px;
     }
     
     .section-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
     }
     
     .section-header h2 {
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: -0.3px;
     }
     
     .budget-table {
       background: var(--card);
       border-radius: var(--radius);
       overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-light);
     }
     
     .budget-table table {
@@ -228,32 +334,36 @@
     
     .budget-table th,
     .budget-table td {
-      padding: 14px 16px;
+      padding: 16px 20px;
       text-align: left;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-light);
     }
     
     .budget-table th {
-      background: var(--bg);
+      background: #F7FAFC;
       font-weight: 600;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-light);
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
     }
     
     .budget-table tr:last-child td {
       border-bottom: none;
     }
     
-    .budget-table tr:hover td {
-      background: #F8FAFC;
+    .budget-table tbody tr {
+      transition: background var(--transition);
+    }
+    
+    .budget-table tbody tr:hover td {
+      background: #F7FAFC;
     }
     
     .budget-link {
       color: var(--accent);
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
     }
     
     .budget-link:hover {
@@ -261,31 +371,33 @@
     }
     
     .badge {
-      display: inline-block;
-      padding: 4px 10px;
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
       border-radius: 20px;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
     }
     
     .badge-views {
-      background: #E3F2FD;
-      color: #1565C0;
+      background: #EBF8FF;
+      color: #2B6CB0;
     }
     
     .badge-versions {
-      background: #E8F5E9;
-      color: #2E7D32;
+      background: #F0FFF4;
+      color: #276749;
     }
     
     .actions-cell {
       display: flex;
-      gap: 8px;
+      gap: 6px;
     }
     
     .btn-small {
-      padding: 6px 12px;
+      padding: 7px 14px;
       font-size: 12px;
+      border-radius: var(--radius-xs);
     }
     
     /* MODAL */
@@ -296,7 +408,9 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(15,47,68,0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       z-index: 1000;
       align-items: center;
       justify-content: center;
@@ -309,25 +423,29 @@
     
     .modal {
       background: var(--card);
-      border-radius: var(--radius);
+      border-radius: 16px;
       width: 100%;
       max-width: 800px;
       max-height: 90vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.15);
     }
     
     .modal-header {
-      padding: 20px 24px;
-      border-bottom: 1px solid var(--border);
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--border-light);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      background: #F7FAFC;
     }
     
     .modal-header h2 {
       font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
     }
     
     .modal-close {
@@ -335,63 +453,76 @@
       border: none;
       font-size: 24px;
       cursor: pointer;
-      color: var(--text-light);
-      padding: 0;
+      color: var(--text-muted);
+      padding: 4px;
       line-height: 1;
+      border-radius: 6px;
+      transition: all var(--transition);
+    }
+    
+    .modal-close:hover {
+      background: var(--border-light);
+      color: var(--text);
     }
     
     .modal-body {
-      padding: 24px;
+      padding: 28px;
       overflow-y: auto;
       flex: 1;
     }
     
     .detail-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 16px;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }
     
     .detail-item {
-      background: var(--bg);
-      padding: 12px;
-      border-radius: 8px;
+      background: #F7FAFC;
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-light);
     }
     
     .detail-item .label {
-      font-size: 11px;
+      font-size: 10px;
       text-transform: uppercase;
-      color: var(--text-light);
-      margin-bottom: 4px;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
     }
     
     .detail-item .value {
-      font-weight: 600;
+      font-weight: 700;
       font-size: 15px;
+      color: var(--primary);
     }
     
     .section-title {
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
       margin-bottom: 12px;
       display: flex;
       align-items: center;
       gap: 8px;
+      color: var(--primary);
     }
     
     .views-list, .versions-list {
-      background: var(--bg);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 20px;
+      background: #F7FAFC;
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin-bottom: 24px;
       max-height: 200px;
       overflow-y: auto;
+      border: 1px solid var(--border-light);
     }
     
     .view-item, .version-item {
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-light);
       font-size: 13px;
       display: flex;
       align-items: center;
@@ -407,7 +538,7 @@
     }
     
     .version-item .version-num {
-      font-weight: 600;
+      font-weight: 700;
       color: var(--accent);
     }
     
@@ -418,28 +549,30 @@
     
     .empty-state {
       text-align: center;
-      padding: 40px;
-      color: var(--text-light);
+      padding: 60px 40px;
+      color: var(--text-muted);
     }
     
     .empty-state p {
-      margin-bottom: 16px;
+      margin-bottom: 12px;
     }
     
     /* TOAST */
     .toast {
       position: fixed;
-      bottom: 24px;
+      bottom: 32px;
       left: 50%;
       transform: translateX(-50%) translateY(20px);
       background: var(--primary);
       color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
+      padding: 14px 28px;
+      border-radius: 10px;
       font-size: 14px;
+      font-weight: 500;
       opacity: 0;
-      transition: all 0.3s;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       z-index: 2000;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
     }
     
     .toast.visible {
@@ -447,12 +580,253 @@
       transform: translateX(-50%) translateY(0);
     }
     
-    @media (max-width: 768px) {
-      .budget-table { overflow-x: auto; }
-      .budget-table table { min-width: 600px; }
-      .header { flex-direction: column; gap: 12px; text-align: center; }
-      .detail-grid { grid-template-columns: 1fr 1fr; }
+    /* CATEGORY EDITOR */
+    .cat-section-group {
+      margin-bottom: 32px;
     }
+    .cat-section-group h3 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--border-light);
+      font-weight: 700;
+    }
+    .cat-editor-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      border: 1px solid var(--border-light);
+      transition: box-shadow var(--transition);
+    }
+    .cat-editor-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+    .cat-editor-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      transition: background var(--transition);
+    }
+    .cat-editor-header:hover {
+      background: #F7FAFC;
+    }
+    .cat-editor-header .cat-name {
+      font-weight: 600;
+      font-size: 15px;
+    }
+    .cat-editor-header .cat-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .cat-editor-body {
+      display: none;
+      padding: 0 20px 20px;
+      border-top: 1px solid var(--border-light);
+    }
+    .cat-editor-card.open .cat-editor-body {
+      display: block;
+    }
+    .cat-editor-card.open .cat-editor-header {
+      background: #F7FAFC;
+    }
+    .cat-field-row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .cat-field-row label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-light);
+    }
+    .cat-field-row input, .cat-field-row textarea {
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-family: inherit;
+      font-size: 13px;
+      transition: all var(--transition);
+      background: #FAFBFC;
+    }
+    .cat-field-row input:focus, .cat-field-row textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(1,126,215,0.1);
+      background: white;
+      outline: none;
+    }
+    .tier-edit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .tier-edit-card {
+      background: #F7FAFC;
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      border: 1px solid var(--border-light);
+    }
+    .tier-edit-card h4 {
+      font-size: 13px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+    }
+    .tier-edit-card .tier-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    .tier-edit-card .tier-fields input {
+      padding: 8px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-family: inherit;
+      font-size: 13px;
+      width: 100%;
+      transition: all var(--transition);
+      background: white;
+    }
+    .tier-edit-card .tier-fields input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(1,126,215,0.1);
+      outline: none;
+    }
+    .tier-edit-card .tier-fields .field-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .tier-features-btn {
+      margin-top: 10px;
+      padding: 6px 12px;
+      font-size: 12px;
+      background: white;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all var(--transition);
+    }
+    .tier-features-btn:hover { background: #F7FAFC; border-color: var(--accent); }
+    
+    .extras-editor {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-light);
+    }
+    .extra-row {
+      display: grid;
+      grid-template-columns: 1fr 200px 80px 80px 60px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .extra-row:last-child { border-bottom: none; }
+    .extra-row input {
+      padding: 8px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-family: inherit;
+      font-size: 13px;
+    }
+    
+    /* MOBILE RESPONSIVE */
+    @media (max-width: 1024px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .tier-edit-grid { grid-template-columns: 1fr; }
+    }
+    
+    @media (max-width: 768px) {
+      .header {
+        padding: 0 16px;
+        height: 56px;
+      }
+      .header h1 { font-size: 16px; }
+      
+      .tab-bar {
+        padding: 0 16px;
+      }
+      .tab-btn {
+        padding: 14px 16px;
+        font-size: 13px;
+      }
+      
+      .content {
+        padding: 20px 16px;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .stat-card {
+        padding: 16px;
+      }
+      .stat-card .value {
+        font-size: 24px;
+      }
+      
+      .budget-table { overflow-x: auto; }
+      .budget-table table { min-width: 700px; }
+      
+      .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .detail-grid { grid-template-columns: 1fr 1fr; }
+      
+      .modal {
+        max-height: 100vh;
+        border-radius: 12px 12px 0 0;
+        align-self: flex-end;
+      }
+      
+      .extra-row {
+        grid-template-columns: 1fr 1fr;
+      }
+      
+      .cat-field-row {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .header-actions .user-info { display: none; }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #A0AEC0; }
   </style>
 </head>
 <body>
@@ -533,86 +907,123 @@
 <!-- DASHBOARD -->
 <div class="dashboard" id="dashboard">
   <header class="header">
-    <h1>📊 Budget Dashboard</h1>
+    <h1>Budget Admin</h1>
     <div class="header-actions">
       <span class="user-info" id="userInfo"></span>
-      <button class="btn btn-secondary" onclick="logout()">Logout</button>
+      <button class="btn" onclick="logout()">Logout</button>
     </div>
   </header>
   
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="budgets" onclick="switchTab('budgets')">Budgets</button>
+    <button class="tab-btn" data-tab="categories" onclick="switchTab('categories')">Categories & Pricing</button>
+    <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Users</button>
+  </nav>
+  
   <div class="content">
-    <!-- Stats -->
-    <div class="stats-grid" id="statsGrid">
-      <div class="stat-card">
-        <div class="label">Total Budgets</div>
-        <div class="value" id="statTotalBudgets">-</div>
+    <!-- TAB: Budgets -->
+    <div class="tab-panel active" id="tab-budgets">
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="label">Total Budgets</div>
+          <div class="value" id="statTotalBudgets">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Views</div>
+          <div class="value" id="statTotalViews">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">This Week</div>
+          <div class="value" id="statWeekBudgets">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Value</div>
+          <div class="value" id="statTotalValue">-</div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="label">Total Views</div>
-        <div class="value" id="statTotalViews">-</div>
+      
+      <div class="section-header">
+        <h2>All Budgets</h2>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-small" onclick="showNewBudgetModal()">+ New Budget</button>
+          <button class="btn btn-secondary btn-small" onclick="loadBudgets()">↻ Refresh</button>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="label">This Week</div>
-        <div class="value" id="statWeekBudgets">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Total Value</div>
-        <div class="value" id="statTotalValue">-</div>
+      
+      <div class="budget-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Total</th>
+              <th>Created</th>
+              <th>Views</th>
+              <th>Versions</th>
+              <th>Last Activity</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="budgetTableBody">
+            <tr>
+              <td colspan="7" class="empty-state">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
     
-    <!-- Budget List -->
-    <div class="section-header">
-      <h2>All Budgets</h2>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary btn-small" onclick="showNewBudgetModal()">+ New Custom Budget</button>
-        <button class="btn btn-secondary btn-small" onclick="loadBudgets()">↻ Refresh</button>
+    <!-- TAB: Categories & Pricing -->
+    <div class="tab-panel" id="tab-categories">
+      <div class="section-header">
+        <h2>Categories & Default Pricing</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="catPropertyType" onchange="loadCategoryEditor()" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-xs);font-family:inherit;font-size:13px;background:white;cursor:pointer;">
+            <option value="residential">🏠 Residential</option>
+            <option value="condo">🏢 Condo</option>
+          </select>
+          <button class="btn btn-primary btn-small" onclick="showAddItemModal()">+ Add Item</button>
+          <button class="btn btn-secondary btn-small" onclick="showAddSectionModal()">+ Add Section</button>
+          <button class="btn btn-primary btn-small" onclick="saveCategoryDefaults()">💾 Save All</button>
+          <button class="btn btn-secondary btn-small" onclick="resetCategoryDefaults()">↺ Reset</button>
+        </div>
+      </div>
+      
+      <div id="catEditorInfo" style="background:#EBF8FF;padding:14px 20px;border-radius:var(--radius-sm);margin-bottom:20px;font-size:13px;display:none;border:1px solid #BEE3F8;">
+        <strong>ℹ️ Base Square Footage:</strong> 
+        <span id="catBaseSqft" style="font-weight:700;">4,000</span>
+        sqft — All prices are calibrated to this baseline.
+        <span id="catLastUpdated" style="float:right;color:var(--text-light);"></span>
+      </div>
+      
+      <div id="catEditorContainer" style="margin-bottom:24px;">
+        <div style="text-align:center;padding:60px;color:var(--text-muted);">Loading category data...</div>
       </div>
     </div>
-    
-    <div class="budget-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Client</th>
-            <th>Total</th>
-            <th>Created</th>
-            <th>Views</th>
-            <th>Versions</th>
-            <th>Last Activity</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="budgetTableBody">
-          <tr>
-            <td colspan="7" class="empty-state">Loading...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    
-    <!-- Users Section -->
-    <div class="section-header" style="margin-top: 40px;">
-      <h2>👤 Users</h2>
-      <button class="btn btn-primary btn-small" onclick="showUserModal()">+ Add User</button>
-    </div>
-    
-    <div class="budget-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Name</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="usersTableBody">
-          <tr>
-            <td colspan="4" class="empty-state">Loading...</td>
-          </tr>
-        </tbody>
-      </table>
+
+    <!-- TAB: Users -->
+    <div class="tab-panel" id="tab-users">
+      <div class="section-header">
+        <h2>Users</h2>
+        <button class="btn btn-primary btn-small" onclick="showUserModal()">+ Add User</button>
+      </div>
+      
+      <div class="budget-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr>
+              <td colspan="4" class="empty-state">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -802,6 +1213,7 @@ function showDashboard() {
   document.getElementById('userInfo').textContent = `👤 ${currentUser.name}`;
   loadBudgets();
   loadUsers();
+  loadCategoryData();
 }
 
 // ============================================================
@@ -1561,6 +1973,7 @@ function saveCustomTierFeatures(index, tierKey) {
 }
 
 function toggleCategoryHidden(catId, hidden) {
+  markCatDirty();
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (editor) {
     editor.style.opacity = hidden ? '0.6' : '1';
@@ -1569,6 +1982,7 @@ function toggleCategoryHidden(catId, hidden) {
 }
 
 function toggleTierEnabled(catId, tierKey, enabled) {
+  markCatDirty();
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (editor) {
     const tierRow = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
@@ -1665,6 +2079,7 @@ function closeFeaturesModal() {
 
 let customCategoryCount = 0;
 function addCustomCategory() {
+  markCatDirty();
   const list = document.getElementById('customCategoriesList');
   const index = list.children.length;
   const html = renderCustomCategoryEditor({ id: `custom-${Date.now()}`, icon: '📦', name: '', tiers: {} }, index, null);
@@ -1672,6 +2087,7 @@ function addCustomCategory() {
 }
 
 function removeCustomCategory(index) {
+  markCatDirty();
   const el = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
   if (el) el.remove();
 }
@@ -2014,6 +2430,653 @@ document.getElementById('customizeModal').addEventListener('click', (e) => {
 document.getElementById('featuresModal').addEventListener('click', (e) => {
   if (e.target.id === 'featuresModal') closeFeaturesModal();
 });
+
+// ============================================================
+// CATEGORY DEFAULTS EDITOR
+// ============================================================
+let catData = null; // full category data from API
+let catDirty = false; // track unsaved category changes
+
+// Unsaved changes guard
+window.addEventListener('beforeunload', (e) => {
+  if (catDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+function markCatDirty() {
+  catDirty = true;
+  const saveBtn = document.querySelector('#catEditorContainer .btn-primary[onclick*="saveCategoryDefaults"]') 
+    || document.querySelector('button[onclick*="saveCategoryDefaults"]');
+  if (saveBtn && !saveBtn.textContent.includes('●')) {
+    saveBtn.textContent = '● 💾 Save All (unsaved changes)';
+    saveBtn.style.animation = 'pulse 2s infinite';
+  }
+}
+
+function clearCatDirty() {
+  catDirty = false;
+  const saveBtn = document.querySelector('button[onclick*="saveCategoryDefaults"]');
+  if (saveBtn) {
+    saveBtn.textContent = '💾 Save All';
+    saveBtn.style.animation = '';
+  }
+}
+
+// Mark dirty on any input/select change inside the category editor
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('catEditorContainer');
+  if (container) {
+    container.addEventListener('input', () => markCatDirty());
+    container.addEventListener('change', () => markCatDirty());
+  }
+});
+const TIER_KEYS = ['good', 'standard', 'better', 'best'];
+const TIER_LABELS = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+const TIER_COLORS = { good: '#4CAF50', standard: '#2196F3', better: '#FF9800', best: '#9C27B0' };
+
+async function loadCategoryData() {
+  try {
+    const res = await fetch(api('/api/admin/categories'), { credentials: 'include' });
+    if (res.status === 401) return;
+    catData = await res.json();
+    document.getElementById('catEditorInfo').style.display = 'block';
+    document.getElementById('catBaseSqft').textContent = (catData.base_sqft || 4000).toLocaleString();
+    if (catData.updated_at) {
+      document.getElementById('catLastUpdated').textContent = 'Last updated: ' + formatRelative(catData.updated_at) + (catData.updated_by ? ' by ' + catData.updated_by : '');
+    }
+    loadCategoryEditor();
+  } catch (err) {
+    console.error('Load category data error:', err);
+    document.getElementById('catEditorContainer').innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);">Failed to load category data. The category_defaults table may not exist yet.</div>';
+  }
+}
+
+function loadCategoryEditor() {
+  if (!catData) return;
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const extras = propType === 'condo' ? catData.condo_extras : catData.residential_extras;
+  
+  if (!categories || categories.length === 0) {
+    document.getElementById('catEditorContainer').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-light);">No categories found. Click "Reset to Defaults" to seed from factory defaults.</div>';
+    return;
+  }
+  
+  // Group by section
+  const sections = {};
+  categories.forEach((cat, idx) => {
+    const sec = cat.section || 'Other';
+    if (!sections[sec]) sections[sec] = [];
+    sections[sec].push({ ...cat, _idx: idx });
+  });
+  
+  let html = '';
+  for (const [secName, cats] of Object.entries(sections)) {
+    const itemCount = cats.length;
+    html += `<div class="cat-section-group" data-section="${escAttr(secName)}">
+      <h3 style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span class="section-name-display" onclick="startRenameSection(this, '${escAttr(secName)}')" style="cursor:pointer;" title="Click to rename">${secName}</span>
+          <span style="font-size:11px;font-weight:400;color:var(--text-light);">(${itemCount} items)</span>
+        </span>
+        <span style="display:flex;gap:6px;">
+          <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#E3F2FD;color:#1565C0;" onclick="showAddItemModal('${escAttr(secName)}')">+ Item</button>
+          <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#FFEBEE;color:#C62828;" onclick="deleteSection('${escAttr(secName)}', ${itemCount})">🗑️</button>
+        </span>
+      </h3>`;
+    cats.forEach((cat, secIdx) => {
+      const configuredTiers = TIER_KEYS.filter(k => cat.tiers[k]);
+      const tierSummary = configuredTiers.map(k => {
+        return `<span style="color:${TIER_COLORS[k]};">$${(cat.tiers[k].price || 0).toLocaleString()}</span>`;
+      }).join(' / ');
+      const isFirst = secIdx === 0;
+      const isLast = secIdx === cats.length - 1;
+      
+      html += `
+        <div class="cat-editor-card" data-cat-idx="${cat._idx}" id="catCard-${cat.id}">
+          <div class="cat-editor-header" onclick="if(event.target.closest('.reorder-btns'))return;this.parentElement.classList.toggle('open')">
+            <div style="flex:1;min-width:0;">
+              <span class="cat-name">${cat.icon || ''} ${cat.name}</span>
+              <div class="cat-meta">Scale: ${cat.sizeScale ?? 0} · ${configuredTiers.length}/4 tiers · ${tierSummary || 'No tiers'}</div>
+            </div>
+            <span class="reorder-btns" style="display:flex;gap:2px;margin-right:8px;">
+              <button class="btn btn-small" style="padding:2px 6px;font-size:12px;line-height:1;${isFirst ? 'opacity:0.3;pointer-events:none;' : ''}" onclick="moveItem(${cat._idx}, -1)" title="Move up">▲</button>
+              <button class="btn btn-small" style="padding:2px 6px;font-size:12px;line-height:1;${isLast ? 'opacity:0.3;pointer-events:none;' : ''}" onclick="moveItem(${cat._idx}, 1)" title="Move down">▼</button>
+            </span>
+            <span style="color:var(--text-light);">▼</span>
+          </div>
+          <div class="cat-editor-body">
+            <div style="padding-top:12px;">
+              <div class="cat-field-row">
+                <label>Name</label>
+                <input type="text" data-field="name" value="${escAttr(cat.name)}">
+              </div>
+              <div class="cat-field-row">
+                <label>Icon</label>
+                <input type="text" data-field="icon" value="${escAttr(cat.icon || '')}" style="width:60px;">
+              </div>
+              <div class="cat-field-row">
+                <label>Description</label>
+                <input type="text" data-field="desc" value="${escAttr(cat.desc || '')}">
+              </div>
+              <div class="cat-field-row">
+                <label>Size Scale</label>
+                <input type="number" data-field="sizeScale" value="${cat.sizeScale ?? 0}" step="0.1" min="0" max="2" style="width:80px;">
+              </div>
+              
+              <div class="tier-edit-grid">
+                ${TIER_KEYS.map(tk => {
+                  const t = cat.tiers[tk];
+                  if (!t) return `
+                    <div class="tier-edit-card tier-not-configured" data-tier="${tk}" style="opacity:0.5;border:2px dashed var(--border);">
+                      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+                        <span><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</span>
+                        <button class="btn btn-small" style="padding:2px 10px;font-size:11px;background:#E8F5E9;color:#2E7D32;" onclick="enableTier('${cat.id}', '${tk}', ${cat._idx})">Enable</button>
+                      </h4>
+                      <div style="font-size:12px;color:var(--text-light);margin-top:4px;">Not configured</div>
+                    </div>`;
+                  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k]).length;
+                  return `
+                    <div class="tier-edit-card" data-tier="${tk}">
+                      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+                        <span><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</span>
+                        ${enabledCount > 1 ? `<button class="btn btn-small" style="padding:2px 8px;font-size:10px;background:#FFEBEE;color:#C62828;" onclick="disableTier('${cat.id}', '${tk}', ${cat._idx})">Disable</button>` : ''}
+                      </h4>
+                      <div class="tier-fields">
+                        <div>
+                          <div class="field-label">Price ($)</div>
+                          <input type="number" data-tf="price" value="${t.price || 0}" min="0" step="100">
+                        </div>
+                        <div>
+                          <div class="field-label">Label</div>
+                          <input type="text" data-tf="label" value="${escAttr(t.label || '')}">
+                        </div>
+                        <div>
+                          <div class="field-label">Scale Override</div>
+                          <input type="number" data-tf="sizeScale" value="${t.sizeScale ?? ''}" step="0.1" min="0" max="2" placeholder="inherit">
+                        </div>
+                      </div>
+                      <div style="margin-top:6px;">
+                        <div class="field-label">Brands</div>
+                        <input type="text" data-tf="brands" value="${escAttr(t.brands || '')}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+                      </div>
+                      <button class="tier-features-btn" onclick="editCatTierFeatures('${cat.id}', '${tk}')">
+                        ✏️ Edit Features (${(t.features || []).length})
+                      </button>
+                    </div>`;
+                }).join('')}
+              </div>
+              
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);text-align:right;">
+                <button class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteItem('${cat.id}', ${cat._idx})">🗑️ Delete Item</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+    html += '</div>';
+  }
+  
+  // Extras editor
+  if (extras && extras.length > 0) {
+    html += `
+      <div class="extras-editor">
+        <h3 style="margin-bottom:12px;">➕ Extras / Add-ons</h3>
+        <div class="extra-row" style="font-weight:600;font-size:12px;color:var(--text-light);border-bottom:2px solid var(--border);">
+          <span>Name</span><span>Note</span><span>Price</span><span>Scale</span><span>Default</span>
+        </div>
+        ${extras.map((ex, i) => `
+          <div class="extra-row" data-extra-idx="${i}">
+            <input type="text" data-ef="name" value="${escAttr(ex.name || '')}">
+            <input type="text" data-ef="note" value="${escAttr(ex.note || '')}">
+            <input type="number" data-ef="price" value="${ex.price || 0}" min="0" step="100">
+            <input type="number" data-ef="sizeScale" value="${ex.sizeScale ?? 0}" step="0.1" min="0" max="2">
+            <input type="checkbox" data-ef="default" ${ex.default ? 'checked' : ''}>
+          </div>
+        `).join('')}
+      </div>`;
+  }
+  
+  document.getElementById('catEditorContainer').innerHTML = html;
+}
+
+// ============================================================
+// TIER MANAGEMENT
+// ============================================================
+function enableTier(catId, tierKey, catIdx) {
+  markCatDirty();
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  cat.tiers[tierKey] = {
+    price: 0,
+    label: TIER_LABELS[tierKey],
+    tag: TIER_LABELS[tierKey],
+    features: [],
+    brands: ''
+  };
+  
+  loadCategoryEditor();
+  // Re-open the card
+  setTimeout(() => {
+    const card = document.getElementById('catCard-' + catId);
+    if (card) card.classList.add('open');
+  }, 50);
+  showToast(`✓ ${TIER_LABELS[tierKey]} tier enabled for ${cat.name}`);
+}
+
+function disableTier(catId, tierKey, catIdx) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k]).length;
+  if (enabledCount <= 1) {
+    showToast('❌ Must keep at least 1 tier');
+    return;
+  }
+  
+  if (!confirm(`Disable ${TIER_LABELS[tierKey]} tier for ${cat.name}? This will remove its data.`)) return;
+  
+  delete cat.tiers[tierKey];
+  loadCategoryEditor();
+  setTimeout(() => {
+    const card = document.getElementById('catCard-' + catId);
+    if (card) card.classList.add('open');
+  }, 50);
+  showToast(`✓ ${TIER_LABELS[tierKey]} tier disabled`);
+}
+
+// ============================================================
+// SECTION MANAGEMENT
+// ============================================================
+function startRenameSection(el, oldName) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border:1px solid var(--accent);border-radius:4px;padding:2px 8px;font-family:inherit;';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  
+  const finish = () => {
+    const newName = input.value.trim();
+    if (newName && newName !== oldName) {
+      collectCategoryEditorData();
+      const propType = document.getElementById('catPropertyType').value;
+      const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+      categories.forEach(cat => {
+        if (cat.section === oldName) cat.section = newName;
+      });
+      loadCategoryEditor();
+      showToast(`✓ Section renamed to "${newName}"`);
+    } else {
+      loadCategoryEditor();
+    }
+  };
+  
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = oldName; input.blur(); }
+  });
+}
+
+function showAddSectionModal() {
+  const name = prompt('New section name:');
+  if (!name || !name.trim()) return;
+  
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  
+  // Check if section already exists
+  if (categories.some(c => c.section === name.trim())) {
+    showToast('❌ Section already exists');
+    return;
+  }
+  
+  // Add a placeholder item to create the section
+  showToast(`✓ Section "${name.trim()}" created — add items to it`);
+  showAddItemModal(name.trim());
+}
+
+function deleteSection(secName, itemCount) {
+  markCatDirty();
+  if (itemCount > 0) {
+    showToast(`❌ Cannot delete: section has ${itemCount} items. Remove items first.`);
+    return;
+  }
+  // Empty section — just refresh (it won't appear since no items)
+  showToast(`✓ Section "${secName}" removed`);
+  loadCategoryEditor();
+}
+
+// ============================================================
+// ITEM MANAGEMENT
+// ============================================================
+function showAddItemModal(presetSection) {
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  
+  // Get existing sections
+  const existingSections = [...new Set(categories.map(c => c.section).filter(Boolean))];
+  
+  const sectionOptions = existingSections.map(s => 
+    `<option value="${escAttr(s)}" ${s === presetSection ? 'selected' : ''}>${s}</option>`
+  ).join('');
+  
+  // Use a simple modal via the features modal
+  document.getElementById('featuresTitle').textContent = 'Add New Item';
+  document.getElementById('featuresBody').innerHTML = `
+    <div class="form-group">
+      <label>Item Name *</label>
+      <input type="text" id="newItemName" required placeholder="e.g., Smart Locks" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>Section *</label>
+      <div style="display:flex;gap:8px;">
+        <select id="newItemSection" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          ${sectionOptions}
+          <option value="__new__">+ New Section...</option>
+        </select>
+        <input type="text" id="newItemSectionCustom" placeholder="New section name" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;display:none;">
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:12px;">
+      <div class="form-group" style="flex:0 0 80px;">
+        <label>Icon</label>
+        <input type="text" id="newItemIcon" value="📦" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:18px;text-align:center;">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Description</label>
+        <input type="text" id="newItemDesc" placeholder="Brief description" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>Size Scale</label>
+      <input type="number" id="newItemScale" value="0.5" step="0.1" min="0" max="2" style="width:100px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+      <span style="font-size:12px;color:var(--text-light);margin-left:8px;">0 = no scaling, 1 = full scaling with sqft</span>
+    </div>
+    <p style="margin-top:16px;font-size:13px;color:var(--text-light);">Item will start with no tiers. Enable tiers after creating.</p>
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <button class="btn btn-primary" onclick="doAddItem()" style="flex:1;">Create Item</button>
+      <button class="btn btn-secondary" onclick="closeFeaturesModal()">Cancel</button>
+    </div>
+  `;
+  
+  // Toggle new section input
+  document.getElementById('newItemSection').addEventListener('change', function() {
+    document.getElementById('newItemSectionCustom').style.display = this.value === '__new__' ? 'block' : 'none';
+  });
+  
+  document.getElementById('featuresModal').classList.add('active');
+  document.getElementById('newItemName').focus();
+}
+
+function doAddItem() {
+  const name = document.getElementById('newItemName').value.trim();
+  if (!name) { showToast('❌ Name is required'); return; }
+  
+  let section = document.getElementById('newItemSection').value;
+  if (section === '__new__') {
+    section = document.getElementById('newItemSectionCustom').value.trim();
+    if (!section) { showToast('❌ Section name is required'); return; }
+  }
+  
+  const icon = document.getElementById('newItemIcon').value.trim() || '📦';
+  const desc = document.getElementById('newItemDesc').value.trim();
+  const sizeScale = parseFloat(document.getElementById('newItemScale').value) || 0;
+  
+  // Generate ID from name
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36);
+  
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  
+  categories.push({
+    id,
+    section,
+    name,
+    icon,
+    desc,
+    sizeScale,
+    tiers: {}
+  });
+  
+  closeFeaturesModal();
+  loadCategoryEditor();
+  showToast(`✓ "${name}" added to ${section}`);
+  
+  // Open the new card
+  setTimeout(() => {
+    const card = document.getElementById('catCard-' + id);
+    if (card) {
+      card.classList.add('open');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 100);
+}
+
+function deleteItem(catId, catIdx) {
+  markCatDirty();
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  if (!confirm(`Delete "${cat.name}"? This cannot be undone (save required).`)) return;
+  
+  categories.splice(catIdx, 1);
+  loadCategoryEditor();
+  showToast(`✓ "${cat.name}" deleted`);
+}
+
+function moveItem(catIdx, direction) {
+  markCatDirty();
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories[catIdx];
+  if (!cat) return;
+  
+  // Find all items in same section, in array order
+  const section = cat.section;
+  const sectionItems = categories
+    .map((c, i) => ({ c, i }))
+    .filter(x => x.c.section === section);
+  
+  const posInSection = sectionItems.findIndex(x => x.i === catIdx);
+  const targetPosInSection = posInSection + direction;
+  if (targetPosInSection < 0 || targetPosInSection >= sectionItems.length) return;
+  
+  // Swap in the main array
+  const targetIdx = sectionItems[targetPosInSection].i;
+  [categories[catIdx], categories[targetIdx]] = [categories[targetIdx], categories[catIdx]];
+  
+  loadCategoryEditor();
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function editCatTierFeatures(catId, tierKey) {
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories.find(c => c.id === catId);
+  if (!cat || !cat.tiers[tierKey]) return;
+  
+  const t = cat.tiers[tierKey];
+  featureEditorCatId = catId;
+  featureEditorTierKey = tierKey;
+  
+  document.getElementById('featuresTitle').textContent = `${cat.icon} ${cat.name} → ${t.label || TIER_LABELS[tierKey]}`;
+  document.getElementById('featuresBody').innerHTML = `
+    <div style="margin-bottom:20px;">
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${(t.features || []).join('\n')}</textarea>
+    </div>
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-primary" onclick="saveCatTierFeatures('${catId}', '${tierKey}')" style="flex:1;">Save Features</button>
+      <button class="btn btn-secondary" onclick="closeFeaturesModal()">Cancel</button>
+    </div>
+  `;
+  document.getElementById('featuresModal').classList.add('active');
+}
+
+function saveCatTierFeatures(catId, tierKey) {
+  markCatDirty();
+  const features = document.getElementById('featuresTextarea').value.split('\n').map(f => f.trim()).filter(f => f);
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const cat = categories.find(c => c.id === catId);
+  if (cat && cat.tiers[tierKey]) {
+    cat.tiers[tierKey].features = features;
+    // Update the button text
+    const card = document.getElementById('catCard-' + catId);
+    if (card) {
+      const btn = card.querySelector(`.tier-edit-card[data-tier="${tierKey}"] .tier-features-btn`);
+      if (btn) btn.textContent = `✏️ Edit Features (${features.length})`;
+    }
+  }
+  closeFeaturesModal();
+  showToast('✓ Features updated');
+}
+
+function collectCategoryEditorData() {
+  // Read current editor state back into catData
+  const propType = document.getElementById('catPropertyType').value;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const extras = propType === 'condo' ? catData.condo_extras : catData.residential_extras;
+  
+  document.querySelectorAll('.cat-editor-card').forEach(card => {
+    const idx = parseInt(card.dataset.catIdx);
+    const cat = categories[idx];
+    if (!cat) return;
+    
+    // Category-level fields
+    const nameEl = card.querySelector('[data-field="name"]');
+    if (nameEl) cat.name = nameEl.value;
+    const iconEl = card.querySelector('[data-field="icon"]');
+    if (iconEl) cat.icon = iconEl.value;
+    const descEl = card.querySelector('[data-field="desc"]');
+    if (descEl) cat.desc = descEl.value;
+    const scaleEl = card.querySelector('[data-field="sizeScale"]');
+    if (scaleEl) cat.sizeScale = parseFloat(scaleEl.value) || 0;
+    
+    // Tier fields
+    card.querySelectorAll('.tier-edit-card[data-tier]').forEach(tc => {
+      const tk = tc.dataset.tier;
+      if (!cat.tiers[tk]) return;
+      const priceEl = tc.querySelector('[data-tf="price"]');
+      if (priceEl) cat.tiers[tk].price = parseInt(priceEl.value) || 0;
+      const labelEl = tc.querySelector('[data-tf="label"]');
+      if (labelEl) cat.tiers[tk].label = labelEl.value;
+      const tierScaleEl = tc.querySelector('[data-tf="sizeScale"]');
+      if (tierScaleEl) {
+        const v = tierScaleEl.value.trim();
+        if (v === '') delete cat.tiers[tk].sizeScale;
+        else cat.tiers[tk].sizeScale = parseFloat(v);
+      }
+      const brandsEl = tc.querySelector('[data-tf="brands"]');
+      if (brandsEl) cat.tiers[tk].brands = brandsEl.value;
+    });
+  });
+  
+  // Extras
+  document.querySelectorAll('.extra-row[data-extra-idx]').forEach(row => {
+    const idx = parseInt(row.dataset.extraIdx);
+    if (!extras[idx]) return;
+    const nameEl = row.querySelector('[data-ef="name"]');
+    if (nameEl) extras[idx].name = nameEl.value;
+    const noteEl = row.querySelector('[data-ef="note"]');
+    if (noteEl) extras[idx].note = noteEl.value;
+    const priceEl = row.querySelector('[data-ef="price"]');
+    if (priceEl) extras[idx].price = parseInt(priceEl.value) || 0;
+    const scaleEl = row.querySelector('[data-ef="sizeScale"]');
+    if (scaleEl) extras[idx].sizeScale = parseFloat(scaleEl.value) || 0;
+    const defEl = row.querySelector('[data-ef="default"]');
+    if (defEl) extras[idx].default = defEl.checked;
+  });
+  
+  // base_sqft is read-only (always 4000)
+}
+
+async function saveCategoryDefaults() {
+  collectCategoryEditorData();
+  
+  if (!confirm('Save all category & pricing changes? This will immediately affect the public budget tool.')) return;
+  
+  try {
+    const res = await fetch(api('/api/admin/categories'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        residential_categories: catData.residential_categories,
+        residential_extras: catData.residential_extras,
+        condo_categories: catData.condo_categories,
+        condo_extras: catData.condo_extras,
+        base_sqft: catData.base_sqft
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('✓ Categories & pricing saved');
+      clearCatDirty();
+      loadCategoryData(); // refresh
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to save'));
+    }
+  } catch (err) {
+    console.error('Save categories error:', err);
+    showToast('Failed to save categories');
+  }
+}
+
+async function resetCategoryDefaults() {
+  if (!confirm('Reset ALL categories & pricing to factory defaults? This will overwrite any custom changes.')) return;
+  if (!confirm('Are you sure? This cannot be undone.')) return;
+  
+  try {
+    const res = await fetch(api('/api/admin/categories/reset'), {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('✓ Reset to factory defaults');
+      loadCategoryData();
+    } else {
+      showToast('❌ ' + (data.error || 'Failed to reset'));
+    }
+  } catch (err) {
+    console.error('Reset error:', err);
+    showToast('Failed to reset');
+  }
+}
+
+// ============================================================
+// TAB NAVIGATION
+// ============================================================
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === 'tab-' + tabName);
+  });
+}
 
 // Initialize
 init();
