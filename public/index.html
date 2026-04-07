@@ -1157,8 +1157,14 @@ function renderCategories() {
     sections[section].push(cat);
   });
   
-  // Render in defined order
-  SECTION_ORDER.forEach(sectionName => {
+  // Render in defined order — known sections first, then any custom sections
+  const knownOrder = SECTION_ORDER.filter(s => s !== 'Custom');
+  const allSections = [
+    ...knownOrder,
+    ...Object.keys(sections).filter(s => !knownOrder.includes(s))
+  ];
+
+  allSections.forEach(sectionName => {
     const cats = sections[sectionName];
     if (!cats || cats.length === 0) return;
     
@@ -1214,7 +1220,7 @@ function renderCategories() {
               <div class="tier-price">—</div>
               <div class="tier-tag">Not included</div>
             </div>
-            ${Object.keys(cat.tiers).map(t => {
+            ${Object.keys(cat.tiers || {}).map(t => {
               const tp = getCategoryPrice(cat, t);
               // Check if this tier should be disabled
               let tierDisabled = false;
