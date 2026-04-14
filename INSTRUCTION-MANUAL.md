@@ -95,19 +95,6 @@ Most categories offer tiers labeled by their tag name (Good, Standard, Better, B
 
 When you select a tier, you'll see a detailed list of what's included — specific features, equipment, and the brands used.
 
-### Preset buttons
-
-Instead of selecting each category one at a time, you can use the preset buttons to set all categories at once:
-
-- **Good** — sets every category to its Good tier
-- **Better** — sets every category to its Better tier
-- **Best** — sets every category to its Best tier
-- **Clear All** — removes all selections and resets to zero
-
-Presets are a great starting point. After applying a preset, you can go back and adjust individual categories up or down.
-
-If a category doesn't have the exact tier you selected (for example, not every category has a "Standard" tier), the tool will pick the closest available tier.
-
 ### How prices scale with home size
 
 Prices shown are based on a 4,000 sq ft home. When you change the square footage, prices adjust automatically. Larger homes cost more because they need more equipment, more wiring, and more installation time. Some categories scale more than others — for example, wiring scales heavily with home size, while a surround sound system stays the same regardless of how big the house is.
@@ -370,7 +357,7 @@ After saving the customization:
 
 1. **Create the budget before the meeting.** Open the Budget Planner, set up a rough budget with the client's name and home size, click "Share Link," and have the link ready to go. It's much smoother than building it from scratch in front of the client.
 
-2. **Use presets as a starting point.** Click "Better" to set everything to the Better tier, then adjust individual categories up or down. It's faster than selecting each one.
+2. **Select categories methodically.** Work through each section (Infrastructure, Audio, Video, etc.) and pick the tier that fits the client's needs and budget.
 
 3. **Always enter the client name.** It appears on shared budgets and in emails. A budget that says "Smith Residence" looks much more professional than a blank one.
 

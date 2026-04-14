@@ -1,10 +1,10 @@
 # Gamma Tech Budget Planner — QA Test Plan
 
-**Last Run:** _______________  
-**Tester:** _______________  
+**Last Run:** 2026-04-14  
+**Tester:** Grant (Claude Code)  
 **Environment:** https://budget-beta.gamma.tech  
 **Production:** https://budget.gamma.tech  
-**Status:** ☐ Pass / ☐ Fail / ☐ Partial  
+**Status:** ☑ Partial (17/17 run passed, 5 admin tests skipped — 1Password CLI not authenticated)  
 
 ---
 

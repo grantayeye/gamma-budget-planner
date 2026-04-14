@@ -757,6 +757,20 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
   }
 });
 
+app.get('/api/budgets/:id/poll', limits.api, async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('budgets')
+      .select('modified_at')
+      .eq('id', req.params.id)
+      .single();
+    if (!data) return res.status(404).json({ error: 'Not found' });
+    res.json({ lastModified: data.modified_at });
+  } catch (err) {
+    res.status(500).json({ error: 'Poll failed' });
+  }
+});
+
 app.get('/b/:id', async (req, res) => {
   const { data: budget } = await supabase.from('budgets').select('id').eq('id', req.params.id).single();
   if (!budget) return res.status(404).send('Budget not found');
