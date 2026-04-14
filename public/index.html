@@ -2165,15 +2165,67 @@ async function loadBudget(budgetId) {
       // Store as last saved state AFTER rendering to prevent immediate re-save
       setTimeout(() => {
         lastSavedState = getStateForAPI();
+        startLiveSync(budgetId);
       }, 100);
     }
-    
+
     return true;
   } catch (err) {
     console.error('Load budget error:', err);
     showToast('❌ Could not load budget');
     return false;
   }
+}
+
+// Live sync — poll for changes from other browsers
+let liveSyncInterval = null;
+let lastKnownModified = null;
+let isSyncing = false;
+
+function startLiveSync(budgetId) {
+  if (liveSyncInterval) clearInterval(liveSyncInterval);
+
+  liveSyncInterval = setInterval(async () => {
+    if (isSyncing || !currentBudgetId) return;
+
+    try {
+      const resp = await fetch(api(`/api/budgets/${budgetId}/poll`));
+      if (!resp.ok) return;
+      const { lastModified } = await resp.json();
+
+      if (lastKnownModified && lastModified !== lastKnownModified) {
+        const localState = JSON.stringify(getStateForAPI());
+        const savedState = JSON.stringify(lastSavedState);
+        if (localState === savedState) {
+          isSyncing = true;
+          const fullResp = await fetch(api(`/api/budgets/${budgetId}`));
+          if (!fullResp.ok) { isSyncing = false; return; }
+          const budget = await fullResp.json();
+          if (budget.currentState) {
+            const s = budget.currentState;
+            state.selections = s.selections || {};
+            state.extras = s.extras || {};
+            state.modifiers = s.modifiers || [];
+            state.catMods = s.catMods || {};
+            state.homeSize = s.homeSize || 4000;
+            state.propertyType = s.propertyType || 'residential';
+            document.getElementById('homeSize').value = state.homeSize;
+            document.getElementById('propertyType').value = state.propertyType;
+            if (s.clientName) document.getElementById('clientName').value = s.clientName;
+            renderCategories();
+            renderExtras();
+            renderModifiers();
+            updateTotals();
+            lastSavedState = getStateForAPI();
+          }
+          isSyncing = false;
+        }
+      }
+      lastKnownModified = lastModified;
+    } catch (e) {
+      // Silent fail — poll will retry next interval
+    }
+  }, 2500);
 }
 
 // Share link - creates a new live budget
@@ -2215,6 +2267,7 @@ async function shareLink() {
       currentBudgetId = result.id;
       lastSavedState = currentState;
       window.history.replaceState({}, '', result.url);
+      startLiveSync(result.id);
 
       copyToClipboard(budgetUrl);
     } else {
