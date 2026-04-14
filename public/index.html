@@ -1461,7 +1461,7 @@ function updateTotals() {
   state.modifiers.forEach(m => modifiersTotal += m.amount);
   
   const equipmentSubtotal = subtotal + extrasTotal + modifiersTotal;
-  const taxEstimate = Math.round(equipmentSubtotal * 0.07); // FL ~7% sales tax on equipment
+  const taxEstimate = Math.round(equipmentSubtotal * 0.06);
   const grandTotal = equipmentSubtotal + taxEstimate;
   const catCount = CATEGORIES().length;
   
@@ -1554,7 +1554,7 @@ function showSummary() {
   });
   
   const equipmentSubtotal = subtotal + extrasTotal + modifiersTotal;
-  const taxEstimate = Math.round(equipmentSubtotal * 0.07);
+  const taxEstimate = Math.round(equipmentSubtotal * 0.06);
   const grandTotal = equipmentSubtotal + taxEstimate;
   
   body.innerHTML = `
@@ -1595,7 +1595,7 @@ function showSummary() {
           <td class="price-cell">${formatCurrency(equipmentSubtotal)}</td>
         </tr>
         <tr>
-          <td colspan="2">Estimated Sales Tax (~7%)</td>
+          <td colspan="2">Estimated Sales Tax (6%)</td>
           <td class="price-cell">${formatCurrency(taxEstimate)}</td>
         </tr>
         <tr>
@@ -1610,7 +1610,7 @@ function showSummary() {
       • TV/display costs are generally not included unless noted (video wall categories).<br>
       • Prices reflect new construction; retrofit projects may require additional assessment.<br>
       • Equipment availability and pricing subject to change. Lead times vary by manufacturer.<br>
-      • Sales tax estimate based on FL rate (~7%); actual tax depends on installation location.<br>
+      • Sales tax estimate based on FL rate (6%); actual tax depends on installation location.<br>
       • Permits may be required for security, low-voltage, and electrical work per FL code.<br>
       <br>
       <strong>Gamma Tech Services</strong> • (239) 330-4939 • gamma.tech<br>
@@ -1715,7 +1715,7 @@ async function sendProposalEmail() {
     if (m && m.amount) subtotal += parseFloat(m.amount) || 0;
   });
   
-  const taxRate = 0.075;
+  const taxRate = 0.06;
   const total = subtotal * (1 + taxRate);
   
   // Determine tier label
