@@ -2179,39 +2179,25 @@ async function loadBudget(budgetId) {
 // Share link - creates a new live budget
 async function shareLink() {
   const currentState = getStateForAPI();
-  
-  // If we're already in a budget, just copy its link (and pin current state)
+
+  // If we're already in a budget, copy link immediately (before any async work)
   if (currentBudgetId) {
-    // Save + pin current state
-    try {
-      await fetch(api(`/api/budgets/${currentBudgetId}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: currentState, pin: true, note: 'Shared link' })
-      });
-      lastSavedState = currentState;
-    } catch (e) {
-      console.warn('Could not save before sharing:', e);
-    }
-    
     const budgetUrl = window.location.origin + '/b/' + currentBudgetId;
-    
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(budgetUrl).then(() => {
-        showToast('🔗 Link copied!');
-      }).catch(() => {
-        fallbackCopy(budgetUrl);
-      });
-    } else {
-      fallbackCopy(budgetUrl);
-    }
+    copyToClipboard(budgetUrl);
+
+    // Save + pin in background (don't block clipboard)
+    fetch(api(`/api/budgets/${currentBudgetId}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: currentState, pin: true, note: 'Shared link' })
+    }).then(() => { lastSavedState = currentState; }).catch(() => {});
     return;
   }
-  
-  // No budget yet — create a new one
+
+  // No budget yet — must create first, then copy
   try {
     showToast('⏳ Creating link...');
-    
+
     const response = await fetch(api('/api/budgets'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2220,34 +2206,35 @@ async function shareLink() {
         clientName: currentState.clientName
       })
     });
-    
+
     const result = await response.json();
-    
+
     if (response.ok && result.success) {
       const budgetUrl = window.location.origin + result.url;
-      
-      // Update current page to use this budget ID (enable auto-save)
+
       currentBudgetId = result.id;
       lastSavedState = currentState;
-      
-      // Update URL without reload
       window.history.replaceState({}, '', result.url);
-      
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(budgetUrl).then(() => {
-          showToast('🔗 Link copied!');
-        }).catch(() => {
-          fallbackCopy(budgetUrl);
-        });
-      } else {
-        fallbackCopy(budgetUrl);
-      }
+
+      copyToClipboard(budgetUrl);
     } else {
       throw new Error(result.error || 'Failed to create link');
     }
   } catch (err) {
     console.error('Share link error:', err);
     showToast('❌ ' + (err.message || 'Failed to create link'));
+  }
+}
+
+function copyToClipboard(url) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('🔗 Link copied!');
+    }).catch(() => {
+      fallbackCopy(url);
+    });
+  } else {
+    fallbackCopy(url);
   }
 }
 
