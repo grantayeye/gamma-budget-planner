@@ -757,7 +757,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
   }
 });
 
-app.get('/api/budgets/:id/poll', apiLimiter, async (req, res) => {
+app.get('/api/budgets/:id/poll', limits.api, async (req, res) => {
   try {
     const { data } = await supabase
       .from('budgets')
