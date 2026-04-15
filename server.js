@@ -844,7 +844,10 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
 
 app.delete('/api/admin/budgets/:id', requireAuth, async (req, res) => {
   try {
-    const { error } = await supabase.from('budgets').delete().eq('id', req.params.id);
+    const id = req.params.id;
+    await supabase.from('budget_views').delete().eq('budget_id', id);
+    await supabase.from('budget_versions').delete().eq('budget_id', id);
+    const { error } = await supabase.from('budgets').delete().eq('id', id);
     if (error) return res.status(404).json({ error: 'Budget not found' });
     res.json({ success: true });
   } catch (err) {
