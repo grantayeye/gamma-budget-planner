@@ -1,6 +1,15 @@
 # Budget Planner
 
-Gamma Tech Services Residential Technology Budget Planner
+Gamma Tech Services Residential Technology Budget Planner — interactive budget estimation tool for SW Florida luxury home technology projects (structured wiring, audio, video, lighting, security, automation).
+
+**How it's used:**
+- **In-person sales** — consultants build budgets live during client meetings to set expectations
+- **Remote sharing** — sales staff create quick budgets and send shareable links to builders
+- **Client exploration** — builders/clients view and adjust budgets independently (no login required)
+- **Admin oversight** — track engagement via view counts, manage pricing, audit budgets
+
+**Production:** https://budget.gamma.tech
+**Beta:** https://budget-beta.gamma.tech
 
 ## Quick Start
 
