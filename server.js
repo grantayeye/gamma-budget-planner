@@ -198,35 +198,40 @@ async function listBudgets() {
     }
   }
   
-  // Get internal view counts
-  const ivMap = {};
+  // Count client vs internal views from budget_views table directly
+  const viewMap = {};
   if (ids.length > 0) {
-    const { data: internalViews } = await supabase
+    const { data: allViews } = await supabase
       .from('budget_views')
-      .select('budget_id')
-      .in('budget_id', ids)
-      .eq('is_internal', true);
-    if (internalViews) {
-      internalViews.forEach(v => { ivMap[v.budget_id] = (ivMap[v.budget_id] || 0) + 1; });
+      .select('budget_id, is_internal')
+      .in('budget_id', ids);
+    if (allViews) {
+      allViews.forEach(v => {
+        if (!viewMap[v.budget_id]) viewMap[v.budget_id] = { client: 0, team: 0 };
+        if (v.is_internal) viewMap[v.budget_id].team++;
+        else viewMap[v.budget_id].client++;
+      });
     }
   }
 
-  return budgets.map(b => ({
+  return budgets.map(b => {
+    const views = viewMap[b.id] || { client: 0, team: 0 };
+    return {
     id: b.id,
     clientName: b.client_name,
     builder: b.builder,
     created: b.created_at,
     lastModified: b.modified_at,
-    viewCount: b.views_count || 0,
-    internalViews: ivMap[b.id] || 0,
-    clientViews: (b.views_count || 0) - (ivMap[b.id] || 0),
+    viewCount: views.client + views.team,
+    internalViews: views.team,
+    clientViews: views.client,
     lastViewed: b.last_viewed_at,
     versionCount: vcMap[b.id] || 0,
     currentTotal: b.current_state?.total || 0,
     isCustomized: !!b.is_customized,
     sqftLocked: b.sqft_locked,
     propertyTypeLocked: b.property_type_locked
-  }));
+  };});
 }
 
 async function recordView(budgetId, ip, userAgent, isInternal = false) {
