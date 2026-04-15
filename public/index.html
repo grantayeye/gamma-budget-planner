@@ -702,8 +702,9 @@ main {
 .summary-table .tier-badge.better { background: var(--better-bg); color: var(--better); }
 .summary-table .tier-badge.best { background: var(--best-bg); color: var(--best); }
 .summary-table .price-cell { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.summary-table tfoot td { border-top: 2px solid var(--primary); font-weight: 800; font-size: 16px; }
-.summary-table tfoot .grand-total { color: var(--accent); font-size: 22px; }
+.summary-table .summary-footer-row td { border-top: 2px solid var(--primary); font-weight: 800; font-size: 16px; }
+.summary-table .grand-total-row td { border-top: 2px solid var(--primary); }
+.summary-table .grand-total { color: var(--accent); font-size: 22px; }
 
 .summary-project-info {
   display: grid;
@@ -733,7 +734,11 @@ main {
   .modal-overlay { position: static; background: none; padding: 0; display: block !important; backdrop-filter: none; }
   .modal { box-shadow: none; max-width: none; border-radius: 0; }
   body { background: white; padding: 0; }
+  .summary-table { page-break-inside: avoid; }
+  .summary-table thead { display: table-header-group; }
+  .summary-table tbody { display: table-row-group; }
   .summary-table th, .summary-table td { padding: 6px 8px; }
+  .summary-table .summary-footer-row { break-inside: avoid; }
   .features-row { page-break-inside: avoid; }
   .features-row td { border-top: none !important; }
   .summary-project-info .info-label { color: #555 !important; }
@@ -1665,21 +1670,19 @@ function showSummary() {
       </thead>
       <tbody>
         ${rows}
-      </tbody>
-      <tfoot>
-        <tr>
+        <tr class="summary-footer-row">
           <td colspan="2">Equipment & Installation Subtotal</td>
           <td class="price-cell">${formatCurrency(equipmentSubtotal)}</td>
         </tr>
-        <tr>
+        <tr class="summary-footer-row">
           <td colspan="2">Estimated Sales Tax (6%)</td>
           <td class="price-cell">${formatCurrency(taxEstimate)}</td>
         </tr>
-        <tr>
+        <tr class="summary-footer-row grand-total-row">
           <td colspan="2" style="font-size:18px;">Estimated Total Investment</td>
           <td class="price-cell grand-total">${formatCurrency(grandTotal)}</td>
         </tr>
-      </tfoot>
+      </tbody>
     </table>
     
     <div class="disclaimer">
