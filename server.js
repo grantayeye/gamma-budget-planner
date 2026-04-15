@@ -129,39 +129,41 @@ async function loadBudget(id) {
     builder: budget.builder,
     created: budget.created_at,
     lastModified: budget.modified_at,
+    createdByEmail: budget.created_by_email || null,
     views: (views || []).map(v => ({ timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
     versions: (versions || []).map(v => ({
       version: v.version_number,
       timestamp: v.created_at,
-      state: v.state, // JSONB, no parse needed
+      state: v.state,
       note: v.note,
       pinned: !!v.is_pinned
     })),
-    currentState: budget.current_state, // JSONB, no parse needed
+    currentState: budget.current_state,
     isCustomized: !!budget.is_customized,
     sqftLocked: budget.sqft_locked,
     propertyTypeLocked: budget.property_type_locked,
-    categoryConfig: budget.category_config, // JSONB
-    customCategories: budget.custom_categories // JSONB
+    categoryConfig: budget.category_config,
+    customCategories: budget.custom_categories
   };
 }
 
 async function saveBudget(budget) {
-  const { error } = await supabase
-    .from('budgets')
-    .upsert({
-      id: budget.id,
-      client_name: budget.clientName || null,
-      builder: budget.builder || null,
-      modified_at: new Date().toISOString(),
-      current_state: budget.currentState, // JSONB, no stringify needed
-      is_customized: !!budget.isCustomized,
-      sqft_locked: budget.sqftLocked || null,
-      property_type_locked: budget.propertyTypeLocked || null,
-      category_config: budget.categoryConfig || null, // JSONB
-      custom_categories: budget.customCategories || null // JSONB
-    });
-  
+  const row = {
+    id: budget.id,
+    client_name: budget.clientName || null,
+    builder: budget.builder || null,
+    modified_at: new Date().toISOString(),
+    current_state: budget.currentState,
+    is_customized: !!budget.isCustomized,
+    sqft_locked: budget.sqftLocked || null,
+    property_type_locked: budget.propertyTypeLocked || null,
+    category_config: budget.categoryConfig || null,
+    custom_categories: budget.customCategories || null
+  };
+  if (budget.createdByEmail !== undefined) {
+    row.created_by_email = budget.createdByEmail;
+  }
+  const { error } = await supabase.from('budgets').upsert(row);
   if (error) console.error('saveBudget error:', error);
 }
 
@@ -234,24 +236,37 @@ async function listBudgets() {
   };});
 }
 
+const viewNotifyThrottle = new Map();
+const VIEW_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 async function recordView(budgetId, ip, userAgent, isInternal = false) {
   await supabase
     .from('budget_views')
     .insert({ budget_id: budgetId, ip_address: ip || null, user_agent: userAgent || null, is_internal: isInternal });
-  
+
   await supabase
     .from('budgets')
-    .update({ views_count: supabase.rpc ? undefined : undefined, last_viewed_at: new Date().toISOString() })
+    .update({ last_viewed_at: new Date().toISOString() })
     .eq('id', budgetId);
-  
-  // Increment views_count via raw update
+
   await supabase.rpc('increment_views', { bid: budgetId }).catch(async () => {
-    // Fallback: read and write
     const { data } = await supabase.from('budgets').select('views_count').eq('id', budgetId).single();
     if (data) {
       await supabase.from('budgets').update({ views_count: (data.views_count || 0) + 1, last_viewed_at: new Date().toISOString() }).eq('id', budgetId);
     }
   });
+
+  // Send view notification to creator (throttled: once per 24h per budget)
+  if (!isInternal) {
+    const lastNotify = viewNotifyThrottle.get(budgetId) || 0;
+    if (Date.now() - lastNotify > VIEW_NOTIFY_COOLDOWN_MS) {
+      viewNotifyThrottle.set(budgetId, Date.now());
+      const budget = await loadBudget(budgetId);
+      if (budget?.createdByEmail) {
+        sendViewNotification(budget).catch(err => console.error('View notification failed:', err));
+      }
+    }
+  }
 }
 
 async function addVersion(budgetId, versionNum, state, note, isPinned) {
@@ -260,12 +275,60 @@ async function addVersion(budgetId, versionNum, state, note, isPinned) {
     .insert({
       budget_id: budgetId,
       version_number: versionNum,
-      state: state, // JSONB
+      state: state,
       note: note || '',
       is_pinned: !!isPinned
     });
-  
+
   if (error) console.error('addVersion error:', error);
+}
+
+// ============================================================
+// CHANGE NOTIFICATIONS
+// ============================================================
+const formatCurrencyPlain = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num || 0);
+
+async function sendChangeNotification(budget, newState) {
+  if (!budget.createdByEmail) return;
+  const clientName = budget.clientName || 'A client';
+  const budgetUrl = `${APP_URL}/b/${budget.id}`;
+  const oldTotal = budget.currentState?.total || 0;
+  const newTotal = newState?.total || 0;
+  const totalChanged = oldTotal !== newTotal;
+
+  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden"><tr><td style="background:#0F2F44;padding:20px 32px"><h2 style="margin:0;color:#FFFFFF;font-size:18px">Budget Updated</h2></td></tr><tr><td style="padding:32px"><p style="margin:0 0 16px;color:#393939;font-size:15px;line-height:1.6"><strong>${clientName}</strong> made changes to their budget.</p>${totalChanged ? `<p style="margin:0 0 16px;color:#393939;font-size:15px">Total changed: ${formatCurrencyPlain(oldTotal)} → <strong>${formatCurrencyPlain(newTotal)}</strong></p>` : ''}<table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0"><tr><td align="center"><a href="${budgetUrl}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Budget</a></td></tr></table><p style="margin:0;color:#999;font-size:12px">You're receiving this because you created this budget on Gamma Tech Budget Planner.</p></td></tr></table></td></tr></table></body></html>`;
+
+  try {
+    await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+      to: budget.createdByEmail,
+      subject: `Budget update: ${clientName}${totalChanged ? ` (${formatCurrencyPlain(newTotal)})` : ''}`,
+      html
+    });
+    console.log(`Change notification sent to ${budget.createdByEmail} for budget ${budget.id}`);
+  } catch (err) {
+    console.error('Change notification email error:', err);
+  }
+}
+
+async function sendViewNotification(budget) {
+  if (!budget.createdByEmail) return;
+  const clientName = budget.clientName || 'Someone';
+  const budgetUrl = `${APP_URL}/b/${budget.id}`;
+
+  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden"><tr><td style="background:#0F2F44;padding:20px 32px"><h2 style="margin:0;color:#FFFFFF;font-size:18px">Budget Viewed</h2></td></tr><tr><td style="padding:32px"><p style="margin:0 0 16px;color:#393939;font-size:15px;line-height:1.6"><strong>${clientName}</strong> just opened their budget.</p>${budget.currentState?.total ? `<p style="margin:0 0 16px;color:#393939;font-size:15px">Current total: <strong>${formatCurrencyPlain(budget.currentState.total)}</strong></p>` : ''}<table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0"><tr><td align="center"><a href="${budgetUrl}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Budget</a></td></tr></table><p style="margin:0;color:#999;font-size:12px">You're receiving this because you created this budget on Gamma Tech Budget Planner.</p></td></tr></table></td></tr></table></body></html>`;
+
+  try {
+    await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+      to: budget.createdByEmail,
+      subject: `${clientName} is viewing their budget`,
+      html
+    });
+    console.log(`View notification sent to ${budget.createdByEmail} for budget ${budget.id}`);
+  } catch (err) {
+    console.error('View notification email error:', err);
+  }
 }
 
 // ============================================================
@@ -650,7 +713,7 @@ app.delete('/api/admin/users/:id', requireAuth, async (req, res) => {
 app.post('/api/budgets', limits.api, async (req, res) => {
   try {
     const data = schemas.createBudget.parse(req.body);
-    
+
     let id;
     let exists;
     do {
@@ -658,7 +721,17 @@ app.post('/api/budgets', limits.api, async (req, res) => {
       const { data: check } = await supabase.from('budgets').select('id').eq('id', id).single();
       exists = !!check;
     } while (exists);
-    
+
+    // Capture creator email if authenticated
+    let createdByEmail = null;
+    const token = getToken(req);
+    if (token) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser(token);
+        if (user?.email) createdByEmail = user.email;
+      } catch (_) {}
+    }
+
     const budget = {
       id,
       clientName: data.clientName || data.state.clientName || null,
@@ -667,12 +740,13 @@ app.post('/api/budgets', limits.api, async (req, res) => {
       sqftLocked: null,
       propertyTypeLocked: null,
       categoryConfig: null,
-      customCategories: null
+      customCategories: null,
+      createdByEmail
     };
-    
+
     await saveBudget(budget);
     await addVersion(id, 1, data.state, 'Initial budget', true);
-    
+
     res.json({ success: true, id, url: `/b/${id}` });
     
   } catch (err) {
@@ -748,7 +822,9 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     const timeSinceLastVersion = now - lastVersionTime;
     const shouldConsolidate = !lastVersion.pinned && timeSinceLastVersion < VERSION_CONSOLIDATION_MS;
     
-    if (shouldConsolidate && !data.pin) {
+    const isNewVersion = !(shouldConsolidate && !data.pin);
+
+    if (!isNewVersion) {
       await supabase
         .from('budget_versions')
         .update({ state: data.state, created_at: nowISO })
@@ -758,10 +834,20 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
       const newVersionNum = budget.versions.length + 1;
       await addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin);
     }
-    
+
     budget.currentState = data.state;
     if (data.state.clientName) budget.clientName = data.state.clientName;
     await saveBudget(budget);
+
+    // Notify budget creator when a client creates a new version
+    if (isNewVersion && budget.createdByEmail && !data.pin) {
+      const isInternal = !!getToken(req);
+      if (!isInternal) {
+        sendChangeNotification(budget, data.state).catch(err =>
+          console.error('Change notification failed:', err)
+        );
+      }
+    }
     
     res.json({
       success: true,
@@ -1015,17 +1101,49 @@ app.post('/api/send-proposal', limits.email, async (req, res) => {
 function buildProposalEmail(data, recipientName) {
   const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
   const formatCurrency = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num || 0);
-  
-  let categoryRows = '';
+  const rowStyle = 'padding:12px 16px;border-bottom:1px solid #E0E0E0';
+
+  let tableRows = '';
   if (data.categories?.length) {
     data.categories.forEach(cat => {
       if (cat.tier && cat.tier !== 'none') {
-        categoryRows += `<tr><td style="padding:12px 16px;border-bottom:1px solid #E0E0E0;font-weight:500">${cat.name}</td><td style="padding:12px 16px;border-bottom:1px solid #E0E0E0;text-transform:capitalize">${cat.tier}</td><td style="padding:12px 16px;border-bottom:1px solid #E0E0E0;text-align:right">${formatCurrency(cat.price)}</td></tr>`;
+        tableRows += `<tr><td style="${rowStyle};font-weight:500">${cat.name}</td><td style="${rowStyle};text-transform:capitalize">${cat.tier}</td><td style="${rowStyle};text-align:right">${formatCurrency(cat.price)}</td></tr>`;
       }
     });
   }
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;box-shadow:0 2px 16px rgba(15,47,68,0.06);overflow:hidden"><tr><td style="background:linear-gradient(135deg,#0F2F44 0%,#133F5C 100%);padding:32px 40px;text-align:center"><h1 style="margin:0;color:#FFFFFF;font-size:24px;font-weight:600">Gamma Tech Services</h1><p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px">Residential Technology Budget</p></td></tr><tr><td style="padding:40px"><p style="margin:0 0 24px;color:#393939;font-size:16px;line-height:1.6">${greeting}</p><p style="margin:0 0 32px;color:#393939;font-size:16px;line-height:1.6">Thank you for your interest in Gamma Tech Services. Below is your personalized technology budget.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#EEF8FE 0%,#E8F1F8 100%);border-radius:12px;margin-bottom:32px"><tr><td style="padding:24px;text-align:center"><p style="margin:0;color:#5A5A5A;font-size:14px;text-transform:uppercase;letter-spacing:1px">Estimated Investment</p><p style="margin:8px 0 0;color:#0F2F44;font-size:36px;font-weight:700">${formatCurrency(data.total)}</p>${data.tierLabel ? `<p style="margin:8px 0 0;color:#017ED7;font-size:14px;font-weight:500">${data.tierLabel}</p>` : ''}</td></tr></table>${categoryRows ? `<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E0E0E0;border-radius:12px;overflow:hidden;margin-bottom:32px"><tr style="background:#F5F5F5"><th style="padding:14px 16px;text-align:left;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Category</th><th style="padding:14px 16px;text-align:left;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Tier</th><th style="padding:14px 16px;text-align:right;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Estimate</th></tr>${categoryRows}</table>` : ''}${data.budgetUrl ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr><td align="center"><a href="${data.budgetUrl}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View & Customize Your Budget</a></td></tr></table>` : ''}<p style="margin:0 0 16px;color:#5A5A5A;font-size:14px;line-height:1.6">This is a preliminary budget estimate. Final pricing may vary based on site conditions and requirements.</p><p style="margin:0;color:#393939;font-size:16px;line-height:1.6">Ready to move forward? Reply to this email or call us at <strong>(239) 330-4939</strong>.</p></td></tr><tr><td style="background:#F5F5F5;padding:24px 40px;text-align:center;border-top:1px solid #E0E0E0"><p style="margin:0;color:#5A5A5A;font-size:14px"><strong>Gamma Tech Services</strong><br>3106 Horseshoe Dr S, Naples, FL 34104<br>(239) 330-4939 • gamma.tech</p></td></tr></table></td></tr></table></body></html>`;
+  // Per-category adjustments
+  if (data.catMods?.length) {
+    data.catMods.forEach(m => {
+      tableRows += `<tr><td style="${rowStyle};font-weight:500;color:#5A5A5A">&nbsp;&nbsp;↳ ${m.categoryName}: ${m.name}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right;color:${m.amount >= 0 ? '#2E7D32' : '#C62828'}">${m.amount >= 0 ? '+' : ''}${formatCurrency(m.amount)}</td></tr>`;
+    });
+  }
+
+  // Extras / add-ons
+  if (data.extras?.length) {
+    tableRows += `<tr><td colspan="3" style="${rowStyle};font-weight:600;background:#F9F9F9;color:#393939">Add-Ons</td></tr>`;
+    data.extras.forEach(e => {
+      tableRows += `<tr><td style="${rowStyle};font-weight:500">${e.name}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right">${formatCurrency(e.price)}</td></tr>`;
+    });
+  }
+
+  // Custom line items
+  if (data.modifiers?.length) {
+    tableRows += `<tr><td colspan="3" style="${rowStyle};font-weight:600;background:#F9F9F9;color:#393939">Custom Items</td></tr>`;
+    data.modifiers.forEach(m => {
+      tableRows += `<tr><td style="${rowStyle};font-weight:500">${m.name}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right;color:${m.amount >= 0 ? '#2E7D32' : '#C62828'}">${m.amount >= 0 ? '+' : ''}${formatCurrency(m.amount)}</td></tr>`;
+    });
+  }
+
+  // Subtotal + tax breakdown
+  let totalsHtml = '';
+  if (data.subtotal && data.tax) {
+    totalsHtml = `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr><td style="padding:8px 16px;text-align:right;color:#5A5A5A">Subtotal:</td><td style="padding:8px 16px;text-align:right;width:120px;font-weight:500">${formatCurrency(data.subtotal)}</td></tr><tr><td style="padding:8px 16px;text-align:right;color:#5A5A5A">Tax (6%):</td><td style="padding:8px 16px;text-align:right;width:120px;font-weight:500">${formatCurrency(data.tax)}</td></tr></table>`;
+  }
+
+  const tableHtml = tableRows ? `<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E0E0E0;border-radius:12px;overflow:hidden;margin-bottom:16px"><tr style="background:#F5F5F5"><th style="padding:14px 16px;text-align:left;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Category</th><th style="padding:14px 16px;text-align:left;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Tier</th><th style="padding:14px 16px;text-align:right;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Estimate</th></tr>${tableRows}</table>${totalsHtml}` : '';
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;box-shadow:0 2px 16px rgba(15,47,68,0.06);overflow:hidden"><tr><td style="background:linear-gradient(135deg,#0F2F44 0%,#133F5C 100%);padding:32px 40px;text-align:center"><h1 style="margin:0;color:#FFFFFF;font-size:24px;font-weight:600">Gamma Tech Services</h1><p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px">Residential Technology Budget</p></td></tr><tr><td style="padding:40px"><p style="margin:0 0 24px;color:#393939;font-size:16px;line-height:1.6">${greeting}</p><p style="margin:0 0 32px;color:#393939;font-size:16px;line-height:1.6">Thank you for your interest in Gamma Tech Services. Below is your personalized technology budget.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#EEF8FE 0%,#E8F1F8 100%);border-radius:12px;margin-bottom:32px"><tr><td style="padding:24px;text-align:center"><p style="margin:0;color:#5A5A5A;font-size:14px;text-transform:uppercase;letter-spacing:1px">Estimated Investment</p><p style="margin:8px 0 0;color:#0F2F44;font-size:36px;font-weight:700">${formatCurrency(data.total)}</p>${data.tierLabel ? `<p style="margin:8px 0 0;color:#017ED7;font-size:14px;font-weight:500">${data.tierLabel}</p>` : ''}</td></tr></table>${tableHtml}${data.budgetUrl ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr><td align="center"><a href="${data.budgetUrl}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View & Customize Your Budget</a></td></tr></table>` : ''}<p style="margin:0 0 16px;color:#5A5A5A;font-size:14px;line-height:1.6">This is a preliminary budget estimate. Final pricing may vary based on site conditions and requirements.</p><p style="margin:0;color:#393939;font-size:16px;line-height:1.6">Ready to move forward? Reply to this email or call us at <strong>(239) 330-4939</strong>.</p></td></tr><tr><td style="background:#F5F5F5;padding:24px 40px;text-align:center;border-top:1px solid #E0E0E0"><p style="margin:0;color:#5A5A5A;font-size:14px"><strong>Gamma Tech Services</strong><br>3106 Horseshoe Dr S, Naples, FL 34104<br>(239) 330-4939 • gamma.tech</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 // ============================================================
