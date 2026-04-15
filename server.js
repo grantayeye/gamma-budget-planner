@@ -129,7 +129,7 @@ async function loadBudget(id) {
     builder: budget.builder,
     created: budget.created_at,
     lastModified: budget.modified_at,
-    views: views || [],
+    views: (views || []).map(v => ({ timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
     versions: (versions || []).map(v => ({
       version: v.version_number,
       timestamp: v.created_at,
@@ -198,6 +198,19 @@ async function listBudgets() {
     }
   }
   
+  // Get internal view counts
+  const ivMap = {};
+  if (ids.length > 0) {
+    const { data: internalViews } = await supabase
+      .from('budget_views')
+      .select('budget_id')
+      .in('budget_id', ids)
+      .eq('is_internal', true);
+    if (internalViews) {
+      internalViews.forEach(v => { ivMap[v.budget_id] = (ivMap[v.budget_id] || 0) + 1; });
+    }
+  }
+
   return budgets.map(b => ({
     id: b.id,
     clientName: b.client_name,
@@ -205,6 +218,8 @@ async function listBudgets() {
     created: b.created_at,
     lastModified: b.modified_at,
     viewCount: b.views_count || 0,
+    internalViews: ivMap[b.id] || 0,
+    clientViews: (b.views_count || 0) - (ivMap[b.id] || 0),
     lastViewed: b.last_viewed_at,
     versionCount: vcMap[b.id] || 0,
     currentTotal: b.current_state?.total || 0,
@@ -214,10 +229,10 @@ async function listBudgets() {
   }));
 }
 
-async function recordView(budgetId, ip, userAgent) {
+async function recordView(budgetId, ip, userAgent, isInternal = false) {
   await supabase
     .from('budget_views')
-    .insert({ budget_id: budgetId, ip_address: ip || null, user_agent: userAgent || null });
+    .insert({ budget_id: budgetId, ip_address: ip || null, user_agent: userAgent || null, is_internal: isInternal });
   
   await supabase
     .from('budgets')
@@ -267,7 +282,7 @@ async function requireAuth(req, res, next) {
 // ============================================================
 const schemas = {
   login: z.object({
-    email: z.string().email().max(254),
+    email: z.string().min(1).max(254),
     password: z.string().min(1).max(100)
   }),
 
@@ -463,8 +478,9 @@ app.get('/s/:code', async (req, res) => {
 // ============================================================
 app.post('/api/auth/login', limits.auth, async (req, res) => {
   try {
-    const { email, password } = schemas.login.parse(req.body);
-    
+    let { email, password } = schemas.login.parse(req.body);
+    if (!email.includes('@')) email += '@gamma.tech';
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     
     if (error) {
@@ -475,7 +491,7 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
     
     res.cookie('sb_token', token, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production' || req.secure,
       sameSite: 'lax',
       path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000
@@ -669,7 +685,8 @@ app.get('/api/budgets/:id', async (req, res) => {
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
     if (!req.query.admin) {
-      recordView(req.params.id, req.ip, req.get('User-Agent'));
+      const isInternal = !!req.cookies.sb_token;
+      recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal);
     }
     
     res.json({
