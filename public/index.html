@@ -800,6 +800,20 @@ main {
   </div>
 </header>
 
+<div id="loginGate" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#0F2F44 0%,#133F5C 100%);z-index:10000;display:flex;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:40px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3);text-align:center">
+    <div style="margin-bottom:24px">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 250" height="60"><g><path fill="#017ED7" d="M250,125c0,68.361-54.876,123.904-122.98,124.982v-16.333c59.086-1.076,106.649-49.306,106.649-108.649h-96.874v-16.414h95.641c-7.813-51.581-51.886-91.26-105.417-92.235V.018c68.104,1.078,122.98,56.621,122.98,124.982Z"/><path fill="#0F2F44" d="M136.795,108.586h79.01c-1.194-6.679-3.131-13.194-5.793-19.49-4.646-10.985-11.301-20.854-19.778-29.331s-18.346-15.131-29.331-19.778c-6.295-2.662-12.811-4.599-19.49-5.793-4.722-.848-9.528-1.326-14.394-1.427-.672-.015-1.346-.023-2.02-.023s-1.349.008-2.02.023c-4.866.101-9.672.578-14.394,1.427-6.679,1.194-13.194,3.131-19.49,5.793-10.985,4.646-20.854,11.301-29.331,19.778s-15.131,18.346-19.778,29.331c-4.806,11.361-7.242,23.442-7.242,35.904s2.437,24.543,7.242,35.904c4.646,10.985,11.301,20.854,19.778,29.331s18.346,15.131,29.331,19.778c6.295,2.662,12.811,4.599,19.49,5.793,4.722.848,9.528,1.326,14.394,1.427.672.015,1.346.023,2.02.023s1.349-.008,2.02-.023c4.866-.101,9.672-.578,14.394-1.427,6.679-1.194,13.194-3.131,19.49-5.793,10.985-4.646,20.854-11.301,29.331-19.778s15.131-18.346,19.778-29.331c2.662-6.295,4.598-12.811,5.793-19.49h-79.01v-32.828ZM122.98,16.351V.018C54.876,1.096,0,56.639,0,125s54.876,123.904,122.98,124.982v-16.333c-59.086-1.076-106.649-49.306-106.649-108.649S63.894,17.427,122.98,16.351Z"/></g></svg>
+    </div>
+    <h2 style="margin:0 0 8px;color:#0F2F44;font-size:22px;font-weight:700">Gamma Tech Budget Planner</h2>
+    <p style="margin:0 0 24px;color:#666;font-size:14px">Sign in to create and manage budgets</p>
+    <input type="email" id="gateEmail" placeholder="Email" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:15px;margin-bottom:12px;box-sizing:border-box">
+    <input type="password" id="gatePassword" placeholder="Password" style="width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:15px;margin-bottom:16px;box-sizing:border-box" onkeydown="if(event.key==='Enter')gateLogin()">
+    <button onclick="gateLogin()" id="gateBtn" style="width:100%;padding:12px;background:#017ED7;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer">Sign In</button>
+    <p id="gateError" style="margin:12px 0 0;color:#C62828;font-size:13px;display:none"></p>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div id="sharedBanner"></div>
 
@@ -951,6 +965,69 @@ main {
     console.log('[Budget] Using static category data (API unavailable)');
   }
 })();
+
+// Login gate — require auth for homepage, skip for /b/ budget links
+(function() {
+  const path = window.location.pathname;
+  const isBudgetLink = /^\/b\/[a-z0-9]+$/i.test(path);
+  const gate = document.getElementById('loginGate');
+
+  if (isBudgetLink) {
+    gate.style.display = 'none';
+    return;
+  }
+
+  // Check auth status
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/auth/me', false);
+  xhr.withCredentials = true;
+  xhr.send();
+  if (xhr.status === 200) {
+    try {
+      const data = JSON.parse(xhr.responseText);
+      if (data.authenticated) {
+        gate.style.display = 'none';
+        return;
+      }
+    } catch(e) {}
+  }
+  gate.style.display = 'flex';
+  document.querySelector('header').style.display = 'none';
+  document.querySelector('main').style.display = 'none';
+})();
+</script>
+<script>
+async function gateLogin() {
+  const email = document.getElementById('gateEmail').value.trim();
+  const pass = document.getElementById('gatePassword').value;
+  const errEl = document.getElementById('gateError');
+  const btn = document.getElementById('gateBtn');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
+      body: JSON.stringify({email, password: pass})
+    });
+    const data = await resp.json();
+    if (resp.ok && data.success) {
+      window.location.reload();
+    } else {
+      errEl.textContent = data.error || 'Invalid credentials';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error. Try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
 </script>
 <script>
 // ============================================================

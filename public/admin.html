@@ -1483,7 +1483,7 @@ function renderBudgets() {
       </td>
       <td><strong>${formatCurrency(b.currentTotal)}</strong></td>
       <td>${formatDate(b.created)}</td>
-      <td><span class="badge badge-views">${b.viewCount} ${b.viewCount === 1 ? 'view' : 'views'}</span></td>
+      <td><span class="badge badge-views" title="${b.clientViews} client, ${b.internalViews} team">${b.clientViews} client / ${b.internalViews} team</span></td>
       <td><span class="badge badge-versions">${b.versionCount} versions</span></td>
       <td>${b.lastViewed ? formatRelative(b.lastViewed) : 'Never'}</td>
       <td class="actions-cell">
@@ -1561,7 +1561,7 @@ function showBudgetModal(budget) {
       ${(budget.views && budget.views.length > 0) ? 
         budget.views.slice().reverse().map(v => `
           <div class="view-item">
-            <span>${formatDateTime(v.timestamp)}</span>
+            <span>${formatDateTime(v.timestamp)} ${v.isInternal ? '<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">TEAM</span>' : '<span style="background:#E8F5E9;color:#2E7D32;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">CLIENT</span>'}</span>
             <span style="color:var(--text-light);font-size:11px;">${v.userAgent?.split(' ')[0] || 'Unknown device'}</span>
           </div>
         `).join('') : 
