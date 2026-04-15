@@ -282,7 +282,7 @@ async function requireAuth(req, res, next) {
 // ============================================================
 const schemas = {
   login: z.object({
-    email: z.string().email().max(254),
+    email: z.string().min(1).max(254),
     password: z.string().min(1).max(100)
   }),
 
@@ -478,8 +478,9 @@ app.get('/s/:code', async (req, res) => {
 // ============================================================
 app.post('/api/auth/login', limits.auth, async (req, res) => {
   try {
-    const { email, password } = schemas.login.parse(req.body);
-    
+    let { email, password } = schemas.login.parse(req.body);
+    if (!email.includes('@')) email += '@gamma.tech';
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     
     if (error) {
@@ -490,7 +491,7 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
     
     res.cookie('sb_token', token, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production' || req.secure,
       sameSite: 'lax',
       path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000
