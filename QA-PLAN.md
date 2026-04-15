@@ -1240,7 +1240,7 @@ Test on real devices or browser DevTools device emulation.
 | 9 | Email renders well in Gmail (web) | ☐ | ☐ | |
 | 10 | Email renders well in Apple Mail (iPhone) | ☐ | ☐ | |
 | 11 | Email renders well in Outlook | ☐ | ☐ | |
-| 12 | Footer shows correct address: 3106 Horseshoe Dr S, Naples, FL 34116 | ☐ | ☐ | |
+| 12 | Footer shows correct address: 3106 Horseshoe Dr S, Naples, FL 34104 | ☐ | ☐ | |
 | 13 | Footer shows phone: (239) 330-4939 | ☐ | ☐ | |
 | 14 | Email doesn't end up in spam folder | ☐ | ☐ | |
 | 15 | Budget link in email loads correctly with all selections | ☐ | ☐ | |
