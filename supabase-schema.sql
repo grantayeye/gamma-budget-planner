@@ -18,7 +18,8 @@ CREATE TABLE budgets (
   property_type_locked TEXT,
   category_config JSONB,
   custom_categories JSONB,
-  customized_at TIMESTAMPTZ
+  customized_at TIMESTAMPTZ,
+  created_by_email TEXT
 );
 
 CREATE INDEX idx_budgets_modified ON budgets(modified_at DESC);

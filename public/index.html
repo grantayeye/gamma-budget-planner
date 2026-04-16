@@ -1849,13 +1849,38 @@ async function sendProposalEmail() {
     }
   }
   
+  // Build extras list
+  const extras = [];
+  EXTRAS().forEach(e => {
+    if (state.extras[e.id]) {
+      const cost = typeof e.cost === 'function' ? e.cost() : e.cost;
+      extras.push({ name: e.name, price: cost });
+    }
+  });
+
+  // Build per-category adjustments
+  const catModsList = [];
+  Object.keys(state.catMods).forEach(catId => {
+    const m = state.catMods[catId];
+    if (m && m.amount && parseFloat(m.amount) !== 0) {
+      const cat = CATEGORIES().find(c => c.id === catId);
+      catModsList.push({ categoryName: cat ? cat.name : catId, name: m.name || 'Adjustment', amount: parseFloat(m.amount) });
+    }
+  });
+
   const proposalData = {
     categories,
+    extras,
+    catMods: catModsList,
+    modifiers: state.modifiers.filter(m => m.name && parseFloat(m.amount) !== 0).map(m => ({ name: m.name, amount: parseFloat(m.amount) })),
+    subtotal: Math.round(subtotal),
+    tax: Math.round(subtotal * taxRate),
     total: Math.round(total),
     tierLabel,
     clientName: clientName,
     builder: document.getElementById('builder').value || '',
     homeSize: state.homeSize,
+    propertyType: state.propertyType,
     budgetUrl: budgetUrl
   };
   
