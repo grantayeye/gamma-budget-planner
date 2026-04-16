@@ -9,6 +9,13 @@ const cors = require('cors');
 const { z } = require('zod');
 const { createClient } = require('@supabase/supabase-js');
 
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -249,12 +256,17 @@ async function recordView(budgetId, ip, userAgent, isInternal = false) {
     .update({ last_viewed_at: new Date().toISOString() })
     .eq('id', budgetId);
 
-  await supabase.rpc('increment_views', { bid: budgetId }).catch(async () => {
-    const { data } = await supabase.from('budgets').select('views_count').eq('id', budgetId).single();
-    if (data) {
-      await supabase.from('budgets').update({ views_count: (data.views_count || 0) + 1, last_viewed_at: new Date().toISOString() }).eq('id', budgetId);
+  try {
+    const { error: rpcError } = await supabase.rpc('increment_views', { bid: budgetId });
+    if (rpcError) {
+      const { data } = await supabase.from('budgets').select('views_count').eq('id', budgetId).single();
+      if (data) {
+        await supabase.from('budgets').update({ views_count: (data.views_count || 0) + 1, last_viewed_at: new Date().toISOString() }).eq('id', budgetId);
+      }
     }
-  });
+  } catch (err) {
+    console.error('increment_views fallback error:', err);
+  }
 
   // Send view notification to creator (throttled: once per 24h per budget)
   if (!isInternal) {
@@ -765,7 +777,8 @@ app.get('/api/budgets/:id', async (req, res) => {
     
     if (!req.query.admin) {
       const isInternal = !!req.cookies.sb_token;
-      recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal);
+      recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal)
+        .catch(err => console.error('recordView error:', err));
     }
     
     res.json({
