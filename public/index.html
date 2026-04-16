@@ -2333,10 +2333,23 @@ function startLiveSync(budgetId) {
             document.getElementById('homeSize').value = state.homeSize;
             document.getElementById('propertyType').value = state.propertyType;
             if (s.clientName) document.getElementById('clientName').value = s.clientName;
+
+            // Preserve which category cards were open + scroll position
+            const openCards = new Set();
+            document.querySelectorAll('.category-card.open').forEach(c => openCards.add(c.id));
+            const scrollY = window.scrollY;
+
             renderCategories();
             renderExtras();
             renderModifiers();
             updateTotals();
+
+            openCards.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) el.classList.add('open');
+            });
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
+
             lastSavedState = getStateForAPI();
           }
           isSyncing = false;
