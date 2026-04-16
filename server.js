@@ -774,9 +774,26 @@ app.get('/api/budgets/:id', async (req, res) => {
   try {
     const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
-    
+
     if (!req.query.admin) {
-      const isInternal = !!req.cookies.sb_token;
+      // isInternal is true when the viewer is an authenticated admin.
+      // Validate the token — cookie presence alone isn't enough (could be
+      // stale/invalid). Also treat "viewer is the creator" as internal so
+      // the creator doesn't get a notification for viewing their own budget.
+      let isInternal = false;
+      const token = getToken(req);
+      if (token) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser(token);
+          if (user) {
+            isInternal = true;
+            if (budget.createdByEmail && user.email &&
+                user.email.toLowerCase() === budget.createdByEmail.toLowerCase()) {
+              isInternal = true;
+            }
+          }
+        } catch (_) {}
+      }
       recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal)
         .catch(err => console.error('recordView error:', err));
     }
