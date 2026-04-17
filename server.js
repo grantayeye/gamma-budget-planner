@@ -867,12 +867,32 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
 
     budget.currentState = data.state;
     if (data.state.clientName) budget.clientName = data.state.clientName;
+
+    // Determine viewer identity (validates token, not just presence)
+    let viewerEmail = null;
+    const putToken = getToken(req);
+    if (putToken) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser(putToken);
+        if (user?.email) viewerEmail = user.email;
+      } catch (_) {}
+    }
+
+    // Self-heal: if the budget has no creator on record and an authenticated
+    // user is saving, claim them as the creator. Fixes cases where the initial
+    // POST happened without a valid token.
+    if (!budget.createdByEmail && viewerEmail) {
+      budget.createdByEmail = viewerEmail;
+      console.log(`Backfilled createdByEmail=${viewerEmail} for budget ${req.params.id}`);
+    }
+
     await saveBudget(budget);
 
-    // Notify budget creator when a client creates a new version
+    // Notify budget creator when a client creates a new version.
+    // Skip if the saver is the creator themselves (or any authenticated admin).
     if (isNewVersion && budget.createdByEmail && !data.pin) {
-      const isInternal = !!getToken(req);
-      if (!isInternal) {
+      const isCreatorOrAdmin = !!viewerEmail;
+      if (!isCreatorOrAdmin) {
         sendChangeNotification(budget, data.state).catch(err =>
           console.error('Change notification failed:', err)
         );
