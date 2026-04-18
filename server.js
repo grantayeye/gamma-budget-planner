@@ -136,8 +136,12 @@ async function loadBudget(id) {
     builder: budget.builder,
     created: budget.created_at,
     lastModified: budget.modified_at,
+    lastClientActivity: budget.last_client_activity_at || null,
     createdByEmail: budget.created_by_email || null,
-    views: (views || []).map(v => ({ timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
+    status: budget.status || 'active',
+    notes: budget.notes || '',
+    followUpDate: budget.follow_up_date || null,
+    views: (views || []).map(v => ({ id: v.id, timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
     versions: (versions || []).map(v => ({
       version: v.version_number,
       timestamp: v.created_at,
@@ -177,7 +181,7 @@ async function saveBudget(budget) {
 async function listBudgets() {
   const { data: budgets, error } = await supabase
     .from('budgets')
-    .select('id, client_name, builder, created_at, modified_at, views_count, last_viewed_at, is_customized, sqft_locked, property_type_locked, current_state')
+    .select('id, client_name, builder, created_at, modified_at, views_count, last_viewed_at, last_client_activity_at, is_customized, sqft_locked, property_type_locked, current_state, created_by_email, status, notes, follow_up_date')
     .order('modified_at', { ascending: false });
   
   if (error) { console.error('listBudgets error:', error); return []; }
@@ -235,11 +239,16 @@ async function listBudgets() {
     internalViews: views.team,
     clientViews: views.client,
     lastViewed: b.last_viewed_at,
+    lastClientActivity: b.last_client_activity_at || null,
     versionCount: vcMap[b.id] || 0,
     currentTotal: b.current_state?.total || 0,
     isCustomized: !!b.is_customized,
     sqftLocked: b.sqft_locked,
-    propertyTypeLocked: b.property_type_locked
+    propertyTypeLocked: b.property_type_locked,
+    createdByEmail: b.created_by_email || null,
+    status: b.status || 'active',
+    notes: b.notes || '',
+    followUpDate: b.follow_up_date || null
   };});
 }
 
@@ -251,9 +260,12 @@ async function recordView(budgetId, ip, userAgent, isInternal = false) {
     .from('budget_views')
     .insert({ budget_id: budgetId, ip_address: ip || null, user_agent: userAgent || null, is_internal: isInternal });
 
+  const nowISO = new Date().toISOString();
+  const update = { last_viewed_at: nowISO };
+  if (!isInternal) update.last_client_activity_at = nowISO;
   await supabase
     .from('budgets')
-    .update({ last_viewed_at: new Date().toISOString() })
+    .update(update)
     .eq('id', budgetId);
 
   try {
@@ -951,6 +963,62 @@ app.get('/api/admin/budgets/:id', requireAuth, async (req, res) => {
   const budget = await loadBudget(req.params.id);
   if (!budget) return res.status(404).json({ error: 'Budget not found' });
   res.json(budget);
+});
+
+// Reclassify a single view as internal (team) or external (client)
+async function recomputeLastClientActivity(budgetId) {
+  const { data } = await supabase
+    .from('budget_views')
+    .select('viewed_at')
+    .eq('budget_id', budgetId)
+    .eq('is_internal', false)
+    .order('viewed_at', { ascending: false })
+    .limit(1);
+  const newValue = data && data.length ? data[0].viewed_at : null;
+  await supabase.from('budgets').update({ last_client_activity_at: newValue }).eq('id', budgetId);
+  return newValue;
+}
+
+app.patch('/api/admin/budgets/:id/views/:viewId', requireAuth, async (req, res) => {
+  try {
+    const isInternal = !!req.body.isInternal;
+    const { error } = await supabase
+      .from('budget_views')
+      .update({ is_internal: isInternal })
+      .eq('id', req.params.viewId)
+      .eq('budget_id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    const lastClientActivity = await recomputeLastClientActivity(req.params.id);
+    res.json({ success: true, isInternal, lastClientActivity });
+  } catch (err) {
+    console.error('Reclassify view error:', err);
+    res.status(500).json({ error: 'Failed to reclassify view' });
+  }
+});
+
+// Update budget CRM metadata (status, notes, follow-up date)
+app.patch('/api/admin/budgets/:id/meta', requireAuth, async (req, res) => {
+  try {
+    const allowedStatus = ['active','follow-up','won','lost','archive'];
+    const update = {};
+    if (req.body.status !== undefined) {
+      if (!allowedStatus.includes(req.body.status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      update.status = req.body.status;
+    }
+    if (req.body.notes !== undefined) update.notes = String(req.body.notes || '').slice(0, 5000);
+    if (req.body.followUpDate !== undefined) {
+      update.follow_up_date = req.body.followUpDate || null;
+    }
+    if (Object.keys(update).length === 0) return res.json({ success: true });
+    const { error } = await supabase.from('budgets').update(update).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update meta error:', err);
+    res.status(500).json({ error: 'Failed to update budget meta' });
+  }
 });
 
 app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res) => {
