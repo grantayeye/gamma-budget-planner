@@ -388,7 +388,56 @@
       background: #F0FFF4;
       color: #276749;
     }
-    
+
+    .status-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .status-active { background: #E3F2FD; color: #1565C0; }
+    .status-follow-up { background: #FFF3E0; color: #E65100; }
+    .status-won { background: #E8F5E9; color: #2E7D32; }
+    .status-lost { background: #FFEBEE; color: #C62828; }
+    .status-archive { background: #ECEFF1; color: #546E7A; }
+
+    .status-filter-chip {
+      padding: 6px 12px;
+      border: 1.5px solid var(--border);
+      background: white;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--text-light);
+      transition: all 0.15s;
+    }
+    .status-filter-chip:hover { border-color: var(--primary); color: var(--primary); }
+    .status-filter-chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    .sortable-col {
+      cursor: pointer;
+      user-select: none;
+    }
+    .sortable-col:hover { background: #F5F7FA; }
+    .sort-indicator { display: inline-block; width: 14px; color: var(--primary); font-size: 11px; }
+
+    .view-badge-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font: inherit;
+    }
+
     .actions-cell {
       display: flex;
       gap: 6px;
@@ -949,23 +998,43 @@
           <button class="btn btn-secondary btn-small" onclick="loadBudgets()">↻ Refresh</button>
         </div>
       </div>
-      
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+        <input
+          id="budgetSearch"
+          type="text"
+          placeholder="🔎 Search client, builder, ID, owner…"
+          oninput="applyBudgetFilters()"
+          style="flex:1;min-width:240px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);font-family:inherit;font-size:13px;"
+        />
+        <div id="statusFilters" style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="status-filter-chip active" data-status="all" onclick="setStatusFilter('all')">All</button>
+          <button class="status-filter-chip" data-status="active" onclick="setStatusFilter('active')">Active</button>
+          <button class="status-filter-chip" data-status="follow-up" onclick="setStatusFilter('follow-up')">Follow-up</button>
+          <button class="status-filter-chip" data-status="won" onclick="setStatusFilter('won')">Won</button>
+          <button class="status-filter-chip" data-status="lost" onclick="setStatusFilter('lost')">Lost</button>
+          <button class="status-filter-chip" data-status="archive" onclick="setStatusFilter('archive')">Archive</button>
+          <button class="status-filter-chip" data-status="needs-followup" onclick="setStatusFilter('needs-followup')" title="Active budgets with no customer activity in 7+ days, or overdue follow-up date">⏰ Needs follow-up</button>
+        </div>
+      </div>
+
       <div class="budget-table">
         <table>
           <thead>
             <tr>
-              <th>Client</th>
-              <th>Total</th>
-              <th>Created</th>
-              <th>Views</th>
-              <th>Versions</th>
-              <th>Last Activity</th>
+              <th class="sortable-col" data-sort="clientName" onclick="setSortColumn('clientName')">Client <span class="sort-indicator"></span></th>
+              <th class="sortable-col" data-sort="status" onclick="setSortColumn('status')">Status <span class="sort-indicator"></span></th>
+              <th class="sortable-col" data-sort="currentTotal" onclick="setSortColumn('currentTotal')">Total <span class="sort-indicator"></span></th>
+              <th class="sortable-col" data-sort="created" onclick="setSortColumn('created')">Created <span class="sort-indicator"></span></th>
+              <th class="sortable-col" data-sort="viewCount" onclick="setSortColumn('viewCount')">Views <span class="sort-indicator"></span></th>
+              <th class="sortable-col" data-sort="versionCount" onclick="setSortColumn('versionCount')">Versions <span class="sort-indicator"></span></th>
+              <th class="sortable-col" data-sort="lastClientActivity" onclick="setSortColumn('lastClientActivity')">Last Client Activity <span class="sort-indicator"></span></th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="budgetTableBody">
             <tr>
-              <td colspan="7" class="empty-state">Loading...</td>
+              <td colspan="8" class="empty-state">Loading...</td>
             </tr>
           </tbody>
         </table>
@@ -1454,45 +1523,136 @@ async function loadBudgets() {
   }
 }
 
+let budgetSort = { column: 'lastClientActivity', direction: 'desc' };
+let budgetStatusFilter = 'all';
+
+function setStatusFilter(status) {
+  budgetStatusFilter = status;
+  document.querySelectorAll('.status-filter-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.status === status);
+  });
+  renderBudgets();
+}
+
+function setSortColumn(column) {
+  if (budgetSort.column === column) {
+    budgetSort.direction = budgetSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    budgetSort.column = column;
+    // Default direction: text cols ascending, numeric/date descending
+    budgetSort.direction = ['clientName', 'status'].includes(column) ? 'asc' : 'desc';
+  }
+  renderBudgets();
+}
+
+function applyBudgetFilters() {
+  renderBudgets();
+}
+
+function isOverdueFollowUp(b) {
+  if (b.status !== 'active' && b.status !== 'follow-up') return false;
+  if (b.followUpDate) {
+    const fu = new Date(b.followUpDate + 'T00:00:00');
+    return fu <= new Date();
+  }
+  if (!b.lastClientActivity) return false;
+  const daysSince = (Date.now() - new Date(b.lastClientActivity).getTime()) / 86400000;
+  return daysSince >= 7;
+}
+
 function renderBudgets() {
   const tbody = document.getElementById('budgetTableBody');
-  
-  if (budgets.length === 0) {
+  const search = (document.getElementById('budgetSearch')?.value || '').trim().toLowerCase();
+
+  let rows = budgets.slice();
+
+  // Search filter
+  if (search) {
+    rows = rows.filter(b => {
+      const hay = [b.clientName, b.builder, b.id, b.createdByEmail, b.notes].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(search);
+    });
+  }
+
+  // Status / CRM filter
+  if (budgetStatusFilter === 'needs-followup') {
+    rows = rows.filter(isOverdueFollowUp);
+  } else if (budgetStatusFilter !== 'all') {
+    rows = rows.filter(b => (b.status || 'active') === budgetStatusFilter);
+  }
+
+  // Sort
+  const col = budgetSort.column;
+  const dir = budgetSort.direction === 'asc' ? 1 : -1;
+  const getVal = (b) => {
+    if (col === 'clientName') return (b.clientName || '').toLowerCase();
+    if (col === 'status') return b.status || 'active';
+    if (col === 'currentTotal') return b.currentTotal || 0;
+    if (col === 'created') return new Date(b.created).getTime();
+    if (col === 'viewCount') return b.clientViews || 0;
+    if (col === 'versionCount') return b.versionCount || 0;
+    if (col === 'lastClientActivity') return b.lastClientActivity ? new Date(b.lastClientActivity).getTime() : 0;
+    return 0;
+  };
+  rows.sort((a, b) => {
+    const va = getVal(a), vb = getVal(b);
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+
+  // Sort indicators
+  document.querySelectorAll('.sortable-col').forEach(th => {
+    const ind = th.querySelector('.sort-indicator');
+    if (th.dataset.sort === col) {
+      ind.textContent = budgetSort.direction === 'asc' ? '▲' : '▼';
+    } else {
+      ind.textContent = '';
+    }
+  });
+
+  if (rows.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" class="empty-state">
-          <p>No budgets yet</p>
-          <p style="font-size:13px;">Budgets will appear here when clients use the Share Link button</p>
+        <td colspan="8" class="empty-state">
+          <p>${budgets.length === 0 ? 'No budgets yet' : 'No budgets match your filters'}</p>
+          ${budgets.length === 0 ? '<p style="font-size:13px;">Budgets will appear here when clients use the Share Link button</p>' : ''}
         </td>
       </tr>
     `;
     return;
   }
-  
-  tbody.innerHTML = budgets.map(b => `
+
+  tbody.innerHTML = rows.map(b => {
+    const status = b.status || 'active';
+    const overdue = isOverdueFollowUp(b);
+    return `
     <tr>
       <td>
         <a href="${BASE_PATH}/b/${b.id}" target="_blank" class="budget-link">
-          ${b.clientName || 'Unnamed'} 
+          ${b.clientName || 'Unnamed'}
         </a>
         <div style="font-size:11px;color:var(--text-light);">
           ${b.id}
           ${b.builder ? ` • ${b.builder}` : ''}
+          ${b.createdByEmail ? ` • 👤 ${b.createdByEmail.split('@')[0]}` : ''}
           ${b.isCustomized ? ' <span style="color:#F57C00;">⚙️ Custom</span>' : ''}
+          ${overdue ? ' <span style="color:#C62828;" title="No customer activity in 7+ days or overdue follow-up">⏰</span>' : ''}
         </div>
       </td>
+      <td><span class="status-badge status-${status}">${status}</span></td>
       <td><strong>${formatCurrency(b.currentTotal)}</strong></td>
       <td>${formatDate(b.created)}</td>
-      <td><span class="badge badge-views" title="${b.clientViews} client, ${b.internalViews} team">${b.clientViews} client / ${b.internalViews} team</span></td>
-      <td><span class="badge badge-versions">${b.versionCount} versions</span></td>
-      <td>${b.lastViewed ? formatRelative(b.lastViewed) : 'Never'}</td>
+      <td><span class="badge badge-views" title="${b.clientViews} client, ${b.internalViews} team">${b.clientViews} / ${b.internalViews}</span></td>
+      <td><span class="badge badge-versions">${b.versionCount}</span></td>
+      <td>${b.lastClientActivity ? formatRelative(b.lastClientActivity) : '<span style="color:var(--text-light);">Never</span>'}</td>
       <td class="actions-cell">
         <button class="btn btn-secondary btn-small" onclick="viewBudget('${b.id}')">Details</button>
         <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">⚙️</button>
         <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">🗑️</button>
       </td>
     </tr>
-  `).join('');
+  `;}).join('');
 }
 
 function updateStats() {
@@ -1525,9 +1685,13 @@ async function viewBudget(id) {
 }
 
 function showBudgetModal(budget) {
+  window.__currentBudget = budget;
   document.getElementById('modalTitle').textContent = budget.clientName || 'Unnamed Budget';
-  
   const body = document.getElementById('modalBody');
+  const status = budget.status || 'active';
+  const followUp = budget.followUpDate || '';
+  const notes = budget.notes || '';
+
   body.innerHTML = `
     <div class="detail-grid">
       <div class="detail-item">
@@ -1543,8 +1707,8 @@ function showBudgetModal(budget) {
         <div class="value">${formatDate(budget.created)}</div>
       </div>
       <div class="detail-item">
-        <div class="label">Last Modified</div>
-        <div class="value">${formatRelative(budget.lastModified)}</div>
+        <div class="label">Last Client Activity</div>
+        <div class="value">${budget.lastClientActivity ? formatRelative(budget.lastClientActivity) : 'Never'}</div>
       </div>
       <div class="detail-item">
         <div class="label">Total Views</div>
@@ -1555,16 +1719,39 @@ function showBudgetModal(budget) {
         <div class="value">${budget.versions?.length || 0}</div>
       </div>
     </div>
-    
-    <div class="section-title">📍 View History (${budget.views?.length || 0})</div>
+
+    <div class="section-title">📋 Pipeline</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Status</label>
+        <select id="metaStatus" onchange="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
+          ${['active','follow-up','won','lost','archive'].map(s => `<option value="${s}" ${status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Follow-up Date</label>
+        <input id="metaFollowUp" type="date" value="${followUp}" onchange="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
+      </div>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Notes</label>
+      <textarea id="metaNotes" rows="3" placeholder="Called Tuesday, waiting on builder…" onblur="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;">${notes.replace(/</g,'&lt;')}</textarea>
+      <div id="metaSaveStatus" style="font-size:11px;color:var(--text-light);margin-top:3px;min-height:14px;"></div>
+    </div>
+
+    <div class="section-title">📍 View History (${budget.views?.length || 0}) <span style="font-weight:400;color:var(--text-light);font-size:11px;">— click a badge to reclassify</span></div>
     <div class="views-list">
-      ${(budget.views && budget.views.length > 0) ? 
+      ${(budget.views && budget.views.length > 0) ?
         budget.views.slice().reverse().map(v => `
           <div class="view-item">
-            <span>${formatDateTime(v.timestamp)} ${v.isInternal ? '<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">TEAM</span>' : '<span style="background:#E8F5E9;color:#2E7D32;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">CLIENT</span>'}</span>
+            <span>${formatDateTime(v.timestamp)}
+              <button class="view-badge-btn" onclick="toggleViewClassification('${budget.id}', ${v.id}, ${v.isInternal ? 'false' : 'true'})" title="Click to mark as ${v.isInternal ? 'customer' : 'team'}">
+                ${v.isInternal ? '<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">TEAM</span>' : '<span style="background:#E8F5E9;color:#2E7D32;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">CLIENT</span>'}
+              </button>
+            </span>
             <span style="color:var(--text-light);font-size:11px;">${v.userAgent?.split(' ')[0] || 'Unknown device'}</span>
           </div>
-        `).join('') : 
+        `).join('') :
         '<div style="color:var(--text-light);text-align:center;padding:12px;">No views yet</div>'
       }
     </div>
@@ -1600,6 +1787,78 @@ function showBudgetModal(budget) {
 
 function closeModal() {
   document.getElementById('budgetModal').classList.remove('active');
+}
+
+let metaSaveDebounce = null;
+async function saveBudgetMeta(budgetId) {
+  clearTimeout(metaSaveDebounce);
+  metaSaveDebounce = setTimeout(async () => {
+    const statusEl = document.getElementById('metaStatus');
+    const followUpEl = document.getElementById('metaFollowUp');
+    const notesEl = document.getElementById('metaNotes');
+    const statusDiv = document.getElementById('metaSaveStatus');
+    if (!statusEl) return;
+    const payload = {
+      status: statusEl.value,
+      followUpDate: followUpEl.value || null,
+      notes: notesEl.value
+    };
+    if (statusDiv) statusDiv.textContent = 'Saving…';
+    try {
+      const res = await fetch(api(`/api/admin/budgets/${budgetId}/meta`), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Save failed');
+      if (statusDiv) { statusDiv.textContent = '✓ Saved'; setTimeout(() => { if (statusDiv) statusDiv.textContent=''; }, 1500); }
+      // Refresh local list so main table reflects the change
+      const b = budgets.find(x => x.id === budgetId);
+      if (b) Object.assign(b, payload);
+      renderBudgets();
+    } catch (err) {
+      if (statusDiv) statusDiv.textContent = '✗ Save failed';
+      console.error('Save meta error:', err);
+    }
+  }, 300);
+}
+
+async function toggleViewClassification(budgetId, viewId, isInternal) {
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}/views/${viewId}`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isInternal })
+    });
+    if (!res.ok) throw new Error('Reclassify failed');
+    const { lastClientActivity } = await res.json();
+    showToast(`✓ Marked as ${isInternal ? 'team' : 'customer'}`);
+    // Update main list locally
+    const b = budgets.find(x => x.id === budgetId);
+    if (b) {
+      b.lastClientActivity = lastClientActivity;
+      // Update per-class counts too
+      const cur = window.__currentBudget;
+      if (cur && cur.id === budgetId) {
+        const view = cur.views.find(v => v.id === viewId);
+        if (view) {
+          view.isInternal = isInternal;
+          b.clientViews = cur.views.filter(v => !v.isInternal).length;
+          b.internalViews = cur.views.filter(v => v.isInternal).length;
+        }
+      }
+    }
+    renderBudgets();
+    // Re-render modal with updated state
+    if (window.__currentBudget && window.__currentBudget.id === budgetId) {
+      showBudgetModal(window.__currentBudget);
+    }
+  } catch (err) {
+    console.error('Reclassify error:', err);
+    showToast('Failed to reclassify view');
+  }
 }
 
 async function restoreVersion(budgetId, version) {
