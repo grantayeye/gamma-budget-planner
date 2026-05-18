@@ -1087,6 +1087,14 @@ let customCategoryConfig = null;
 let customCategories = null;
 let sqftLocked = null;
 let propertyTypeLocked = null;
+const TIER_ORDER = ['good', 'standard', 'better', 'best'];
+
+function orderedTierKeys(tiers) {
+  if (!tiers) return [];
+  const known = TIER_ORDER.filter(tierKey => tiers[tierKey]);
+  const unknown = Object.keys(tiers).filter(tierKey => !TIER_ORDER.includes(tierKey));
+  return [...known, ...unknown];
+}
 
 // Active data accessors — everything uses these
 function CATEGORIES() {
@@ -1145,7 +1153,7 @@ function CATEGORIES() {
       // Build tiers object
       const tiers = {};
       if (cc.tiers) {
-        Object.keys(cc.tiers).forEach(tierKey => {
+        orderedTierKeys(cc.tiers).forEach(tierKey => {
           const t = cc.tiers[tierKey];
           if (t.enabled !== false) {
             tiers[tierKey] = {
@@ -1318,7 +1326,7 @@ function renderCategories() {
               <div class="tier-price">—</div>
               <div class="tier-tag">Not included</div>
             </div>
-            ${Object.keys(cat.tiers || {}).map(t => {
+            ${orderedTierKeys(cat.tiers).map(t => {
               const tp = getCategoryPrice(cat, t);
               // Check if this tier should be disabled
               let tierDisabled = false;
@@ -1518,13 +1526,12 @@ function applyPreset(level, el) {
       if (c.tiers[level]) {
         state.selections[c.id] = level;
       } else {
-        const tierKeys = Object.keys(c.tiers);
-        const tierOrder = ['good','standard','better','best'];
-        const targetIdx = tierOrder.indexOf(level);
+        const tierKeys = orderedTierKeys(c.tiers);
+        const targetIdx = TIER_ORDER.indexOf(level);
         // Find the closest tier that exists in this category
         let closest = tierKeys[tierKeys.length - 1]; // default to highest
         for (let i = targetIdx; i >= 0; i--) {
-          if (c.tiers[tierOrder[i]]) { closest = tierOrder[i]; break; }
+          if (c.tiers[TIER_ORDER[i]]) { closest = TIER_ORDER[i]; break; }
         }
         state.selections[c.id] = closest;
       }
