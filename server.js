@@ -483,6 +483,15 @@ function getDefaultTierPrice(cat, tierKey, sqft) {
   return getScaledBudgetPrice(tier.price || 0, sqft, scale);
 }
 
+function getDefaultExtraPrice(extra, sqft) {
+  if (!extra) return null;
+  const basePrice = extra.price || extra.cost || 0;
+  if (extra.sizeScale !== undefined) {
+    return getScaledBudgetPrice(basePrice, sqft, extra.sizeScale);
+  }
+  return basePrice;
+}
+
 function updateNonCustomCategoryPrices(existingConfig = {}, oldCategories, newCategories, oldSqft, newSqft) {
   const oldById = new Map(oldCategories.map(cat => [cat.id, cat]));
   const config = {};
@@ -515,6 +524,27 @@ function updateNonCustomCategoryPrices(existingConfig = {}, oldCategories, newCa
   return config;
 }
 
+function updateNonCustomExtraPrices(existingConfig = {}, oldExtras, newExtras, oldSqft, newSqft) {
+  const oldById = new Map(oldExtras.map(extra => [extra.id, extra]));
+  const config = {};
+  newExtras.forEach(extra => {
+    const existing = existingConfig[extra.id] || {};
+    const oldDefaultPrice = getDefaultExtraPrice(oldById.get(extra.id), oldSqft);
+    const newDefaultPrice = getDefaultExtraPrice(extra, newSqft);
+    const hasCustomPrice = existing.price !== undefined &&
+      oldDefaultPrice !== null &&
+      Number(existing.price) !== oldDefaultPrice;
+    config[extra.id] = {
+      hidden: existing.hidden === true,
+      price: hasCustomPrice ? existing.price : (newDefaultPrice ?? existing.price ?? 0)
+    };
+  });
+  Object.keys(existingConfig).forEach(extraId => {
+    if (!config[extraId]) config[extraId] = existingConfig[extraId];
+  });
+  return config;
+}
+
 function preserveCategoryPricesAcrossChange(existingConfig = {}, oldCategories, newCategories, oldSqft, newSqft) {
   const oldById = new Map(oldCategories.map(cat => [cat.id, cat]));
   const config = {};
@@ -538,6 +568,22 @@ function preserveCategoryPricesAcrossChange(existingConfig = {}, oldCategories, 
   });
   Object.keys(existingConfig).forEach(catId => {
     if (!config[catId]) config[catId] = existingConfig[catId];
+  });
+  return config;
+}
+
+function preserveExtraPricesAcrossChange(existingConfig = {}, oldExtras, newExtras, oldSqft, newSqft) {
+  const oldById = new Map(oldExtras.map(extra => [extra.id, extra]));
+  const config = {};
+  newExtras.forEach(extra => {
+    const existing = existingConfig[extra.id] || {};
+    config[extra.id] = {
+      hidden: existing.hidden === true,
+      price: existing.price ?? getDefaultExtraPrice(oldById.get(extra.id), oldSqft) ?? getDefaultExtraPrice(extra, newSqft) ?? 0
+    };
+  });
+  Object.keys(existingConfig).forEach(extraId => {
+    if (!config[extraId]) config[extraId] = existingConfig[extraId];
   });
   return config;
 }
@@ -575,15 +621,18 @@ function calculateBudgetTotal(state, defaults, options = {}) {
     subtotal += Number(mod?.amount || 0);
   });
 
+  const extraConfig = categoryConfig.__extras || {};
   const extrasById = new Map(getDefaultExtrasFromData(defaults, propertyType).map(extra => [extra.id, extra]));
   Object.entries(state.extras || {}).forEach(([extraId, selected]) => {
     if (!selected) return;
     const extra = extrasById.get(extraId);
     if (!extra) return;
-    if (extra.sizeScale !== undefined) {
-      subtotal += getScaledBudgetPrice(extra.price || extra.cost || 0, sqft, extra.sizeScale);
+    const override = extraConfig[extraId];
+    if (override?.hidden === true) return;
+    if (isCustomized && override?.price !== undefined) {
+      subtotal += Number(override.price || 0);
     } else {
-      subtotal += Number(extra.price || extra.cost || 0);
+      subtotal += getDefaultExtraPrice(extra, sqft) || 0;
     }
   });
 
@@ -1214,14 +1263,20 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     if (pricingChanged) {
       const oldCategories = getDefaultCategoriesFromData(defaults, oldPropertyType);
       const newCategories = getDefaultCategoriesFromData(defaults, newPropertyType);
+      const oldExtras = getDefaultExtrasFromData(defaults, oldPropertyType);
+      const newExtras = getDefaultExtrasFromData(defaults, newPropertyType);
 
       if (data.pricingMode === 'preserve') {
         categoryConfig = preserveCategoryPricesAcrossChange(categoryConfig || {}, oldCategories, newCategories, oldSqft, newSqft);
+        categoryConfig.__extras = preserveExtraPricesAcrossChange((budget.categoryConfig || {}).__extras || {}, oldExtras, newExtras, oldSqft, newSqft);
         isCustomized = true;
         sqftLocked = newSqft;
         propertyTypeLocked = newPropertyType;
       } else if (isCustomized) {
         categoryConfig = updateNonCustomCategoryPrices(categoryConfig || {}, oldCategories, newCategories, oldSqft, newSqft);
+        if ((budget.categoryConfig || {}).__extras) {
+          categoryConfig.__extras = updateNonCustomExtraPrices((budget.categoryConfig || {}).__extras || {}, oldExtras, newExtras, oldSqft, newSqft);
+        }
         sqftLocked = newSqft;
         propertyTypeLocked = newPropertyType;
       } else {
@@ -1352,14 +1407,26 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
     const now = new Date().toISOString();
+    const currentState = budget.currentState || budget.versions[budget.versions.length - 1]?.state || {};
+    const sqftLocked = budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize;
+    const propertyTypeLocked = budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType;
+    const defaults = await loadCategoryDefaultsData();
+    currentState.total = calculateBudgetTotal(currentState, defaults, {
+      sqft: sqftLocked,
+      propertyType: propertyTypeLocked,
+      isCustomized: true,
+      categoryConfig: data.categoryConfig || {},
+      customCategories: data.customCategories || []
+    });
     
     await supabase
       .from('budgets')
       .update({
         is_customized: true,
         customized_at: now,
-        sqft_locked: budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize,
-        property_type_locked: budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType,
+        sqft_locked: sqftLocked,
+        property_type_locked: propertyTypeLocked,
+        current_state: currentState,
         category_config: data.categoryConfig || null,
         custom_categories: data.customCategories || null,
         modified_at: now
@@ -1368,7 +1435,6 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     
     // Wipe versions and create fresh one
     await supabase.from('budget_versions').delete().eq('budget_id', req.params.id);
-    const currentState = budget.currentState || budget.versions[budget.versions.length - 1]?.state;
     await addVersion(req.params.id, 1, currentState, 'Customization applied', true);
     
     res.json({ success: true, message: 'Budget customized successfully', versionsWiped: true });

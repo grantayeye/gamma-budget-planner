@@ -1182,7 +1182,30 @@ function CATEGORIES() {
   return result;
 }
 
-function EXTRAS() { return CONFIGS[state.propertyType].extras; }
+function EXTRAS() {
+  const base = CONFIGS[state.propertyType].extras;
+  const extraConfig = customCategoryConfig?.__extras;
+
+  if (!isCustomizedBudget || !extraConfig) {
+    return base;
+  }
+
+  return base.reduce((result, extra) => {
+    const override = extraConfig[extra.id];
+    if (override?.hidden === true) return result;
+
+    const customExtra = { ...extra };
+    if (override?.price !== undefined) {
+      customExtra.price = override.price;
+      customExtra.sizeScale = 0;
+    }
+    if (override?.name) customExtra.name = override.name;
+    if (override?.note) customExtra.note = override.note;
+
+    result.push(customExtra);
+    return result;
+  }, []);
+}
 
 // ============================================================
 // APP STATE
