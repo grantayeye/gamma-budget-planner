@@ -1691,6 +1691,9 @@ function showBudgetModal(budget) {
   const status = budget.status || 'active';
   const followUp = budget.followUpDate || '';
   const notes = budget.notes || '';
+  const projectName = budget.currentState?.clientName || budget.clientName || '';
+  const projectSqft = budget.sqftLocked || budget.currentState?.homeSize || 4000;
+  const projectType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
 
   body.innerHTML = `
     <div class="detail-grid">
@@ -1717,6 +1720,48 @@ function showBudgetModal(budget) {
       <div class="detail-item">
         <div class="label">Total Versions</div>
         <div class="value">${budget.versions?.length || 0}</div>
+      </div>
+    </div>
+
+    <div class="section-title">🏠 Project Details</div>
+    <div
+      id="projectDetailsEditor"
+      data-original-name="${escapeAttr(projectName)}"
+      data-original-sqft="${projectSqft}"
+      data-original-type="${projectType}"
+      style="background:#F7FAFC;border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:20px;"
+    >
+      <div style="display:grid;grid-template-columns:1fr 130px 170px;gap:12px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Budget Name</label>
+          <input id="projectClientName" type="text" value="${escapeAttr(projectName)}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Sqft</label>
+          <input id="projectSqft" type="number" min="500" max="50000" value="${projectSqft}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Home Type</label>
+          <select id="projectPropertyType" onchange="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
+            <option value="residential" ${projectType === 'residential' ? 'selected' : ''}>Residential</option>
+            <option value="condo" ${projectType === 'condo' ? 'selected' : ''}>Condo</option>
+          </select>
+        </div>
+      </div>
+      <div id="projectPricingChoice" style="display:none;background:#FFF8E1;border:1px solid #FFE0B2;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px;">
+        <div style="font-weight:700;margin-bottom:6px;">Sqft or home type changed. How should pricing respond?</div>
+        <label style="display:block;margin-bottom:6px;">
+          <input type="radio" name="projectPricingMode" value="recalculate" checked>
+          Update all non-custom pricing
+        </label>
+        <label style="display:block;">
+          <input type="radio" name="projectPricingMode" value="preserve">
+          Leave pricing as is
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="projectSaveBtn" class="btn btn-primary btn-small" onclick="saveProjectDetails('${budget.id}')" disabled>Save Project Details</button>
+        <span id="projectSaveStatus" style="font-size:12px;color:var(--text-light);"></span>
       </div>
     </div>
 
@@ -1787,6 +1832,79 @@ function showBudgetModal(budget) {
 
 function closeModal() {
   document.getElementById('budgetModal').classList.remove('active');
+}
+
+function handleProjectDetailsChange() {
+  const editor = document.getElementById('projectDetailsEditor');
+  if (!editor) return;
+  const name = document.getElementById('projectClientName').value.trim();
+  const sqft = parseInt(document.getElementById('projectSqft').value) || 0;
+  const propertyType = document.getElementById('projectPropertyType').value;
+  const originalName = editor.dataset.originalName || '';
+  const originalSqft = parseInt(editor.dataset.originalSqft) || 0;
+  const originalType = editor.dataset.originalType || 'residential';
+  const pricingChanged = sqft !== originalSqft || propertyType !== originalType;
+  const changed = name !== originalName || pricingChanged;
+  document.getElementById('projectPricingChoice').style.display = pricingChanged ? 'block' : 'none';
+  document.getElementById('projectSaveBtn').disabled = !changed;
+  document.getElementById('projectSaveStatus').textContent = changed ? 'Unsaved changes' : '';
+}
+
+async function saveProjectDetails(budgetId) {
+  const statusEl = document.getElementById('projectSaveStatus');
+  const saveBtn = document.getElementById('projectSaveBtn');
+  const editor = document.getElementById('projectDetailsEditor');
+  if (!editor) return;
+
+  const clientName = document.getElementById('projectClientName').value.trim();
+  const homeSize = parseInt(document.getElementById('projectSqft').value);
+  const propertyType = document.getElementById('projectPropertyType').value;
+  const originalSqft = parseInt(editor.dataset.originalSqft) || 0;
+  const originalType = editor.dataset.originalType || 'residential';
+  const pricingChanged = homeSize !== originalSqft || propertyType !== originalType;
+
+  if (!homeSize || homeSize < 500 || homeSize > 50000) {
+    statusEl.textContent = 'Enter a valid sqft';
+    return;
+  }
+
+  const pricingMode = pricingChanged
+    ? document.querySelector('input[name="projectPricingMode"]:checked')?.value
+    : undefined;
+
+  saveBtn.disabled = true;
+  statusEl.textContent = 'Saving...';
+
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}/project`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientName, homeSize, propertyType, pricingMode })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
+
+    showToast('✓ Project details saved');
+    const idx = budgets.findIndex(b => b.id === budgetId);
+    if (idx >= 0) {
+      budgets[idx] = {
+        ...budgets[idx],
+        clientName: data.budget.clientName,
+        currentTotal: data.budget.currentState?.total || 0,
+        isCustomized: data.budget.isCustomized,
+        sqftLocked: data.budget.sqftLocked,
+        propertyTypeLocked: data.budget.propertyTypeLocked,
+        lastModified: data.budget.lastModified
+      };
+    }
+    renderBudgets();
+    showBudgetModal(data.budget);
+  } catch (err) {
+    console.error('Save project details error:', err);
+    statusEl.textContent = err.message || 'Save failed';
+    saveBtn.disabled = false;
+  }
 }
 
 let metaSaveDebounce = null;
@@ -2604,6 +2722,16 @@ async function deleteUser(id) {
 // ============================================================
 // UTILITIES
 // ============================================================
+function escapeAttr(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
 function formatCurrency(num) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',

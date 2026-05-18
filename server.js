@@ -393,6 +393,13 @@ const schemas = {
     pin: z.boolean().optional()
   }),
 
+  updateBudgetProject: z.object({
+    clientName: z.string().max(200).optional().nullable(),
+    homeSize: z.coerce.number().int().min(500).max(50000).optional(),
+    propertyType: z.enum(['residential', 'condo']).optional(),
+    pricingMode: z.enum(['recalculate', 'preserve']).optional()
+  }),
+
   createLink: z.object({
     config: z.string().min(1).max(5000),
     clientName: z.string().max(200).optional().nullable(),
@@ -428,6 +435,163 @@ function loadStaticCategoryData() {
     condo_extras: sandbox.CONDO_EXTRAS,
     base_sqft: 4000
   };
+}
+
+const TIER_KEYS = ['good', 'standard', 'better', 'best'];
+
+async function loadCategoryDefaultsData() {
+  const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
+  if (error || !data) return loadStaticCategoryData();
+  return {
+    residential_categories: data.residential_categories || [],
+    residential_extras: data.residential_extras || [],
+    condo_categories: data.condo_categories || [],
+    condo_extras: data.condo_extras || [],
+    base_sqft: data.base_sqft || 4000
+  };
+}
+
+function getDefaultCategoriesFromData(defaults, propertyType) {
+  return propertyType === 'condo'
+    ? (defaults.condo_categories || [])
+    : (defaults.residential_categories || []);
+}
+
+function getDefaultExtrasFromData(defaults, propertyType) {
+  return propertyType === 'condo'
+    ? (defaults.condo_extras || [])
+    : (defaults.residential_extras || []);
+}
+
+function getSizeMultiplierForBudget(sqft, scaleFactor) {
+  if (scaleFactor === 0) return 1;
+  const effectiveSqft = Math.max(sqft, 2500);
+  const baseline = 4000;
+  const ratio = effectiveSqft / baseline;
+  return 1 + (ratio - 1) * scaleFactor;
+}
+
+function getScaledBudgetPrice(basePrice, sqft, scaleFactor) {
+  return Math.round((basePrice || 0) * getSizeMultiplierForBudget(sqft, scaleFactor) / 100) * 100;
+}
+
+function getDefaultTierPrice(cat, tierKey, sqft) {
+  const tier = cat?.tiers?.[tierKey];
+  if (!tier) return null;
+  if (cat.baseTierNoScale && tierKey === 'good') return tier.price || 0;
+  const scale = tier.sizeScale !== undefined ? tier.sizeScale : (cat.sizeScale ?? 0.5);
+  return getScaledBudgetPrice(tier.price || 0, sqft, scale);
+}
+
+function updateNonCustomCategoryPrices(existingConfig = {}, oldCategories, newCategories, oldSqft, newSqft) {
+  const oldById = new Map(oldCategories.map(cat => [cat.id, cat]));
+  const config = {};
+  newCategories.forEach(cat => {
+    const existing = existingConfig[cat.id] || {};
+    const oldCat = oldById.get(cat.id);
+    const tiers = {};
+    TIER_KEYS.forEach(tierKey => {
+      const defaultTier = cat.tiers?.[tierKey];
+      const existingTier = existing.tiers?.[tierKey] || {};
+      if (!defaultTier && !existingTier.price && existingTier.enabled !== true) return;
+      const oldDefaultPrice = getDefaultTierPrice(oldCat, tierKey, oldSqft);
+      const newDefaultPrice = getDefaultTierPrice(cat, tierKey, newSqft);
+      const hasCustomPrice = existingTier.price !== undefined &&
+        oldDefaultPrice !== null &&
+        Number(existingTier.price) !== oldDefaultPrice;
+      tiers[tierKey] = {
+        enabled: existingTier.enabled !== undefined ? existingTier.enabled : true,
+        label: existingTier.label ?? defaultTier?.label ?? tierKey,
+        price: hasCustomPrice ? existingTier.price : (newDefaultPrice ?? existingTier.price ?? 0),
+        features: existingTier.features ?? defaultTier?.features ?? [],
+        brands: existingTier.brands ?? defaultTier?.brands ?? ''
+      };
+    });
+    config[cat.id] = { hidden: existing.hidden === true, tiers };
+  });
+  Object.keys(existingConfig).forEach(catId => {
+    if (!config[catId]) config[catId] = existingConfig[catId];
+  });
+  return config;
+}
+
+function preserveCategoryPricesAcrossChange(existingConfig = {}, oldCategories, newCategories, oldSqft, newSqft) {
+  const oldById = new Map(oldCategories.map(cat => [cat.id, cat]));
+  const config = {};
+  newCategories.forEach(cat => {
+    const existing = existingConfig[cat.id] || {};
+    const oldCat = oldById.get(cat.id);
+    const tiers = {};
+    TIER_KEYS.forEach(tierKey => {
+      const defaultTier = cat.tiers?.[tierKey];
+      const existingTier = existing.tiers?.[tierKey] || {};
+      if (!defaultTier && !existingTier.price && existingTier.enabled !== true) return;
+      tiers[tierKey] = {
+        enabled: existingTier.enabled !== undefined ? existingTier.enabled : true,
+        label: existingTier.label ?? defaultTier?.label ?? tierKey,
+        price: existingTier.price ?? getDefaultTierPrice(oldCat, tierKey, oldSqft) ?? getDefaultTierPrice(cat, tierKey, newSqft) ?? 0,
+        features: existingTier.features ?? defaultTier?.features ?? [],
+        brands: existingTier.brands ?? defaultTier?.brands ?? ''
+      };
+    });
+    config[cat.id] = { hidden: existing.hidden === true, tiers };
+  });
+  Object.keys(existingConfig).forEach(catId => {
+    if (!config[catId]) config[catId] = existingConfig[catId];
+  });
+  return config;
+}
+
+function calculateBudgetTotal(state, defaults, options = {}) {
+  const sqft = options.sqft || state.homeSize || 4000;
+  const propertyType = options.propertyType || state.propertyType || 'residential';
+  const isCustomized = !!options.isCustomized;
+  const categoryConfig = options.categoryConfig || {};
+  const customCategories = options.customCategories || [];
+  let subtotal = 0;
+
+  const defaultCategories = getDefaultCategoriesFromData(defaults, propertyType);
+  const customById = new Map((customCategories || []).map(cat => [cat.id, cat]));
+  const defaultById = new Map(defaultCategories.map(cat => [cat.id, cat]));
+
+  Object.entries(state.selections || {}).forEach(([catId, tierKey]) => {
+    if (!tierKey) return;
+    const customCat = customById.get(catId);
+    if (customCat?.tiers?.[tierKey]) {
+      subtotal += Number(customCat.tiers[tierKey].price || 0);
+      return;
+    }
+
+    const defaultCat = defaultById.get(catId);
+    if (!defaultCat?.tiers?.[tierKey]) return;
+    const override = categoryConfig[catId]?.tiers?.[tierKey];
+    const price = isCustomized && override?.price !== undefined
+      ? Number(override.price || 0)
+      : getDefaultTierPrice(defaultCat, tierKey, sqft);
+    subtotal += price || 0;
+  });
+
+  Object.values(state.catMods || {}).forEach(mod => {
+    subtotal += Number(mod?.amount || 0);
+  });
+
+  const extrasById = new Map(getDefaultExtrasFromData(defaults, propertyType).map(extra => [extra.id, extra]));
+  Object.entries(state.extras || {}).forEach(([extraId, selected]) => {
+    if (!selected) return;
+    const extra = extrasById.get(extraId);
+    if (!extra) return;
+    if (extra.sizeScale !== undefined) {
+      subtotal += getScaledBudgetPrice(extra.price || extra.cost || 0, sqft, extra.sizeScale);
+    } else {
+      subtotal += Number(extra.price || extra.cost || 0);
+    }
+  });
+
+  (state.modifiers || []).forEach(mod => {
+    subtotal += Number(mod?.amount || 0);
+  });
+
+  return Math.round(subtotal * 1.06);
 }
 
 // Check if category_defaults table exists and seed if needed
@@ -1018,6 +1182,94 @@ app.patch('/api/admin/budgets/:id/meta', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Update meta error:', err);
     res.status(500).json({ error: 'Failed to update budget meta' });
+  }
+});
+
+// Update project details that affect the live budget state.
+app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
+  try {
+    const data = schemas.updateBudgetProject.parse(req.body);
+    const budget = await loadBudget(req.params.id);
+    if (!budget) return res.status(404).json({ error: 'Budget not found' });
+
+    const state = { ...(budget.currentState || {}) };
+    const oldSqft = Number(budget.sqftLocked || state.homeSize || 4000);
+    const oldPropertyType = budget.propertyTypeLocked || state.propertyType || 'residential';
+    const newSqft = data.homeSize !== undefined ? data.homeSize : oldSqft;
+    const newPropertyType = data.propertyType || oldPropertyType;
+    const clientName = data.clientName !== undefined ? (data.clientName || null) : (budget.clientName || state.clientName || null);
+    const pricingChanged = newSqft !== oldSqft || newPropertyType !== oldPropertyType;
+
+    if (pricingChanged && !data.pricingMode) {
+      return res.status(400).json({ error: 'pricingMode is required when sqft or property type changes' });
+    }
+
+    const defaults = await loadCategoryDefaultsData();
+    let isCustomized = budget.isCustomized;
+    let sqftLocked = budget.sqftLocked;
+    let propertyTypeLocked = budget.propertyTypeLocked;
+    let categoryConfig = budget.categoryConfig || null;
+    const customCategories = budget.customCategories || null;
+
+    if (pricingChanged) {
+      const oldCategories = getDefaultCategoriesFromData(defaults, oldPropertyType);
+      const newCategories = getDefaultCategoriesFromData(defaults, newPropertyType);
+
+      if (data.pricingMode === 'preserve') {
+        categoryConfig = preserveCategoryPricesAcrossChange(categoryConfig || {}, oldCategories, newCategories, oldSqft, newSqft);
+        isCustomized = true;
+        sqftLocked = newSqft;
+        propertyTypeLocked = newPropertyType;
+      } else if (isCustomized) {
+        categoryConfig = updateNonCustomCategoryPrices(categoryConfig || {}, oldCategories, newCategories, oldSqft, newSqft);
+        sqftLocked = newSqft;
+        propertyTypeLocked = newPropertyType;
+      } else {
+        sqftLocked = null;
+        propertyTypeLocked = null;
+      }
+    }
+
+    state.clientName = clientName;
+    state.homeSize = newSqft;
+    state.propertyType = newPropertyType;
+    state.total = calculateBudgetTotal(state, defaults, {
+      sqft: newSqft,
+      propertyType: newPropertyType,
+      isCustomized,
+      categoryConfig,
+      customCategories
+    });
+
+    const now = new Date().toISOString();
+    const update = {
+      client_name: clientName,
+      current_state: state,
+      is_customized: isCustomized,
+      sqft_locked: sqftLocked || null,
+      property_type_locked: propertyTypeLocked || null,
+      category_config: categoryConfig,
+      custom_categories: customCategories,
+      modified_at: now
+    };
+
+    const { error } = await supabase.from('budgets').update(update).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+
+    const versionNum = (budget.versions?.length || 0) + 1;
+    const note = pricingChanged
+      ? `Admin updated project details (${data.pricingMode === 'preserve' ? 'pricing preserved' : 'standard pricing recalculated'})`
+      : 'Admin updated project details';
+    await addVersion(req.params.id, versionNum, state, note, true);
+
+    const updatedBudget = await loadBudget(req.params.id);
+    res.json({ success: true, budget: updatedBudget });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    }
+    console.error('Update project details error:', err);
+    res.status(500).json({ error: 'Failed to update project details' });
   }
 });
 
