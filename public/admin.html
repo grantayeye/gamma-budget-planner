@@ -1794,7 +1794,7 @@ function showBudgetModal(budget) {
                 ${v.isInternal ? '<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">TEAM</span>' : '<span style="background:#E8F5E9;color:#2E7D32;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">CLIENT</span>'}
               </button>
             </span>
-            <span style="color:var(--text-light);font-size:11px;">${v.userAgent?.split(' ')[0] || 'Unknown device'}</span>
+            <span style="color:var(--text-light);font-size:11px;text-align:right;">${escAttr(v.userAgent?.split(' ')[0] || 'Unknown device')} • ${escAttr(v.ip || 'No IP')}</span>
           </div>
         `).join('') :
         '<div style="color:var(--text-light);text-align:center;padding:12px;">No views yet</div>'
