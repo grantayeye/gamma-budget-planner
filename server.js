@@ -253,7 +253,7 @@ async function listBudgets() {
 }
 
 const viewNotifyThrottle = new Map();
-const VIEW_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const VIEW_NOTIFY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 async function recordView(budgetId, ip, userAgent, isInternal = false) {
   await supabase
@@ -280,7 +280,7 @@ async function recordView(budgetId, ip, userAgent, isInternal = false) {
     console.error('increment_views fallback error:', err);
   }
 
-  // Send view notification to creator (throttled: once per 24h per budget)
+  // Send view notification to creator (throttled: once per 4h per budget)
   if (!isInternal) {
     const lastNotify = viewNotifyThrottle.get(budgetId) || 0;
     if (Date.now() - lastNotify > VIEW_NOTIFY_COOLDOWN_MS) {
