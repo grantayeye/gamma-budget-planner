@@ -2206,6 +2206,7 @@ let lastSavedState = null;
 // Get current state as object for API
 function getStateForAPI() {
   const clientName = document.getElementById('clientName').value || null;
+  const builder = document.getElementById('builder').value || null;
   const homeSize = parseInt(document.getElementById('homeSize').value) || 4000;
   const propertyType = document.getElementById('propertyType').value || 'residential';
   
@@ -2221,6 +2222,7 @@ function getStateForAPI() {
     homeSize,
     propertyType,
     clientName,
+    builder,
     total
   };
 }
@@ -2300,6 +2302,9 @@ async function loadBudget(budgetId) {
       if (s.clientName) {
         document.getElementById('clientName').value = s.clientName;
       }
+      if (s.builder || budget.builder) {
+        document.getElementById('builder').value = s.builder || budget.builder;
+      }
       
       // If customized, silently lock sqft and property type fields
       if (isCustomizedBudget) {
@@ -2363,6 +2368,7 @@ function startLiveSync(budgetId) {
             document.getElementById('homeSize').value = state.homeSize;
             document.getElementById('propertyType').value = state.propertyType;
             if (s.clientName) document.getElementById('clientName').value = s.clientName;
+            if (s.builder || budget.builder) document.getElementById('builder').value = s.builder || budget.builder;
 
             // Preserve which category cards were open + scroll position
             const openCards = new Set();
