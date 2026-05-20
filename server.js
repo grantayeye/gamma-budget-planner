@@ -972,6 +972,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     const budget = {
       id,
       clientName: data.clientName || data.state.clientName || null,
+      builder: data.state.builder || null,
       currentState: data.state,
       isCustomized: false,
       sqftLocked: null,
@@ -1092,6 +1093,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
 
     budget.currentState = data.state;
     if (data.state.clientName) budget.clientName = data.state.clientName;
+    if (data.state.builder !== undefined) budget.builder = data.state.builder || null;
 
     // Determine viewer identity (validates token, not just presence)
     let viewerEmail = null;
