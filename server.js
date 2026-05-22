@@ -125,6 +125,10 @@ function getBudgetAccess(state = {}) {
   };
 }
 
+function normalizeBudgetStatus(status) {
+  return ['active', 'won', 'lost'].includes(status) ? status : 'active';
+}
+
 function preserveBudgetAccess(nextState = {}, existingState = {}) {
   const preserved = { ...nextState };
   if (existingState.expiresAt !== undefined) preserved.expiresAt = existingState.expiresAt;
@@ -183,7 +187,7 @@ async function loadBudget(id) {
     lastModified: budget.modified_at,
     lastClientActivity: budget.last_client_activity_at || null,
     createdByEmail: budget.created_by_email || null,
-    status: budget.status || 'active',
+    status: normalizeBudgetStatus(budget.status),
     notes: budget.notes || '',
     followUpDate: budget.follow_up_date || null,
     expiresAt: access.expiresAt,
@@ -295,7 +299,7 @@ async function listBudgets() {
     sqftLocked: b.sqft_locked,
     propertyTypeLocked: b.property_type_locked,
     createdByEmail: b.created_by_email || null,
-    status: b.status || 'active',
+    status: normalizeBudgetStatus(b.status),
     notes: b.notes || '',
     followUpDate: b.follow_up_date || null,
     expiresAt: access.expiresAt,
@@ -1335,13 +1339,22 @@ app.patch('/api/admin/budgets/:id/views/:viewId', requireAuth, async (req, res) 
 // Update budget CRM metadata (status, notes, follow-up date)
 app.patch('/api/admin/budgets/:id/meta', requireAuth, async (req, res) => {
   try {
-    const allowedStatus = ['active','follow-up','won','lost','archive'];
+    const allowedStatus = ['active','won','lost'];
     const update = {};
     if (req.body.status !== undefined) {
       if (!allowedStatus.includes(req.body.status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
       update.status = req.body.status;
+      if (req.body.status === 'lost') {
+        const budget = await loadBudget(req.params.id);
+        if (!budget) return res.status(404).json({ error: 'Budget not found' });
+        const state = { ...(budget.currentState || {}) };
+        state.expiredAt = state.expiredAt || new Date().toISOString();
+        if (!state.expiresAt) state.expiresAt = formatDateOnly(new Date());
+        update.current_state = state;
+        update.modified_at = new Date().toISOString();
+      }
     }
     if (req.body.notes !== undefined) update.notes = String(req.body.notes || '').slice(0, 5000);
     if (req.body.followUpDate !== undefined) {
@@ -1350,7 +1363,7 @@ app.patch('/api/admin/budgets/:id/meta', requireAuth, async (req, res) => {
     if (req.body.expiresAt !== undefined || req.body.expireNow !== undefined || req.body.clearExpired !== undefined) {
       const budget = await loadBudget(req.params.id);
       if (!budget) return res.status(404).json({ error: 'Budget not found' });
-      const state = { ...(budget.currentState || {}) };
+      const state = { ...(update.current_state || budget.currentState || {}) };
 
       if (req.body.expiresAt !== undefined) {
         const expiresAt = req.body.expiresAt || null;

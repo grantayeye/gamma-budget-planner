@@ -399,10 +399,8 @@
       letter-spacing: 0.4px;
     }
     .status-active { background: #E3F2FD; color: #1565C0; }
-    .status-follow-up { background: #FFF3E0; color: #E65100; }
     .status-won { background: #E8F5E9; color: #2E7D32; }
     .status-lost { background: #FFEBEE; color: #C62828; }
-    .status-archive { background: #ECEFF1; color: #546E7A; }
     .status-expired { background: #FFEBEE; color: #C62828; }
 
     .status-filter-chip {
@@ -1029,13 +1027,11 @@
         <div id="statusFilters" style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="status-filter-chip active" data-status="all" onclick="setStatusFilter('all')">All</button>
           <button class="status-filter-chip" data-status="active" onclick="setStatusFilter('active')">Active</button>
-          <button class="status-filter-chip" data-status="follow-up" onclick="setStatusFilter('follow-up')">Follow-up</button>
           <button class="status-filter-chip" data-status="won" onclick="setStatusFilter('won')">Won</button>
           <button class="status-filter-chip" data-status="lost" onclick="setStatusFilter('lost')">Lost</button>
-          <button class="status-filter-chip" data-status="archive" onclick="setStatusFilter('archive')">Archive</button>
           <button class="status-filter-chip" data-status="expired" onclick="setStatusFilter('expired')">Expired</button>
           <button class="status-filter-chip" data-status="needs-followup" onclick="setStatusFilter('needs-followup')" title="Active budgets with no customer activity in 7+ days, or overdue follow-up date">⏰ Needs follow-up</button>
-          <button id="hideExpiredToggle" class="status-filter-chip" onclick="toggleHideExpired()" title="Hide expired budgets from the current list">Hide expired</button>
+          <button id="hideExpiredToggle" class="status-filter-chip active" onclick="toggleHideExpired()" title="Hide expired budgets from the current list">Hide expired</button>
         </div>
       </div>
 
@@ -1573,7 +1569,11 @@ async function loadBudgets() {
 
 let budgetSort = { column: 'lastClientActivity', direction: 'desc' };
 let budgetStatusFilter = 'all';
-let budgetHideExpired = false;
+let budgetHideExpired = true;
+
+function normalizeBudgetStatus(status) {
+  return ['active', 'won', 'lost'].includes(status) ? status : 'active';
+}
 
 function setStatusFilter(status) {
   budgetStatusFilter = status;
@@ -1616,7 +1616,7 @@ function applyBudgetFilters() {
 
 function isOverdueFollowUp(b) {
   if (b.isExpired) return false;
-  if (b.status !== 'active' && b.status !== 'follow-up') return false;
+  if (normalizeBudgetStatus(b.status) !== 'active') return false;
   if (b.followUpDate) {
     const fu = new Date(b.followUpDate + 'T00:00:00');
     return fu <= new Date();
@@ -1646,7 +1646,7 @@ function renderBudgets() {
   } else if (budgetStatusFilter === 'expired') {
     rows = rows.filter(b => !!b.isExpired);
   } else if (budgetStatusFilter !== 'all') {
-    rows = rows.filter(b => !b.isExpired && (b.status || 'active') === budgetStatusFilter);
+    rows = rows.filter(b => !b.isExpired && normalizeBudgetStatus(b.status) === budgetStatusFilter);
   }
   if (budgetHideExpired && budgetStatusFilter !== 'expired') {
     rows = rows.filter(b => !b.isExpired);
@@ -1657,7 +1657,7 @@ function renderBudgets() {
   const dir = budgetSort.direction === 'asc' ? 1 : -1;
   const getVal = (b) => {
     if (col === 'clientName') return (b.clientName || '').toLowerCase();
-    if (col === 'status') return b.isExpired ? 'expired' : (b.status || 'active');
+    if (col === 'status') return b.isExpired ? 'expired' : normalizeBudgetStatus(b.status);
     if (col === 'currentTotal') return b.currentTotal || 0;
     if (col === 'created') return new Date(b.created).getTime();
     if (col === 'viewCount') return b.clientViews || 0;
@@ -1695,7 +1695,7 @@ function renderBudgets() {
   }
 
   tbody.innerHTML = rows.map(b => {
-    const status = b.isExpired ? 'expired' : (b.status || 'active');
+    const status = b.isExpired ? 'expired' : normalizeBudgetStatus(b.status);
     const overdue = isOverdueFollowUp(b);
     return `
     <tr>
@@ -1760,7 +1760,7 @@ function showBudgetModal(budget) {
   window.__currentBudget = budget;
   document.getElementById('modalTitle').textContent = budget.clientName || 'Unnamed Budget';
   const body = document.getElementById('modalBody');
-  const status = budget.status || 'active';
+  const status = normalizeBudgetStatus(budget.status);
   const followUp = budget.followUpDate || '';
   const notes = budget.notes || '';
   const projectName = budget.currentState?.clientName || budget.clientName || '';
@@ -1877,20 +1877,13 @@ function showBudgetModal(budget) {
       <div>
         <label class="detail-form-label">Status</label>
         <select id="metaStatus" onchange="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
-          ${['active','follow-up','won','lost','archive'].map(s => `<option value="${s}" ${status===s?'selected':''}>${s}</option>`).join('')}
+          ${['active','won','lost'].map(s => `<option value="${s}" ${status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </div>
       <div>
         <label class="detail-form-label">Follow-up Date</label>
         <input id="metaFollowUp" type="date" value="${followUp}" onchange="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
       </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-      ${status === 'archive'
-        ? `<button class="btn btn-secondary btn-small" onclick="setBudgetArchiveStatus('${budget.id}', 'active')">Unarchive Budget</button>`
-        : `<button class="btn btn-small" style="background:#ECEFF1;color:#546E7A;" onclick="setBudgetArchiveStatus('${budget.id}', 'archive')">Archive Budget</button>`
-      }
-      <span style="font-size:12px;color:var(--text-light);">Archived budgets stay saved but can be filtered out of active work.</span>
     </div>
     <div style="margin-bottom:16px;">
       <label class="detail-form-label">Notes</label>
@@ -2092,36 +2085,6 @@ async function saveBudgetExpiration(budgetId, action) {
   }
 }
 
-async function setBudgetArchiveStatus(budgetId, nextStatus) {
-  const statusDiv = document.getElementById('metaSaveStatus');
-  const payload = {
-    status: nextStatus,
-    followUpDate: document.getElementById('metaFollowUp')?.value || null,
-    notes: document.getElementById('metaNotes')?.value || ''
-  };
-  if (statusDiv) statusDiv.textContent = 'Saving...';
-
-  try {
-    const res = await fetch(api(`/api/admin/budgets/${budgetId}/meta`), {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
-    if (data.budget) {
-      updateBudgetListEntry(data.budget);
-      renderBudgets();
-      showBudgetModal(data.budget);
-    }
-    showToast(nextStatus === 'archive' ? '✓ Budget archived' : '✓ Budget unarchived');
-  } catch (err) {
-    console.error('Archive status error:', err);
-    if (statusDiv) statusDiv.textContent = '✗ Save failed';
-  }
-}
-
 let metaSaveDebounce = null;
 async function saveBudgetMeta(budgetId) {
   clearTimeout(metaSaveDebounce);
@@ -2131,6 +2094,7 @@ async function saveBudgetMeta(budgetId) {
     const notesEl = document.getElementById('metaNotes');
     const statusDiv = document.getElementById('metaSaveStatus');
     if (!statusEl) return;
+    const oldStatus = normalizeBudgetStatus(window.__currentBudget?.status);
     const payload = {
       status: statusEl.value,
       followUpDate: followUpEl.value || null,
@@ -2148,7 +2112,12 @@ async function saveBudgetMeta(budgetId) {
       if (!res.ok) throw new Error(data.error || 'Save failed');
       if (statusDiv) { statusDiv.textContent = '✓ Saved'; setTimeout(() => { if (statusDiv) statusDiv.textContent=''; }, 1500); }
       // Refresh local list so main table reflects the change
-      if (data.budget) updateBudgetListEntry(data.budget);
+      if (data.budget) {
+        updateBudgetListEntry(data.budget);
+        if (normalizeBudgetStatus(payload.status) !== oldStatus || payload.status === 'lost') {
+          showBudgetModal(data.budget);
+        }
+      }
       else {
         const b = budgets.find(x => x.id === budgetId);
         if (b) Object.assign(b, payload);
