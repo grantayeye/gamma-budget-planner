@@ -382,6 +382,13 @@ const schemas = {
     email: z.string().email().max(254)
   }),
 
+  resetPassword: z.object({
+    password: z.string().min(8).max(100),
+    code: z.string().min(1).max(1000).optional(),
+    accessToken: z.string().min(1).max(5000).optional(),
+    refreshToken: z.string().min(1).max(5000).optional()
+  }),
+
   createBudget: z.object({
     state: z.any(),
     clientName: z.string().max(200).optional().nullable()
@@ -838,6 +845,63 @@ app.post('/api/auth/forgot-password', limits.auth, async (req, res) => {
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
+
+async function handleResetPassword(req, res) {
+  try {
+    const { password, code, accessToken, refreshToken } = schemas.resetPassword.parse(req.body);
+
+    if (!code && !accessToken) {
+      return res.status(400).json({ error: 'Invalid reset link. Please request a new one.' });
+    }
+
+    const resetClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        },
+        global: accessToken ? {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        } : undefined
+      }
+    );
+
+    if (code) {
+      const { error } = await resetClient.auth.exchangeCodeForSession(code);
+      if (error) {
+        return res.status(400).json({ error: 'Reset link is invalid or expired. Please request a new one.' });
+      }
+    } else if (refreshToken) {
+      const { error } = await resetClient.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      });
+      if (error) {
+        return res.status(400).json({ error: 'Reset link is invalid or expired. Please request a new one.' });
+      }
+    }
+
+    const { error } = await resetClient.auth.updateUser({ password });
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Failed to update password.' });
+    }
+
+    res.clearCookie('sb_token');
+    res.json({ success: true });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid password reset request' });
+    }
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Failed to update password' });
+  }
+}
+
+app.post('/api/auth/reset-password', limits.auth, handleResetPassword);
+app.post('/api/auth/reset-password-with-token', limits.auth, handleResetPassword);
 
 app.post('/api/auth/logout', async (req, res) => {
   res.clearCookie('sb_token');
