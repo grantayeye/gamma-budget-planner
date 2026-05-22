@@ -403,6 +403,7 @@
     .status-won { background: #E8F5E9; color: #2E7D32; }
     .status-lost { background: #FFEBEE; color: #C62828; }
     .status-archive { background: #ECEFF1; color: #546E7A; }
+    .status-expired { background: #FFEBEE; color: #C62828; }
 
     .status-filter-chip {
       padding: 6px 12px;
@@ -547,6 +548,24 @@
       font-weight: 700;
       font-size: 15px;
       color: var(--primary);
+    }
+
+    .detail-form-label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+    }
+
+    .detail-editor-card {
+      background: #F7FAFC;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
     }
     
     .section-title {
@@ -1014,7 +1033,9 @@
           <button class="status-filter-chip" data-status="won" onclick="setStatusFilter('won')">Won</button>
           <button class="status-filter-chip" data-status="lost" onclick="setStatusFilter('lost')">Lost</button>
           <button class="status-filter-chip" data-status="archive" onclick="setStatusFilter('archive')">Archive</button>
+          <button class="status-filter-chip" data-status="expired" onclick="setStatusFilter('expired')">Expired</button>
           <button class="status-filter-chip" data-status="needs-followup" onclick="setStatusFilter('needs-followup')" title="Active budgets with no customer activity in 7+ days, or overdue follow-up date">⏰ Needs follow-up</button>
+          <button id="hideExpiredToggle" class="status-filter-chip" onclick="toggleHideExpired()" title="Hide expired budgets from the current list">Hide expired</button>
         </div>
       </div>
 
@@ -1552,12 +1573,29 @@ async function loadBudgets() {
 
 let budgetSort = { column: 'lastClientActivity', direction: 'desc' };
 let budgetStatusFilter = 'all';
+let budgetHideExpired = false;
 
 function setStatusFilter(status) {
   budgetStatusFilter = status;
-  document.querySelectorAll('.status-filter-chip').forEach(chip => {
+  if (status === 'expired') {
+    budgetHideExpired = false;
+    document.getElementById('hideExpiredToggle')?.classList.remove('active');
+  }
+  document.querySelectorAll('.status-filter-chip[data-status]').forEach(chip => {
     chip.classList.toggle('active', chip.dataset.status === status);
   });
+  renderBudgets();
+}
+
+function toggleHideExpired() {
+  budgetHideExpired = !budgetHideExpired;
+  if (budgetHideExpired && budgetStatusFilter === 'expired') {
+    budgetStatusFilter = 'all';
+    document.querySelectorAll('.status-filter-chip[data-status]').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.status === 'all');
+    });
+  }
+  document.getElementById('hideExpiredToggle')?.classList.toggle('active', budgetHideExpired);
   renderBudgets();
 }
 
@@ -1577,6 +1615,7 @@ function applyBudgetFilters() {
 }
 
 function isOverdueFollowUp(b) {
+  if (b.isExpired) return false;
   if (b.status !== 'active' && b.status !== 'follow-up') return false;
   if (b.followUpDate) {
     const fu = new Date(b.followUpDate + 'T00:00:00');
@@ -1604,8 +1643,13 @@ function renderBudgets() {
   // Status / CRM filter
   if (budgetStatusFilter === 'needs-followup') {
     rows = rows.filter(isOverdueFollowUp);
+  } else if (budgetStatusFilter === 'expired') {
+    rows = rows.filter(b => !!b.isExpired);
   } else if (budgetStatusFilter !== 'all') {
-    rows = rows.filter(b => (b.status || 'active') === budgetStatusFilter);
+    rows = rows.filter(b => !b.isExpired && (b.status || 'active') === budgetStatusFilter);
+  }
+  if (budgetHideExpired && budgetStatusFilter !== 'expired') {
+    rows = rows.filter(b => !b.isExpired);
   }
 
   // Sort
@@ -1613,7 +1657,7 @@ function renderBudgets() {
   const dir = budgetSort.direction === 'asc' ? 1 : -1;
   const getVal = (b) => {
     if (col === 'clientName') return (b.clientName || '').toLowerCase();
-    if (col === 'status') return b.status || 'active';
+    if (col === 'status') return b.isExpired ? 'expired' : (b.status || 'active');
     if (col === 'currentTotal') return b.currentTotal || 0;
     if (col === 'created') return new Date(b.created).getTime();
     if (col === 'viewCount') return b.clientViews || 0;
@@ -1651,7 +1695,7 @@ function renderBudgets() {
   }
 
   tbody.innerHTML = rows.map(b => {
-    const status = b.status || 'active';
+    const status = b.isExpired ? 'expired' : (b.status || 'active');
     const overdue = isOverdueFollowUp(b);
     return `
     <tr>
@@ -1664,6 +1708,7 @@ function renderBudgets() {
           ${b.builder ? ` • ${b.builder}` : ''}
           ${b.createdByEmail ? ` • 👤 ${b.createdByEmail.split('@')[0]}` : ''}
           ${b.isCustomized ? ' <span style="color:#F57C00;">⚙️ Custom</span>' : ''}
+          ${b.expiresAt ? ` • Expires ${formatDate(b.expiresAt)}` : ''}
           ${overdue ? ' <span style="color:#C62828;" title="No customer activity in 7+ days or overdue follow-up">⏰</span>' : ''}
         </div>
       </td>
@@ -1721,6 +1766,11 @@ function showBudgetModal(budget) {
   const projectName = budget.currentState?.clientName || budget.clientName || '';
   const projectSqft = budget.sqftLocked || budget.currentState?.homeSize || 4000;
   const projectType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
+  const expiresAt = budget.expiresAt || budget.currentState?.expiresAt || '';
+  const expiredAt = budget.expiredAt || budget.currentState?.expiredAt || '';
+  const isExpired = !!budget.isExpired;
+  const accessLabel = isExpired ? 'Expired' : (expiresAt ? `Active until ${formatDate(expiresAt)}` : 'Active');
+  const accessDetail = expiredAt ? `Manually expired ${formatDateTime(expiredAt)}` : (expiresAt ? `Auto expires ${formatDate(expiresAt)}` : 'No expiration date set');
 
   body.innerHTML = `
     <div class="detail-grid">
@@ -1748,6 +1798,10 @@ function showBudgetModal(budget) {
         <div class="label">Total Versions</div>
         <div class="value">${budget.versions?.length || 0}</div>
       </div>
+      <div class="detail-item">
+        <div class="label">Customer Access</div>
+        <div class="value" style="color:${isExpired ? '#C62828' : 'var(--primary)'};">${accessLabel}</div>
+      </div>
     </div>
 
     <div class="section-title">🏠 Project Details</div>
@@ -1756,19 +1810,19 @@ function showBudgetModal(budget) {
       data-original-name="${escapeAttr(projectName)}"
       data-original-sqft="${projectSqft}"
       data-original-type="${projectType}"
-      style="background:#F7FAFC;border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:20px;"
+      class="detail-editor-card"
     >
       <div style="display:grid;grid-template-columns:1fr 130px 170px;gap:12px;margin-bottom:12px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Budget Name</label>
+          <label class="detail-form-label">Budget Name</label>
           <input id="projectClientName" type="text" value="${escapeAttr(projectName)}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Sqft</label>
+          <label class="detail-form-label">Sqft</label>
           <input id="projectSqft" type="number" min="500" max="50000" value="${projectSqft}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Home Type</label>
+          <label class="detail-form-label">Home Type</label>
           <select id="projectPropertyType" onchange="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
             <option value="residential" ${projectType === 'residential' ? 'selected' : ''}>Residential</option>
             <option value="condo" ${projectType === 'condo' ? 'selected' : ''}>Condo</option>
@@ -1792,21 +1846,54 @@ function showBudgetModal(budget) {
       </div>
     </div>
 
+    <div class="section-title">🔒 Customer Access</div>
+    <div
+      id="expirationEditor"
+      data-original-expires="${escapeAttr(expiresAt)}"
+      class="detail-editor-card"
+    >
+      <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px;align-items:end;margin-bottom:12px;">
+        <div>
+          <label class="detail-form-label">Auto Expire Date</label>
+          <input id="metaExpiresAt" type="date" value="${escapeAttr(expiresAt)}" onchange="handleExpirationChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
+        </div>
+        <div style="font-size:12px;color:var(--text-light);line-height:1.4;">
+          <span class="status-badge status-${isExpired ? 'expired' : 'active'}">${isExpired ? 'Expired' : 'Active'}</span>
+          <span style="margin-left:8px;">${accessDetail}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button id="expirationSaveBtn" class="btn btn-primary btn-small" onclick="saveBudgetExpiration('${budget.id}', 'date')" disabled>Save Expiration Date</button>
+        ${isExpired
+          ? `<button class="btn btn-secondary btn-small" onclick="saveBudgetExpiration('${budget.id}', 'unexpire')">Unexpire Budget</button>`
+          : `<button class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="saveBudgetExpiration('${budget.id}', 'expireNow')">Expire Now</button>`
+        }
+        <span id="expirationSaveStatus" style="font-size:12px;color:var(--text-light);"></span>
+      </div>
+    </div>
+
     <div class="section-title">📋 Pipeline</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div>
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Status</label>
+        <label class="detail-form-label">Status</label>
         <select id="metaStatus" onchange="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
           ${['active','follow-up','won','lost','archive'].map(s => `<option value="${s}" ${status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Follow-up Date</label>
+        <label class="detail-form-label">Follow-up Date</label>
         <input id="metaFollowUp" type="date" value="${followUp}" onchange="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
       </div>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      ${status === 'archive'
+        ? `<button class="btn btn-secondary btn-small" onclick="setBudgetArchiveStatus('${budget.id}', 'active')">Unarchive Budget</button>`
+        : `<button class="btn btn-small" style="background:#ECEFF1;color:#546E7A;" onclick="setBudgetArchiveStatus('${budget.id}', 'archive')">Archive Budget</button>`
+      }
+      <span style="font-size:12px;color:var(--text-light);">Archived budgets stay saved but can be filtered out of active work.</span>
+    </div>
     <div style="margin-bottom:16px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Notes</label>
+      <label class="detail-form-label">Notes</label>
       <textarea id="metaNotes" rows="3" placeholder="Called Tuesday, waiting on builder…" onblur="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;">${notes.replace(/</g,'&lt;')}</textarea>
       <div id="metaSaveStatus" style="font-size:11px;color:var(--text-light);margin-top:3px;min-height:14px;"></div>
     </div>
@@ -1934,6 +2021,107 @@ async function saveProjectDetails(budgetId) {
   }
 }
 
+function updateBudgetListEntry(updatedBudget) {
+  const idx = budgets.findIndex(b => b.id === updatedBudget.id);
+  if (idx < 0) return;
+  budgets[idx] = {
+    ...budgets[idx],
+    clientName: updatedBudget.clientName,
+    currentTotal: updatedBudget.currentState?.total || 0,
+    isCustomized: updatedBudget.isCustomized,
+    sqftLocked: updatedBudget.sqftLocked,
+    propertyTypeLocked: updatedBudget.propertyTypeLocked,
+    lastModified: updatedBudget.lastModified,
+    status: updatedBudget.status,
+    notes: updatedBudget.notes,
+    followUpDate: updatedBudget.followUpDate,
+    expiresAt: updatedBudget.expiresAt,
+    expiredAt: updatedBudget.expiredAt,
+    isExpired: updatedBudget.isExpired
+  };
+}
+
+function handleExpirationChange() {
+  const editor = document.getElementById('expirationEditor');
+  const dateEl = document.getElementById('metaExpiresAt');
+  const saveBtn = document.getElementById('expirationSaveBtn');
+  const statusEl = document.getElementById('expirationSaveStatus');
+  if (!editor || !dateEl || !saveBtn) return;
+  const changed = (dateEl.value || '') !== (editor.dataset.originalExpires || '');
+  saveBtn.disabled = !changed;
+  if (statusEl) statusEl.textContent = changed ? 'Unsaved changes' : '';
+}
+
+async function saveBudgetExpiration(budgetId, action) {
+  const dateEl = document.getElementById('metaExpiresAt');
+  const statusEl = document.getElementById('expirationSaveStatus');
+  const saveBtn = document.getElementById('expirationSaveBtn');
+  const payload = {};
+
+  if (action === 'expireNow') {
+    payload.expireNow = true;
+  } else if (action === 'unexpire') {
+    payload.clearExpired = true;
+    payload.expiresAt = dateEl?.value || null;
+  } else {
+    payload.expiresAt = dateEl?.value || null;
+  }
+
+  if (statusEl) statusEl.textContent = 'Saving...';
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}/meta`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
+    if (data.budget) {
+      updateBudgetListEntry(data.budget);
+      renderBudgets();
+      showBudgetModal(data.budget);
+    }
+    showToast(action === 'expireNow' ? '✓ Budget expired' : action === 'unexpire' ? '✓ Budget unexpired' : '✓ Expiration updated');
+  } catch (err) {
+    console.error('Save expiration error:', err);
+    if (statusEl) statusEl.textContent = err.message || 'Save failed';
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function setBudgetArchiveStatus(budgetId, nextStatus) {
+  const statusDiv = document.getElementById('metaSaveStatus');
+  const payload = {
+    status: nextStatus,
+    followUpDate: document.getElementById('metaFollowUp')?.value || null,
+    notes: document.getElementById('metaNotes')?.value || ''
+  };
+  if (statusDiv) statusDiv.textContent = 'Saving...';
+
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}/meta`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
+    if (data.budget) {
+      updateBudgetListEntry(data.budget);
+      renderBudgets();
+      showBudgetModal(data.budget);
+    }
+    showToast(nextStatus === 'archive' ? '✓ Budget archived' : '✓ Budget unarchived');
+  } catch (err) {
+    console.error('Archive status error:', err);
+    if (statusDiv) statusDiv.textContent = '✗ Save failed';
+  }
+}
+
 let metaSaveDebounce = null;
 async function saveBudgetMeta(budgetId) {
   clearTimeout(metaSaveDebounce);
@@ -1956,11 +2144,15 @@ async function saveBudgetMeta(budgetId) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Save failed');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Save failed');
       if (statusDiv) { statusDiv.textContent = '✓ Saved'; setTimeout(() => { if (statusDiv) statusDiv.textContent=''; }, 1500); }
       // Refresh local list so main table reflects the change
-      const b = budgets.find(x => x.id === budgetId);
-      if (b) Object.assign(b, payload);
+      if (data.budget) updateBudgetListEntry(data.budget);
+      else {
+        const b = budgets.find(x => x.id === budgetId);
+        if (b) Object.assign(b, payload);
+      }
       renderBudgets();
     } catch (err) {
       if (statusDiv) statusDiv.textContent = '✗ Save failed';
@@ -2838,7 +3030,10 @@ function formatCurrency(num) {
 
 function formatDate(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
+  const dateOnly = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(iso);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US', {
     month: 'short',
