@@ -1356,6 +1356,20 @@ function showResetView() {
   document.getElementById('resetPassword').focus();
 }
 
+function getResetLinkParams() {
+  const searchParams = new URLSearchParams(window.location.search);
+  let hash = window.location.hash.replace(/^#/, '');
+  hash = hash.replace(/^reset-password[?&]?/, '');
+  const hashParams = new URLSearchParams(hash);
+
+  return {
+    code: searchParams.get('code') || hashParams.get('code'),
+    accessToken: hashParams.get('access_token'),
+    refreshToken: hashParams.get('refresh_token'),
+    type: searchParams.get('type') || hashParams.get('type')
+  };
+}
+
 async function handleForgotPassword(e) {
   e.preventDefault();
   const email = document.getElementById('forgotEmail').value.trim();
@@ -1422,10 +1436,8 @@ async function handleResetPassword(e) {
     return;
   }
   
-  // Extract token from URL hash
-  const hash = window.location.hash;
-  const tokenMatch = hash.match(/token=([a-f0-9]+)/);
-  if (!tokenMatch) {
+  const resetParams = getResetLinkParams();
+  if (!resetParams.code && !resetParams.accessToken) {
     errorEl.textContent = 'Invalid reset link. Please request a new one.';
     errorEl.style.display = 'block';
     return;
@@ -1436,10 +1448,18 @@ async function handleResetPassword(e) {
   errorEl.style.display = 'none';
   
   try {
-    const res = await fetch(api('/api/auth/reset-password-with-token'), {
+    const body = { password };
+    if (resetParams.code) {
+      body.code = resetParams.code;
+    } else {
+      body.accessToken = resetParams.accessToken;
+      if (resetParams.refreshToken) body.refreshToken = resetParams.refreshToken;
+    }
+
+    const res = await fetch(api('/api/auth/reset-password'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: tokenMatch[1], password })
+      body: JSON.stringify(body)
     });
     
     const data = await res.json();
@@ -1495,7 +1515,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // Check for reset token in URL hash on page load
 function checkResetToken() {
   const hash = window.location.hash;
-  if (hash.startsWith('#reset-password') && hash.includes('token=')) {
+  const resetParams = getResetLinkParams();
+
+  if (
+    hash.startsWith('#reset-password') ||
+    resetParams.code ||
+    resetParams.accessToken ||
+    resetParams.type === 'recovery'
+  ) {
     document.getElementById('loginPage').style.display = 'flex';
     showResetView();
     return true;
