@@ -99,6 +99,39 @@ function generateCode(length = 6) {
   return code;
 }
 
+function formatDateOnly(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultExpirationDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return formatDateOnly(date);
+}
+
+function isExpirationDatePast(dateOnly) {
+  if (!dateOnly) return false;
+  const expiresEnd = new Date(`${dateOnly}T23:59:59.999Z`);
+  return !Number.isNaN(expiresEnd.getTime()) && expiresEnd.getTime() < Date.now();
+}
+
+function getBudgetAccess(state = {}) {
+  const expiresAt = state.expiresAt || null;
+  const expiredAt = state.expiredAt || null;
+  return {
+    expiresAt,
+    expiredAt,
+    isExpired: !!expiredAt || isExpirationDatePast(expiresAt)
+  };
+}
+
+function preserveBudgetAccess(nextState = {}, existingState = {}) {
+  const preserved = { ...nextState };
+  if (existingState.expiresAt !== undefined) preserved.expiresAt = existingState.expiresAt;
+  if (existingState.expiredAt !== undefined) preserved.expiredAt = existingState.expiredAt;
+  return preserved;
+}
+
 // Extract Supabase auth token from request
 function getToken(req) {
   // Check cookie first, then Authorization header
@@ -106,6 +139,17 @@ function getToken(req) {
   const auth = req.headers.authorization;
   if (auth && auth.startsWith('Bearer ')) return auth.slice(7);
   return null;
+}
+
+async function getRequestUser(req) {
+  const token = getToken(req);
+  if (!token) return null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser(token);
+    return user || null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // Budget functions
@@ -130,6 +174,7 @@ async function loadBudget(id) {
     .eq('budget_id', id)
     .order('version_number', { ascending: true });
   
+  const access = getBudgetAccess(budget.current_state || {});
   return {
     id: budget.id,
     clientName: budget.client_name,
@@ -141,6 +186,9 @@ async function loadBudget(id) {
     status: budget.status || 'active',
     notes: budget.notes || '',
     followUpDate: budget.follow_up_date || null,
+    expiresAt: access.expiresAt,
+    expiredAt: access.expiredAt,
+    isExpired: access.isExpired,
     views: (views || []).map(v => ({ id: v.id, timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
     versions: (versions || []).map(v => ({
       version: v.version_number,
@@ -229,6 +277,7 @@ async function listBudgets() {
 
   return budgets.map(b => {
     const views = viewMap[b.id] || { client: 0, team: 0 };
+    const access = getBudgetAccess(b.current_state || {});
     return {
     id: b.id,
     clientName: b.client_name,
@@ -248,7 +297,10 @@ async function listBudgets() {
     createdByEmail: b.created_by_email || null,
     status: b.status || 'active',
     notes: b.notes || '',
-    followUpDate: b.follow_up_date || null
+    followUpDate: b.follow_up_date || null,
+    expiresAt: access.expiresAt,
+    expiredAt: access.expiredAt,
+    isExpired: access.isExpired
   };});
 }
 
@@ -1033,11 +1085,17 @@ app.post('/api/budgets', limits.api, async (req, res) => {
       } catch (_) {}
     }
 
+    const initialState = {
+      ...data.state,
+      expiresAt: data.state.expiresAt || defaultExpirationDate(),
+      expiredAt: data.state.expiredAt || null
+    };
+
     const budget = {
       id,
-      clientName: data.clientName || data.state.clientName || null,
-      builder: data.state.builder || null,
-      currentState: data.state,
+      clientName: data.clientName || initialState.clientName || null,
+      builder: initialState.builder || null,
+      currentState: initialState,
       isCustomized: false,
       sqftLocked: null,
       propertyTypeLocked: null,
@@ -1047,7 +1105,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     };
 
     await saveBudget(budget);
-    await addVersion(id, 1, data.state, 'Initial budget', true);
+    await addVersion(id, 1, initialState, 'Initial budget', true);
 
     res.json({ success: true, id, url: `/b/${id}` });
     
@@ -1065,25 +1123,18 @@ app.get('/api/budgets/:id', async (req, res) => {
     const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
 
+    const user = await getRequestUser(req);
+    const isAuthenticatedViewer = !!user;
+    if (budget.isExpired && !isAuthenticatedViewer) {
+      return res.status(410).json({ error: 'This budget link has expired.', expired: true });
+    }
+
     if (!req.query.admin) {
       // isInternal is true when the viewer is an authenticated admin.
       // Validate the token — cookie presence alone isn't enough (could be
       // stale/invalid). Also treat "viewer is the creator" as internal so
       // the creator doesn't get a notification for viewing their own budget.
-      let isInternal = false;
-      const token = getToken(req);
-      if (token) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser(token);
-          if (user) {
-            isInternal = true;
-            if (budget.createdByEmail && user.email &&
-                user.email.toLowerCase() === budget.createdByEmail.toLowerCase()) {
-              isInternal = true;
-            }
-          }
-        } catch (_) {}
-      }
+      const isInternal = isAuthenticatedViewer;
       recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal)
         .catch(err => console.error('recordView error:', err));
     }
@@ -1100,7 +1151,10 @@ app.get('/api/budgets/:id', async (req, res) => {
       sqftLocked: budget.sqftLocked,
       propertyTypeLocked: budget.propertyTypeLocked,
       categoryConfig: budget.categoryConfig,
-      customCategories: budget.customCategories
+      customCategories: budget.customCategories,
+      expiresAt: budget.expiresAt,
+      expiredAt: budget.expiredAt,
+      isExpired: budget.isExpired
     });
     
   } catch (err) {
@@ -1116,6 +1170,15 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     const data = schemas.updateBudget.parse(req.body);
     const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
+
+    // Determine viewer identity (validates token, not just presence)
+    const user = await getRequestUser(req);
+    const viewerEmail = user?.email || null;
+    if (budget.isExpired && !viewerEmail) {
+      return res.status(410).json({ error: 'This budget link has expired.', expired: true });
+    }
+
+    data.state = preserveBudgetAccess(data.state, budget.currentState || {});
     
     const now = new Date();
     const nowISO = now.toISOString();
@@ -1159,16 +1222,6 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     if (data.state.clientName) budget.clientName = data.state.clientName;
     if (data.state.builder !== undefined) budget.builder = data.state.builder || null;
 
-    // Determine viewer identity (validates token, not just presence)
-    let viewerEmail = null;
-    const putToken = getToken(req);
-    if (putToken) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser(putToken);
-        if (user?.email) viewerEmail = user.email;
-      } catch (_) {}
-    }
-
     // Self-heal: if the budget has no creator on record and an authenticated
     // user is saving, claim them as the creator. Fixes cases where the initial
     // POST happened without a valid token.
@@ -1210,10 +1263,14 @@ app.get('/api/budgets/:id/poll', limits.api, async (req, res) => {
   try {
     const { data } = await supabase
       .from('budgets')
-      .select('modified_at')
+      .select('modified_at,current_state')
       .eq('id', req.params.id)
       .single();
     if (!data) return res.status(404).json({ error: 'Not found' });
+    const user = await getRequestUser(req);
+    if (getBudgetAccess(data.current_state || {}).isExpired && !user) {
+      return res.status(410).json({ error: 'This budget link has expired.', expired: true });
+    }
     res.json({ lastModified: data.modified_at });
   } catch (err) {
     res.status(500).json({ error: 'Poll failed' });
@@ -1290,10 +1347,40 @@ app.patch('/api/admin/budgets/:id/meta', requireAuth, async (req, res) => {
     if (req.body.followUpDate !== undefined) {
       update.follow_up_date = req.body.followUpDate || null;
     }
+    if (req.body.expiresAt !== undefined || req.body.expireNow !== undefined || req.body.clearExpired !== undefined) {
+      const budget = await loadBudget(req.params.id);
+      if (!budget) return res.status(404).json({ error: 'Budget not found' });
+      const state = { ...(budget.currentState || {}) };
+
+      if (req.body.expiresAt !== undefined) {
+        const expiresAt = req.body.expiresAt || null;
+        if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+          return res.status(400).json({ error: 'Invalid expiration date' });
+        }
+        state.expiresAt = expiresAt;
+        if (expiresAt && !isExpirationDatePast(expiresAt)) state.expiredAt = null;
+      }
+
+      if (req.body.expireNow === true) {
+        state.expiredAt = new Date().toISOString();
+        if (!state.expiresAt) state.expiresAt = formatDateOnly(new Date());
+      }
+
+      if (req.body.clearExpired === true) {
+        state.expiredAt = null;
+        if (!state.expiresAt || state.expiresAt <= formatDateOnly(new Date()) || isExpirationDatePast(state.expiresAt)) {
+          state.expiresAt = defaultExpirationDate();
+        }
+      }
+
+      update.current_state = state;
+      update.modified_at = new Date().toISOString();
+    }
     if (Object.keys(update).length === 0) return res.json({ success: true });
     const { error } = await supabase.from('budgets').update(update).eq('id', req.params.id);
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ success: true });
+    const budget = await loadBudget(req.params.id);
+    res.json({ success: true, budget });
   } catch (err) {
     console.error('Update meta error:', err);
     res.status(500).json({ error: 'Failed to update budget meta' });
@@ -1403,12 +1490,13 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
     const targetVersion = budget.versions.find(v => v.version === versionNum);
     if (!targetVersion) return res.status(404).json({ error: 'Version not found' });
     
+    const restoredState = preserveBudgetAccess(targetVersion.state, budget.currentState || {});
     const newVersionNum = budget.versions.length + 1;
-    await addVersion(req.params.id, newVersionNum, targetVersion.state, `Restored to version ${versionNum}`, true);
+    await addVersion(req.params.id, newVersionNum, restoredState, `Restored to version ${versionNum}`, true);
     
     await supabase
       .from('budgets')
-      .update({ current_state: targetVersion.state, modified_at: new Date().toISOString() })
+      .update({ current_state: restoredState, modified_at: new Date().toISOString() })
       .eq('id', req.params.id);
     
     res.json({ success: true, newVersion: newVersionNum });
@@ -1451,7 +1539,9 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
     const state = {
       selections: {}, extras: {}, modifiers: [], catMods: {},
       homeSize: parseInt(homeSize), propertyType,
-      clientName: clientName || null, total: 0
+      clientName: clientName || null, total: 0,
+      expiresAt: defaultExpirationDate(),
+      expiredAt: null
     };
     
     const budget = { id, clientName: clientName || null, builder: builder || null, currentState: state };

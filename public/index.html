@@ -106,6 +106,26 @@
   background: var(--accent-hover);
 }
 
+.expired-budget {
+  max-width: 720px;
+  margin: 48px auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 40px;
+  text-align: center;
+}
+.expired-budget h1 {
+  color: var(--primary);
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+.expired-budget p {
+  color: var(--text-light);
+  font-size: 15px;
+}
+
 body {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg);
@@ -2251,7 +2271,12 @@ function triggerAutoSave() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: currentState })
       });
-      
+
+      if (response.status === 410) {
+        showExpiredBudgetMessage();
+        return;
+      }
+
       if (response.ok) {
         lastSavedState = currentState;
         // Subtle save indicator
@@ -2268,7 +2293,12 @@ async function loadBudget(budgetId) {
   try {
     const response = await fetch(api(`/api/budgets/${budgetId}`));
     if (!response.ok) {
-      throw new Error('Budget not found');
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 410 && data.expired) {
+        showExpiredBudgetMessage();
+        return false;
+      }
+      throw new Error(data.error || 'Budget not found');
     }
     
     const budget = await response.json();
@@ -2346,6 +2376,10 @@ function startLiveSync(budgetId) {
 
     try {
       const resp = await fetch(api(`/api/budgets/${budgetId}/poll`));
+      if (resp.status === 410) {
+        showExpiredBudgetMessage();
+        return;
+      }
       if (!resp.ok) return;
       const { lastModified } = await resp.json();
 
@@ -2355,6 +2389,11 @@ function startLiveSync(budgetId) {
         if (localState === savedState) {
           isSyncing = true;
           const fullResp = await fetch(api(`/api/budgets/${budgetId}`));
+          if (fullResp.status === 410) {
+            isSyncing = false;
+            showExpiredBudgetMessage();
+            return;
+          }
           if (!fullResp.ok) { isSyncing = false; return; }
           const budget = await fullResp.json();
           if (budget.currentState) {
@@ -2396,6 +2435,24 @@ function startLiveSync(budgetId) {
       // Silent fail — poll will retry next interval
     }
   }, 2500);
+}
+
+function showExpiredBudgetMessage() {
+  if (liveSyncInterval) clearInterval(liveSyncInterval);
+  currentBudgetId = null;
+  const banner = document.getElementById('sharedBanner');
+  if (banner) banner.innerHTML = '';
+  const main = document.querySelector('main');
+  if (main) {
+    main.innerHTML = `
+      <div class="expired-budget">
+        <h1>This budget link has expired</h1>
+        <p>Please contact your Gamma Tech representative if you need access or an updated estimate.</p>
+      </div>
+    `;
+  }
+  const totalDisplay = document.querySelector('.total-display');
+  if (totalDisplay) totalDisplay.style.display = 'none';
 }
 
 // Share link - creates a new live budget
