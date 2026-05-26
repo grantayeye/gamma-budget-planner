@@ -1089,6 +1089,25 @@ function api(endpoint) {
   return BASE_PATH + endpoint;
 }
 
+const budgetBrowserId = (() => {
+  try {
+    const key = 'gammaBudgetBrowserId';
+    let id = sessionStorage.getItem(key);
+    if (!id) {
+      id = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      sessionStorage.setItem(key, id);
+    }
+    return id;
+  } catch (_) {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+})();
+
+function budgetPresenceQuery(extra = {}) {
+  const params = new URLSearchParams({ browserId: budgetBrowserId, ...extra });
+  return params.toString();
+}
+
 // ============================================================
 // DATA — Based on real Gamma Tech projects + industry research
 // Prices calibrated to 4,000 sq ft new construction baseline
@@ -2302,7 +2321,7 @@ function triggerAutoSave() {
 // Load a live budget by ID
 async function loadBudget(budgetId) {
   try {
-    const response = await fetch(api(`/api/budgets/${budgetId}`));
+    const response = await fetch(api(`/api/budgets/${budgetId}?${budgetPresenceQuery({ recordView: '1' })}`));
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       if (response.status === 410 && data.expired) {
@@ -2386,7 +2405,7 @@ function startLiveSync(budgetId) {
     if (isSyncing || !currentBudgetId) return;
 
     try {
-      const resp = await fetch(api(`/api/budgets/${budgetId}/poll`));
+      const resp = await fetch(api(`/api/budgets/${budgetId}/poll?${budgetPresenceQuery()}`));
       if (resp.status === 410) {
         showExpiredBudgetMessage();
         return;
@@ -2399,7 +2418,7 @@ function startLiveSync(budgetId) {
         const savedState = JSON.stringify(lastSavedState);
         if (localState === savedState) {
           isSyncing = true;
-          const fullResp = await fetch(api(`/api/budgets/${budgetId}`));
+          const fullResp = await fetch(api(`/api/budgets/${budgetId}?${budgetPresenceQuery()}`));
           if (fullResp.status === 410) {
             isSyncing = false;
             showExpiredBudgetMessage();

@@ -156,6 +156,68 @@ async function getRequestUser(req) {
   }
 }
 
+// Ephemeral live browser presence. View history remains persisted separately.
+const budgetPresence = new Map();
+const PRESENCE_TTL_MS = 35 * 1000;
+
+function getBudgetBrowserId(req) {
+  const raw = req.query.browserId || req.get('X-Budget-Browser-Id') || '';
+  return String(raw).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+}
+
+function pruneBudgetPresence(budgetId = null) {
+  const now = Date.now();
+  const pruneMap = (map) => {
+    for (const [id, presence] of map.entries()) {
+      if (now - presence.lastSeenMs > PRESENCE_TTL_MS) map.delete(id);
+    }
+  };
+
+  if (budgetId) {
+    const map = budgetPresence.get(budgetId);
+    if (map) {
+      pruneMap(map);
+      if (map.size === 0) budgetPresence.delete(budgetId);
+    }
+    return;
+  }
+
+  for (const [id, map] of budgetPresence.entries()) {
+    pruneMap(map);
+    if (map.size === 0) budgetPresence.delete(id);
+  }
+}
+
+function touchBudgetPresence(budgetId, req, isInternal = false) {
+  const browserId = getBudgetBrowserId(req);
+  if (!browserId) return;
+
+  pruneBudgetPresence(budgetId);
+  let map = budgetPresence.get(budgetId);
+  if (!map) {
+    map = new Map();
+    budgetPresence.set(budgetId, map);
+  }
+
+  map.set(browserId, {
+    id: browserId,
+    ip: req.ip || null,
+    userAgent: req.get('User-Agent') || null,
+    isInternal: !!isInternal,
+    lastSeen: new Date().toISOString(),
+    lastSeenMs: Date.now()
+  });
+}
+
+function getActiveBudgetBrowsers(budgetId) {
+  pruneBudgetPresence(budgetId);
+  return Array.from(budgetPresence.get(budgetId)?.values() || [])
+    .sort((a, b) => b.lastSeenMs - a.lastSeenMs)
+    .map(({ lastSeenMs, ...presence }) => presence);
+}
+
+setInterval(() => pruneBudgetPresence(), PRESENCE_TTL_MS).unref?.();
+
 // Budget functions
 async function loadBudget(id) {
   const { data: budget, error } = await supabase
@@ -193,6 +255,7 @@ async function loadBudget(id) {
     expiresAt: access.expiresAt,
     expiredAt: access.expiredAt,
     isExpired: access.isExpired,
+    activeBrowsers: getActiveBudgetBrowsers(id),
     views: (views || []).map(v => ({ id: v.id, timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
     versions: (versions || []).map(v => ({
       version: v.version_number,
@@ -304,7 +367,8 @@ async function listBudgets() {
     followUpDate: b.follow_up_date || null,
     expiresAt: access.expiresAt,
     expiredAt: access.expiredAt,
-    isExpired: access.isExpired
+    isExpired: access.isExpired,
+    activeBrowserCount: getActiveBudgetBrowsers(b.id).length
   };});
 }
 
@@ -1143,8 +1207,11 @@ app.get('/api/budgets/:id', async (req, res) => {
       // stale/invalid). Also treat "viewer is the creator" as internal so
       // the creator doesn't get a notification for viewing their own budget.
       const isInternal = isAuthenticatedViewer;
-      recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal)
-        .catch(err => console.error('recordView error:', err));
+      touchBudgetPresence(req.params.id, req, isInternal);
+      if (req.query.recordView === '1') {
+        recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal)
+          .catch(err => console.error('recordView error:', err));
+      }
     }
     
     res.json({
@@ -1162,7 +1229,8 @@ app.get('/api/budgets/:id', async (req, res) => {
       customCategories: budget.customCategories,
       expiresAt: budget.expiresAt,
       expiredAt: budget.expiredAt,
-      isExpired: budget.isExpired
+      isExpired: budget.isExpired,
+      activeBrowserCount: getActiveBudgetBrowsers(budget.id).length
     });
     
   } catch (err) {
@@ -1279,7 +1347,8 @@ app.get('/api/budgets/:id/poll', limits.api, async (req, res) => {
     if (getBudgetAccess(data.current_state || {}).isExpired && !user) {
       return res.status(410).json({ error: 'This budget link has expired.', expired: true });
     }
-    res.json({ lastModified: data.modified_at });
+    touchBudgetPresence(req.params.id, req, !!user);
+    res.json({ lastModified: data.modified_at, activeBrowserCount: getActiveBudgetBrowsers(req.params.id).length });
   } catch (err) {
     res.status(500).json({ error: 'Poll failed' });
   }
