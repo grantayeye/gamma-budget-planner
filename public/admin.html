@@ -1715,7 +1715,7 @@ function renderBudgets() {
       <td><span class="status-badge status-${status}">${status}</span></td>
       <td><strong>${formatCurrency(b.currentTotal)}</strong></td>
       <td>${formatDate(b.created)}</td>
-      <td><span class="badge badge-views" title="${b.clientViews} client, ${b.internalViews} team">${b.clientViews} / ${b.internalViews}</span></td>
+      <td><span class="badge badge-views" title="${b.clientViews} client views, ${b.internalViews} team views, ${b.activeBrowserCount || 0} browsers open">${b.clientViews} / ${b.internalViews}</span></td>
       <td><span class="badge badge-versions">${b.versionCount}</span></td>
       <td>${b.lastClientActivity ? formatRelative(b.lastClientActivity) : '<span style="color:var(--text-light);">Never</span>'}</td>
       <td class="actions-cell">
@@ -1771,6 +1771,9 @@ function showBudgetModal(budget) {
   const isExpired = !!budget.isExpired;
   const accessLabel = isExpired ? 'Expired' : (expiresAt ? `Active until ${formatDate(expiresAt)}` : 'Active');
   const accessDetail = expiredAt ? `Manually expired ${formatDateTime(expiredAt)}` : (expiresAt ? `Auto expires ${formatDate(expiresAt)}` : 'No expiration date set');
+  const activeBrowsers = budget.activeBrowsers || [];
+  const activeClientBrowsers = activeBrowsers.filter(b => !b.isInternal).length;
+  const activeTeamBrowsers = activeBrowsers.filter(b => b.isInternal).length;
 
   body.innerHTML = `
     <div class="detail-grid">
@@ -1793,6 +1796,11 @@ function showBudgetModal(budget) {
       <div class="detail-item">
         <div class="label">Total Views</div>
         <div class="value">${budget.views?.length || 0}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Open Browsers</div>
+        <div class="value">${activeBrowsers.length}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-top:2px;">${activeClientBrowsers} client / ${activeTeamBrowsers} team</div>
       </div>
       <div class="detail-item">
         <div class="label">Total Versions</div>
@@ -1889,6 +1897,21 @@ function showBudgetModal(budget) {
       <label class="detail-form-label">Notes</label>
       <textarea id="metaNotes" rows="3" placeholder="Called Tuesday, waiting on builder…" onblur="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;">${notes.replace(/</g,'&lt;')}</textarea>
       <div id="metaSaveStatus" style="font-size:11px;color:var(--text-light);margin-top:3px;min-height:14px;"></div>
+    </div>
+
+    <div class="section-title">🟢 Active Browsers (${activeBrowsers.length})</div>
+    <div class="views-list">
+      ${activeBrowsers.length > 0 ?
+        activeBrowsers.map(b => `
+          <div class="view-item">
+            <span>${formatRelative(b.lastSeen)}
+              ${b.isInternal ? '<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">TEAM</span>' : '<span style="background:#E8F5E9;color:#2E7D32;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">CLIENT</span>'}
+            </span>
+            <span style="color:var(--text-light);font-size:11px;text-align:right;">${escAttr(b.userAgent?.split(' ')[0] || 'Unknown device')} • ${escAttr(b.ip || 'No IP')}</span>
+          </div>
+        `).join('') :
+        '<div style="color:var(--text-light);text-align:center;padding:12px;">No browsers currently open</div>'
+      }
     </div>
 
     <div class="section-title">📍 View History (${budget.views?.length || 0}) <span style="font-weight:400;color:var(--text-light);font-size:11px;">— click a badge to reclassify</span></div>
