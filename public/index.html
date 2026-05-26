@@ -2088,15 +2088,7 @@ document.getElementById('homeSize').addEventListener('input', function() {
   updateTotals();
 });
 
-// Close modal on overlay click
-document.getElementById('summaryModal').addEventListener('click', function(e) {
-  if (e.target === this) closeSummary();
-});
-
-// Keyboard
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeSummary();
-});
+// Modals intentionally close only through explicit close/cancel buttons.
 
 // ============================================================
 // SHAREABLE LINK

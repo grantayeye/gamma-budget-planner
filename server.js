@@ -89,6 +89,24 @@ app.use(cookieParser());
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
+const OFFICE_TEAM_VIEW_IPS = new Set(['69.254.59.65', '8.53.54.185']);
+
+function normalizeIp(ip) {
+  if (!ip) return '';
+  return String(ip)
+    .split(',')[0]
+    .trim()
+    .replace(/^::ffff:/, '');
+}
+
+function getRequestIp(req) {
+  return normalizeIp(req.ip || req.get('x-forwarded-for') || req.socket?.remoteAddress || '');
+}
+
+function isOfficeTeamIp(ip) {
+  return OFFICE_TEAM_VIEW_IPS.has(normalizeIp(ip));
+}
+
 function generateCode(length = 6) {
   const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
   let code = '';
@@ -191,6 +209,7 @@ function pruneBudgetPresence(budgetId = null) {
 function touchBudgetPresence(budgetId, req, isInternal = false) {
   const browserId = getBudgetBrowserId(req);
   if (!browserId) return;
+  const ip = getRequestIp(req);
 
   pruneBudgetPresence(budgetId);
   let map = budgetPresence.get(budgetId);
@@ -201,9 +220,9 @@ function touchBudgetPresence(budgetId, req, isInternal = false) {
 
   map.set(browserId, {
     id: browserId,
-    ip: req.ip || null,
+    ip: ip || null,
     userAgent: req.get('User-Agent') || null,
-    isInternal: !!isInternal,
+    isInternal: !!isInternal || isOfficeTeamIp(ip),
     lastSeen: new Date().toISOString(),
     lastSeenMs: Date.now()
   });
@@ -256,7 +275,7 @@ async function loadBudget(id) {
     expiredAt: access.expiredAt,
     isExpired: access.isExpired,
     activeBrowsers: getActiveBudgetBrowsers(id),
-    views: (views || []).map(v => ({ id: v.id, timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal })),
+    views: (views || []).map(v => ({ id: v.id, timestamp: v.viewed_at, ip: v.ip_address, userAgent: v.user_agent, isInternal: !!v.is_internal || isOfficeTeamIp(v.ip_address) })),
     versions: (versions || []).map(v => ({
       version: v.version_number,
       timestamp: v.created_at,
@@ -331,12 +350,12 @@ async function listBudgets() {
   if (ids.length > 0) {
     const { data: allViews } = await supabase
       .from('budget_views')
-      .select('budget_id, is_internal')
+      .select('budget_id, is_internal, ip_address')
       .in('budget_id', ids);
     if (allViews) {
       allViews.forEach(v => {
         if (!viewMap[v.budget_id]) viewMap[v.budget_id] = { client: 0, team: 0 };
-        if (v.is_internal) viewMap[v.budget_id].team++;
+        if (v.is_internal || isOfficeTeamIp(v.ip_address)) viewMap[v.budget_id].team++;
         else viewMap[v.budget_id].client++;
       });
     }
@@ -376,13 +395,15 @@ const viewNotifyThrottle = new Map();
 const VIEW_NOTIFY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 async function recordView(budgetId, ip, userAgent, isInternal = false) {
+  const normalizedIp = normalizeIp(ip);
+  const viewIsInternal = !!isInternal || isOfficeTeamIp(normalizedIp);
   await supabase
     .from('budget_views')
-    .insert({ budget_id: budgetId, ip_address: ip || null, user_agent: userAgent || null, is_internal: isInternal });
+    .insert({ budget_id: budgetId, ip_address: normalizedIp || null, user_agent: userAgent || null, is_internal: viewIsInternal });
 
   const nowISO = new Date().toISOString();
   const update = { last_viewed_at: nowISO };
-  if (!isInternal) update.last_client_activity_at = nowISO;
+  if (!viewIsInternal) update.last_client_activity_at = nowISO;
   await supabase
     .from('budgets')
     .update(update)
@@ -401,7 +422,7 @@ async function recordView(budgetId, ip, userAgent, isInternal = false) {
   }
 
   // Send view notification to creator (throttled: once per 4h per budget)
-  if (!isInternal) {
+  if (!viewIsInternal) {
     const lastNotify = viewNotifyThrottle.get(budgetId) || 0;
     if (Date.now() - lastNotify > VIEW_NOTIFY_COOLDOWN_MS) {
       viewNotifyThrottle.set(budgetId, Date.now());
@@ -1206,10 +1227,11 @@ app.get('/api/budgets/:id', async (req, res) => {
       // Validate the token — cookie presence alone isn't enough (could be
       // stale/invalid). Also treat "viewer is the creator" as internal so
       // the creator doesn't get a notification for viewing their own budget.
-      const isInternal = isAuthenticatedViewer;
+      const requestIp = getRequestIp(req);
+      const isInternal = isAuthenticatedViewer || isOfficeTeamIp(requestIp);
       touchBudgetPresence(req.params.id, req, isInternal);
       if (req.query.recordView === '1') {
-        recordView(req.params.id, req.ip, req.get('User-Agent'), isInternal)
+        recordView(req.params.id, requestIp, req.get('User-Agent'), isInternal)
           .catch(err => console.error('recordView error:', err));
       }
     }
@@ -1382,19 +1404,28 @@ app.get('/api/admin/budgets/:id', requireAuth, async (req, res) => {
 async function recomputeLastClientActivity(budgetId) {
   const { data } = await supabase
     .from('budget_views')
-    .select('viewed_at')
+    .select('viewed_at, ip_address')
     .eq('budget_id', budgetId)
     .eq('is_internal', false)
     .order('viewed_at', { ascending: false })
-    .limit(1);
-  const newValue = data && data.length ? data[0].viewed_at : null;
+    .limit(50);
+  const lastClientView = (data || []).find(v => !isOfficeTeamIp(v.ip_address));
+  const newValue = lastClientView ? lastClientView.viewed_at : null;
   await supabase.from('budgets').update({ last_client_activity_at: newValue }).eq('id', budgetId);
   return newValue;
 }
 
 app.patch('/api/admin/budgets/:id/views/:viewId', requireAuth, async (req, res) => {
   try {
-    const isInternal = !!req.body.isInternal;
+    const { data: existingView, error: lookupError } = await supabase
+      .from('budget_views')
+      .select('ip_address')
+      .eq('id', req.params.viewId)
+      .eq('budget_id', req.params.id)
+      .single();
+    if (lookupError) return res.status(400).json({ error: lookupError.message });
+
+    const isInternal = !!req.body.isInternal || isOfficeTeamIp(existingView?.ip_address);
     const { error } = await supabase
       .from('budget_views')
       .update({ is_internal: isInternal })
