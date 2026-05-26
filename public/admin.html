@@ -3068,37 +3068,7 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('visible'), 3000);
 }
 
-// Close modal on escape
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeModal();
-    closeUserModal();
-    closeNewBudgetModal();
-    closeCustomizeModal();
-    closeFeaturesModal();
-  }
-});
-
-// Close modal on backdrop click
-document.getElementById('budgetModal').addEventListener('click', (e) => {
-  if (e.target.id === 'budgetModal') closeModal();
-});
-
-document.getElementById('userModal').addEventListener('click', (e) => {
-  if (e.target.id === 'userModal') closeUserModal();
-});
-
-document.getElementById('newBudgetModal').addEventListener('click', (e) => {
-  if (e.target.id === 'newBudgetModal') closeNewBudgetModal();
-});
-
-document.getElementById('customizeModal').addEventListener('click', (e) => {
-  if (e.target.id === 'customizeModal') closeCustomizeModal();
-});
-
-document.getElementById('featuresModal').addEventListener('click', (e) => {
-  if (e.target.id === 'featuresModal') closeFeaturesModal();
-});
+// Modals intentionally close only through explicit close/cancel buttons.
 
 // ============================================================
 // CATEGORY DEFAULTS EDITOR
