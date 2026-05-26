@@ -1152,11 +1152,22 @@ function CATEGORIES() {
         }
         
         // Apply overrides
+        if (!customCat.tiers[tierKey] && tierOverride.enabled === true) {
+          customCat.tiers[tierKey] = {
+            price: 0,
+            label: tierKey.charAt(0).toUpperCase() + tierKey.slice(1),
+            tag: tierKey.charAt(0).toUpperCase() + tierKey.slice(1),
+            features: [],
+            brands: ''
+          };
+        }
         if (customCat.tiers[tierKey]) {
           if (tierOverride.price !== undefined) customCat.tiers[tierKey].price = tierOverride.price;
           if (tierOverride.label) customCat.tiers[tierKey].label = tierOverride.label;
+          if (tierOverride.tag) customCat.tiers[tierKey].tag = tierOverride.tag;
           if (tierOverride.features) customCat.tiers[tierKey].features = tierOverride.features;
-          if (tierOverride.brands) customCat.tiers[tierKey].brands = tierOverride.brands;
+          if (tierOverride.brands !== undefined) customCat.tiers[tierKey].brands = tierOverride.brands;
+          if (tierOverride.sizeScale !== undefined) customCat.tiers[tierKey].sizeScale = tierOverride.sizeScale;
         }
       });
     }

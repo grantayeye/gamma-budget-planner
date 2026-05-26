@@ -671,12 +671,16 @@ function calculateBudgetTotal(state, defaults, options = {}) {
       return;
     }
 
+    const override = categoryConfig[catId]?.tiers?.[tierKey];
+    if (isCustomized && override?.enabled === false) return;
+    if (isCustomized && override?.price !== undefined) {
+      subtotal += Number(override.price || 0);
+      return;
+    }
+
     const defaultCat = defaultById.get(catId);
     if (!defaultCat?.tiers?.[tierKey]) return;
-    const override = categoryConfig[catId]?.tiers?.[tierKey];
-    const price = isCustomized && override?.price !== undefined
-      ? Number(override.price || 0)
-      : getDefaultTierPrice(defaultCat, tierKey, sqft);
+    const price = getDefaultTierPrice(defaultCat, tierKey, sqft);
     subtotal += price || 0;
   });
 
