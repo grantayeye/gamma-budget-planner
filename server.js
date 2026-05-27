@@ -155,6 +155,40 @@ function preserveBudgetAccess(nextState = {}, existingState = {}) {
 }
 
 // Extract Supabase auth token from request
+const REMEMBER_ME_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const DEFAULT_ACCESS_MAX_AGE_MS = 60 * 60 * 1000;
+
+function authCookieOptions(req, maxAge) {
+  const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production' || req.secure,
+    sameSite: 'lax',
+    path: '/'
+  };
+  if (maxAge) options.maxAge = maxAge;
+  return options;
+}
+
+function setAuthCookies(req, res, session, rememberMe) {
+  if (!session?.access_token) return;
+  const accessMaxAge = rememberMe
+    ? REMEMBER_ME_MAX_AGE_MS
+    : Math.max(1, session.expires_in || 3600) * 1000;
+
+  res.cookie('sb_token', session.access_token, authCookieOptions(req, accessMaxAge || DEFAULT_ACCESS_MAX_AGE_MS));
+
+  if (rememberMe && session.refresh_token) {
+    res.cookie('sb_refresh_token', session.refresh_token, authCookieOptions(req, REMEMBER_ME_MAX_AGE_MS));
+  } else {
+    res.clearCookie('sb_refresh_token', { path: '/' });
+  }
+}
+
+function clearAuthCookies(res) {
+  res.clearCookie('sb_token', { path: '/' });
+  res.clearCookie('sb_refresh_token', { path: '/' });
+}
+
 function getToken(req) {
   // Check cookie first, then Authorization header
   if (req.cookies.sb_token) return req.cookies.sb_token;
@@ -163,15 +197,44 @@ function getToken(req) {
   return null;
 }
 
-async function getRequestUser(req) {
-  const token = getToken(req);
-  if (!token) return null;
+async function refreshRequestSession(req, res) {
+  const refreshToken = req.cookies.sb_refresh_token;
+  if (!refreshToken || !res) return null;
   try {
-    const { data: { user } } = await supabase.auth.getUser(token);
-    return user || null;
-  } catch (_) {
+    const refreshClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        }
+      }
+    );
+    const { data, error } = await refreshClient.auth.refreshSession({ refresh_token: refreshToken });
+    if (error || !data?.session || !data?.user) {
+      clearAuthCookies(res);
+      return null;
+    }
+    setAuthCookies(req, res, data.session, true);
+    return data.user;
+  } catch (err) {
+    console.error('Refresh session error:', err);
+    clearAuthCookies(res);
     return null;
   }
+}
+
+async function getRequestUser(req, res = null) {
+  const token = getToken(req);
+  if (token) {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (!error && user) return user;
+    } catch (_) {}
+  }
+  return refreshRequestSession(req, res);
 }
 
 // Ephemeral live browser presence. View history remains persisted separately.
@@ -500,12 +563,9 @@ async function sendViewNotification(budget) {
 // AUTH MIDDLEWARE
 // ============================================================
 async function requireAuth(req, res, next) {
-  const token = getToken(req);
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
-  
+  const user = await getRequestUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
   req.user = user;
   next();
 }
@@ -516,7 +576,8 @@ async function requireAuth(req, res, next) {
 const schemas = {
   login: z.object({
     email: z.string().min(1).max(254),
-    password: z.string().min(1).max(100)
+    password: z.string().min(1).max(100),
+    rememberMe: z.boolean().optional().default(true)
   }),
 
   forgotPassword: z.object({
@@ -935,7 +996,7 @@ app.get('/s/:code', async (req, res) => {
 // ============================================================
 app.post('/api/auth/login', limits.auth, async (req, res) => {
   try {
-    let { email, password } = schemas.login.parse(req.body);
+    let { email, password, rememberMe } = schemas.login.parse(req.body);
     if (!email.includes('@')) email += '@gamma.tech';
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -944,15 +1005,7 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    const token = data.session.access_token;
-    
-    res.cookie('sb_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' || req.secure,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    setAuthCookies(req, res, data.session, rememberMe);
     
     res.json({ 
       success: true, 
@@ -1034,7 +1087,7 @@ async function handleResetPassword(req, res) {
       return res.status(400).json({ error: error.message || 'Failed to update password.' });
     }
 
-    res.clearCookie('sb_token');
+    clearAuthCookies(res);
     res.json({ success: true });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -1049,16 +1102,13 @@ app.post('/api/auth/reset-password', limits.auth, handleResetPassword);
 app.post('/api/auth/reset-password-with-token', limits.auth, handleResetPassword);
 
 app.post('/api/auth/logout', async (req, res) => {
-  res.clearCookie('sb_token');
+  clearAuthCookies(res);
   res.json({ success: true });
 });
 
 app.get('/api/auth/me', async (req, res) => {
-  const token = getToken(req);
-  if (!token) return res.json({ authenticated: false });
-  
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return res.json({ authenticated: false });
+  const user = await getRequestUser(req, res);
+  if (!user) return res.json({ authenticated: false });
   
   res.json({ 
     authenticated: true, 
@@ -1216,7 +1266,7 @@ app.get('/api/budgets/:id', async (req, res) => {
     const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
 
-    const user = await getRequestUser(req);
+    const user = await getRequestUser(req, res);
     const isAuthenticatedViewer = !!user;
     if (budget.isExpired && !isAuthenticatedViewer) {
       return res.status(410).json({ error: 'This budget link has expired.', expired: true });
@@ -1270,7 +1320,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
 
     // Determine viewer identity (validates token, not just presence)
-    const user = await getRequestUser(req);
+    const user = await getRequestUser(req, res);
     const viewerEmail = user?.email || null;
     if (budget.isExpired && !viewerEmail) {
       return res.status(410).json({ error: 'This budget link has expired.', expired: true });
@@ -1365,7 +1415,7 @@ app.get('/api/budgets/:id/poll', limits.api, async (req, res) => {
       .eq('id', req.params.id)
       .single();
     if (!data) return res.status(404).json({ error: 'Not found' });
-    const user = await getRequestUser(req);
+    const user = await getRequestUser(req, res);
     if (getBudgetAccess(data.current_state || {}).isExpired && !user) {
       return res.status(410).json({ error: 'This budget link has expired.', expired: true });
     }
