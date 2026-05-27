@@ -916,6 +916,10 @@
           <label>Password</label>
           <input type="password" id="loginPassword" required autocomplete="current-password">
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin:-4px 0 16px;color:var(--text-muted);font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="loginRememberMe" checked style="width:auto;margin:0;">
+          Remember me for 90 days
+        </label>
         <button type="submit" class="btn btn-primary" style="width:100%;">Sign In</button>
       </form>
       <div style="text-align:center;margin-top:16px;">
@@ -1310,6 +1314,7 @@ async function handleLogin(e) {
   
   const email = document.getElementById('loginUsername').value;
   const password = document.getElementById('loginPassword').value;
+  const rememberMe = document.getElementById('loginRememberMe')?.checked !== false;
   const errorEl = document.getElementById('loginError');
   
   try {
@@ -1317,7 +1322,7 @@ async function handleLogin(e) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, rememberMe })
     });
     
     const data = await res.json();
