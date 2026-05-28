@@ -581,7 +581,7 @@
       border-radius: var(--radius-sm);
       padding: 12px 16px;
       margin-bottom: 24px;
-      max-height: 200px;
+      max-height: 360px;
       overflow-y: auto;
       border: 1px solid var(--border-light);
     }
@@ -611,6 +611,39 @@
     .version-item .version-note {
       color: var(--text-light);
       font-size: 12px;
+    }
+
+    .version-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .version-item {
+      display: block;
+    }
+
+    .version-changes {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: white;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .version-change-meta {
+      color: var(--text-light);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .version-change-list {
+      margin: 0;
+      padding-left: 16px;
     }
     
     .empty-state {
@@ -1761,6 +1794,131 @@ async function viewBudget(id) {
   }
 }
 
+function tierDisplayName(tier) {
+  if (!tier) return 'None';
+  return String(tier).charAt(0).toUpperCase() + String(tier).slice(1);
+}
+
+function buildCategoryMap(budget, state = {}) {
+  const propertyType = state.propertyType || budget.currentState?.propertyType || 'residential';
+  const map = new Map();
+  getDefaultCategories(propertyType).forEach(cat => map.set(cat.id, cat));
+  (budget.customCategories || []).forEach(cat => map.set(cat.id, cat));
+  return map;
+}
+
+function buildExtraMap(state = {}) {
+  const propertyType = state.propertyType || 'residential';
+  const map = new Map();
+  getDefaultExtras(propertyType).forEach(extra => map.set(extra.id, extra));
+  return map;
+}
+
+function cleanMoney(value) {
+  return formatCurrency(parseFloat(value) || 0);
+}
+
+function describeVersionChanges(previousState, currentState, budget) {
+  const changes = [];
+  const prev = previousState || {};
+  const cur = currentState || {};
+  const categoryMap = buildCategoryMap(budget, cur);
+  const extraMap = buildExtraMap(cur);
+
+  if (!previousState) {
+    return ['Initial budget snapshot'];
+  }
+
+  const scalarFields = [
+    ['clientName', 'Budget name'],
+    ['builder', 'Builder'],
+    ['homeSize', 'Sqft'],
+    ['propertyType', 'Home type']
+  ];
+  scalarFields.forEach(([key, label]) => {
+    const before = prev[key] ?? '';
+    const after = cur[key] ?? '';
+    if (String(before) !== String(after)) {
+      changes.push(`${label} changed from ${before || 'blank'} to ${after || 'blank'}`);
+    }
+  });
+
+  const selectionKeys = new Set([...Object.keys(prev.selections || {}), ...Object.keys(cur.selections || {})]);
+  selectionKeys.forEach(catId => {
+    const before = prev.selections?.[catId] || null;
+    const after = cur.selections?.[catId] || null;
+    if (before !== after) {
+      const cat = categoryMap.get(catId);
+      changes.push(`${cat?.name || catId} switched from ${tierDisplayName(before)} to ${tierDisplayName(after)}`);
+    }
+  });
+
+  const extraKeys = new Set([...Object.keys(prev.extras || {}), ...Object.keys(cur.extras || {})]);
+  extraKeys.forEach(extraId => {
+    const before = !!prev.extras?.[extraId];
+    const after = !!cur.extras?.[extraId];
+    if (before !== after) {
+      const extra = extraMap.get(extraId);
+      changes.push(`${extra?.name || extraId} turned ${after ? 'on' : 'off'}`);
+    }
+  });
+
+  const catModKeys = new Set([...Object.keys(prev.catMods || {}), ...Object.keys(cur.catMods || {})]);
+  catModKeys.forEach(catId => {
+    const before = prev.catMods?.[catId] || {};
+    const after = cur.catMods?.[catId] || {};
+    const beforeName = before.name || '';
+    const afterName = after.name || '';
+    const beforeAmount = parseFloat(before.amount) || 0;
+    const afterAmount = parseFloat(after.amount) || 0;
+    if (beforeName !== afterName || beforeAmount !== afterAmount) {
+      const cat = categoryMap.get(catId);
+      changes.push(`${cat?.name || catId} adjustment changed from ${beforeName || 'none'} ${cleanMoney(beforeAmount)} to ${afterName || 'none'} ${cleanMoney(afterAmount)}`);
+    }
+  });
+
+  const modifierSummary = mods => (mods || [])
+    .filter(m => (m.name || '').trim() || parseFloat(m.amount))
+    .map(m => `${m.name || 'Adjustment'} ${cleanMoney(m.amount)}`)
+    .sort();
+  const beforeMods = modifierSummary(prev.modifiers);
+  const afterMods = modifierSummary(cur.modifiers);
+  const modKeys = new Set([...beforeMods, ...afterMods]);
+  modKeys.forEach(mod => {
+    if (!beforeMods.includes(mod)) changes.push(`Custom adjustment added: ${mod}`);
+    if (!afterMods.includes(mod)) changes.push(`Custom adjustment removed: ${mod}`);
+  });
+
+  if ((parseFloat(prev.total) || 0) !== (parseFloat(cur.total) || 0)) {
+    changes.push(`Total changed from ${cleanMoney(prev.total)} to ${cleanMoney(cur.total)}`);
+  }
+
+  return changes.length ? changes : ['No itemized changes detected'];
+}
+
+function renderVersionChangeLog(budget, version) {
+  const versions = budget.versions || [];
+  const index = versions.findIndex(v => v.version === version.version);
+  const previous = index > 0 ? versions[index - 1] : null;
+  const changes = describeVersionChanges(previous?.state, version.state, budget);
+  const visibleChanges = changes.slice(0, 10);
+  const remaining = changes.length - visibleChanges.length;
+  const meta = version.meta || {};
+  const actor = meta.email ? meta.email : (meta.isInternal ? 'Team' : 'Customer');
+  const ip = meta.ip || 'IP not recorded';
+  const device = meta.userAgent ? meta.userAgent.split(' ')[0] : 'Unknown browser';
+
+  return `
+    <div class="version-changes">
+      <div class="version-change-meta">${escAttr(actor)} • ${escAttr(ip)} • ${escAttr(device)}</div>
+      <ul class="version-change-list">
+        ${visibleChanges.map(change => `<li>${escAttr(change)}</li>`).join('')}
+        ${remaining > 0 ? `<li>${remaining} more changes</li>` : ''}
+      </ul>
+    </div>
+  `;
+}
+
 function showBudgetModal(budget) {
   window.__currentBudget = budget;
   document.getElementById('modalTitle').textContent = budget.clientName || 'Unnamed Budget';
@@ -1941,15 +2099,18 @@ function showBudgetModal(budget) {
       ${(budget.versions && budget.versions.length > 0) ? 
         budget.versions.slice().reverse().map(v => `
           <div class="version-item" style="${v.pinned ? 'background:#FFF8E1;' : ''}">
-            <div class="version-info">
-              <span class="version-num">v${v.version}</span>
-              ${v.pinned ? '<span style="color:#F57C00;font-size:11px;margin-left:4px;">📌</span>' : '<span style="color:#9E9E9E;font-size:10px;margin-left:4px;">(auto)</span>'}
-              — <span>${formatDateTime(v.timestamp)}</span>
-              <div class="version-note">${v.note || 'No note'} • ${formatCurrency(v.state?.total || 0)}</div>
+            <div class="version-summary">
+              <div class="version-info">
+                <span class="version-num">v${v.version}</span>
+                ${v.pinned ? '<span style="color:#F57C00;font-size:11px;margin-left:4px;">📌</span>' : '<span style="color:#9E9E9E;font-size:10px;margin-left:4px;">(auto)</span>'}
+                — <span>${formatDateTime(v.timestamp)}</span>
+                <div class="version-note">${v.note || 'No note'} • ${formatCurrency(v.state?.total || 0)}</div>
+              </div>
+              ${v.version < budget.versions.length ? `
+                <button class="btn btn-secondary btn-small" onclick="restoreVersion('${budget.id}', ${v.version})">Restore</button>
+              ` : '<span style="color:var(--success);font-size:12px;">Current</span>'}
             </div>
-            ${v.version < budget.versions.length ? `
-              <button class="btn btn-secondary btn-small" onclick="restoreVersion('${budget.id}', ${v.version})">Restore</button>
-            ` : '<span style="color:var(--success);font-size:12px;">Current</span>'}
+            ${renderVersionChangeLog(budget, v)}
           </div>
         `).join('') : 
         '<div style="color:var(--text-light);text-align:center;padding:12px;">No versions</div>'

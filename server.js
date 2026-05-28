@@ -154,6 +154,34 @@ function preserveBudgetAccess(nextState = {}, existingState = {}) {
   return preserved;
 }
 
+const VERSION_META_KEY = '__versionMeta';
+
+function stripVersionMeta(state = {}) {
+  if (!state || typeof state !== 'object') return state;
+  const { [VERSION_META_KEY]: _meta, ...cleanState } = state;
+  return cleanState;
+}
+
+function getVersionMeta(state = {}) {
+  return state && typeof state === 'object' ? state[VERSION_META_KEY] || null : null;
+}
+
+function withVersionMeta(state = {}, meta = null) {
+  if (!meta) return state;
+  return { ...(state || {}), [VERSION_META_KEY]: meta };
+}
+
+function buildVersionMeta(req, user = null) {
+  const ip = getRequestIp(req);
+  return {
+    ip: ip || null,
+    userAgent: req.get('User-Agent') || null,
+    isInternal: !!user || isOfficeTeamIp(ip),
+    email: user?.email || null,
+    timestamp: new Date().toISOString()
+  };
+}
+
 // Extract Supabase auth token from request
 const REMEMBER_ME_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 const DEFAULT_ACCESS_MAX_AGE_MS = 60 * 60 * 1000;
@@ -342,7 +370,8 @@ async function loadBudget(id) {
     versions: (versions || []).map(v => ({
       version: v.version_number,
       timestamp: v.created_at,
-      state: v.state,
+      state: stripVersionMeta(v.state),
+      meta: getVersionMeta(v.state),
       note: v.note,
       pinned: !!v.is_pinned
     })),
@@ -497,13 +526,13 @@ async function recordView(budgetId, ip, userAgent, isInternal = false) {
   }
 }
 
-async function addVersion(budgetId, versionNum, state, note, isPinned) {
+async function addVersion(budgetId, versionNum, state, note, isPinned, meta = null) {
   const { error } = await supabase
     .from('budget_versions')
     .insert({
       budget_id: budgetId,
       version_number: versionNum,
-      state: state,
+      state: withVersionMeta(state, meta),
       note: note || '',
       is_pinned: !!isPinned
     });
@@ -1248,7 +1277,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     };
 
     await saveBudget(budget);
-    await addVersion(id, 1, initialState, 'Initial budget', true);
+    await addVersion(id, 1, initialState, 'Initial budget', true, buildVersionMeta(req, createdByEmail ? { email: createdByEmail } : null));
 
     res.json({ success: true, id, url: `/b/${id}` });
     
@@ -1354,16 +1383,17 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     const shouldConsolidate = !lastVersion.pinned && timeSinceLastVersion < VERSION_CONSOLIDATION_MS;
     
     const isNewVersion = !(shouldConsolidate && !data.pin);
+    const versionMeta = buildVersionMeta(req, user);
 
     if (!isNewVersion) {
       await supabase
         .from('budget_versions')
-        .update({ state: data.state, created_at: nowISO })
+        .update({ state: withVersionMeta(data.state, versionMeta), created_at: nowISO })
         .eq('budget_id', req.params.id)
         .eq('version_number', lastVersion.version);
     } else {
       const newVersionNum = budget.versions.length + 1;
-      await addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin);
+      await addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin, versionMeta);
     }
 
     budget.currentState = data.state;
@@ -1635,7 +1665,7 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     const note = pricingChanged
       ? `Admin updated project details (${data.pricingMode === 'preserve' ? 'pricing preserved' : 'standard pricing recalculated'})`
       : 'Admin updated project details';
-    await addVersion(req.params.id, versionNum, state, note, true);
+    await addVersion(req.params.id, versionNum, state, note, true, buildVersionMeta(req, req.user));
 
     const updatedBudget = await loadBudget(req.params.id);
     res.json({ success: true, budget: updatedBudget });
@@ -1659,7 +1689,7 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
     
     const restoredState = preserveBudgetAccess(targetVersion.state, budget.currentState || {});
     const newVersionNum = budget.versions.length + 1;
-    await addVersion(req.params.id, newVersionNum, restoredState, `Restored to version ${versionNum}`, true);
+    await addVersion(req.params.id, newVersionNum, restoredState, `Restored to version ${versionNum}`, true, buildVersionMeta(req, req.user));
     
     await supabase
       .from('budgets')
@@ -1713,7 +1743,7 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
     
     const budget = { id, clientName: clientName || null, builder: builder || null, currentState: state };
     await saveBudget(budget);
-    await addVersion(id, 1, state, 'Initial blank budget', true);
+    await addVersion(id, 1, state, 'Initial blank budget', true, buildVersionMeta(req, req.user));
     
     res.json({ success: true, id, url: `/b/${id}` });
     
@@ -1758,7 +1788,7 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     
     // Wipe versions and create fresh one
     await supabase.from('budget_versions').delete().eq('budget_id', req.params.id);
-    await addVersion(req.params.id, 1, currentState, 'Customization applied', true);
+    await addVersion(req.params.id, 1, currentState, 'Customization applied', true, buildVersionMeta(req, req.user));
     
     res.json({ success: true, message: 'Budget customized successfully', versionsWiped: true });
     
