@@ -1439,12 +1439,19 @@ function renderCategories() {
   });
 }
 
+function featureLines(features) {
+  return (features || [])
+    .flatMap(feature => String(feature).split(/\r?\n/))
+    .map(feature => feature.trim())
+    .filter(Boolean);
+}
+
 function renderTierDetails(cat, tier) {
   const t = cat.tiers[tier];
   return `
     <div class="tier-details">
       <h4>${t.label} — What's Included</h4>
-      <ul>${t.features.map(f => `<li>${f}</li>`).join('')}</ul>
+      <ul>${featureLines(t.features).map(f => `<li>${f}</li>`).join('')}</ul>
       <div class="brands">Typical brands: ${t.brands}</div>
     </div>
   `;
@@ -1689,7 +1696,7 @@ function showSummary() {
         <tr class="features-row">
           <td colspan="3" style="padding:4px 16px 14px 36px;border-top:none;">
             <div style="font-size:11px;color:var(--text-light);line-height:1.6;">
-              ${t.features.map(f => `• ${f}`).join('<br>')}
+              ${featureLines(t.features).map(f => `• ${f}`).join('<br>')}
               <div style="margin-top:4px;font-size:10px;color:var(--text-light);font-style:italic;">Typical brands: ${t.brands}</div>
             </div>
           </td>

@@ -2460,6 +2460,7 @@ async function handleNewBudgetSubmit(e) {
 
 let customizeBudgetId = null;
 let customizeBudgetData = null;
+let customizeDraftTimer = null;
 
 async function openCustomizeModal(budgetId) {
   customizeBudgetId = budgetId;
@@ -2473,6 +2474,12 @@ async function openCustomizeModal(budgetId) {
     const res = await fetch(api(`/api/admin/budgets/${budgetId}`), { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to load budget');
     customizeBudgetData = await res.json();
+
+    const draft = loadCustomizeDraft(budgetId);
+    if (draft && confirm(`Restore unsaved customization draft from ${formatDateTime(draft.savedAt)}?`)) {
+      customizeBudgetData.categoryConfig = draft.categoryConfig || {};
+      customizeBudgetData.customCategories = draft.customCategories || [];
+    }
     
     document.getElementById('customizeTitle').textContent = customizeBudgetData.clientName || budgetId;
     
@@ -2485,9 +2492,49 @@ async function openCustomizeModal(budgetId) {
 }
 
 function closeCustomizeModal() {
+  if (customizeDraftTimer) clearTimeout(customizeDraftTimer);
   document.getElementById('customizeModal').classList.remove('active');
   customizeBudgetId = null;
   customizeBudgetData = null;
+}
+
+function customizeDraftKey(budgetId = customizeBudgetId) {
+  return budgetId ? `budgetCustomizeDraft:${budgetId}` : null;
+}
+
+function loadCustomizeDraft(budgetId) {
+  try {
+    const raw = localStorage.getItem(customizeDraftKey(budgetId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearCustomizeDraft(budgetId = customizeBudgetId) {
+  const key = customizeDraftKey(budgetId);
+  if (key) localStorage.removeItem(key);
+}
+
+function queueCustomizeDraftSave() {
+  if (!customizeBudgetId || !document.getElementById('customizeModal')?.classList.contains('active')) return;
+  if (customizeDraftTimer) clearTimeout(customizeDraftTimer);
+  customizeDraftTimer = setTimeout(saveCustomizeDraftNow, 500);
+}
+
+function saveCustomizeDraftNow() {
+  if (!customizeBudgetId) return;
+  try {
+    const draft = {
+      ...collectCustomizationData(),
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem(customizeDraftKey(), JSON.stringify(draft));
+    const status = document.getElementById('customizeDraftStatus');
+    if (status) status.textContent = `Draft saved ${formatRelative(draft.savedAt)}`;
+  } catch (err) {
+    console.warn('Customize draft save failed:', err);
+  }
 }
 
 function renderCustomizeEditor() {
@@ -2510,7 +2557,8 @@ function renderCustomizeEditor() {
       <strong>⚠️ Customization Info:</strong><br>
       • Sqft locked at: <strong>${sqft.toLocaleString()}</strong><br>
       • Property type: <strong>${propertyType}</strong><br>
-      • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions
+      • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions<br>
+      <span id="customizeDraftStatus" style="color:var(--text-light);font-size:12px;">Draft autosave is on</span>
     </div>
     
     <div id="categoryEditors" data-sqft="${sqft}">
@@ -2539,6 +2587,9 @@ function renderCustomizeEditor() {
       <button class="btn btn-secondary" onclick="closeCustomizeModal()">Cancel</button>
     </div>
   `;
+
+  body.oninput = queueCustomizeDraftSave;
+  body.onchange = queueCustomizeDraftSave;
 }
 
 function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
@@ -2772,6 +2823,7 @@ function saveCustomTierFeatures(index, tierKey) {
   }
   
   closeFeaturesModal();
+  queueCustomizeDraftSave();
   showToast('✓ Features updated');
 }
 
@@ -2871,6 +2923,7 @@ function saveTierFeatures() {
   }
   
   closeFeaturesModal();
+  queueCustomizeDraftSave();
   showToast('✓ Features updated');
 }
 
@@ -2887,12 +2940,94 @@ function addCustomCategory() {
   const index = list.children.length;
   const html = renderCustomCategoryEditor({ id: `custom-${Date.now()}`, icon: '📦', name: '', tiers: {} }, index, null);
   list.insertAdjacentHTML('beforeend', html);
+  queueCustomizeDraftSave();
 }
 
 function removeCustomCategory(index) {
   markCatDirty();
   const el = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
   if (el) el.remove();
+  queueCustomizeDraftSave();
+}
+
+function collectCustomizationData() {
+  const categoryConfig = {};
+  const customCategories = [];
+
+  document.querySelectorAll('.category-editor').forEach(editor => {
+    const catId = editor.dataset.catId;
+    const showCheckbox = editor.querySelector('input[type="checkbox"]:not(.tier-enabled)');
+    const isHidden = showCheckbox && !showCheckbox.checked;
+
+    const tiers = {};
+    editor.querySelectorAll('.tier-row').forEach(row => {
+      const tierKey = row.dataset.tier;
+      const enabled = row.querySelector('.tier-enabled')?.checked ?? true;
+      const label = row.querySelector('.tier-label')?.value || '';
+      const price = parseInt(row.querySelector('.tier-price')?.value) || 0;
+
+      let features = [];
+      try {
+        features = JSON.parse(row.dataset.features || '[]');
+      } catch (e) {
+        features = [];
+      }
+      const brands = row.dataset.brands || '';
+
+      tiers[tierKey] = { enabled, label, price, features, brands };
+    });
+
+    categoryConfig[catId] = { hidden: isHidden, tiers };
+  });
+
+  const extraConfig = {};
+  document.querySelectorAll('.custom-extra-row').forEach(row => {
+    const extraId = row.dataset.extraId;
+    const visible = row.querySelector('.extra-visible')?.checked ?? true;
+    const price = parseInt(row.querySelector('.extra-price')?.value) || 0;
+    extraConfig[extraId] = { hidden: !visible, price };
+  });
+  if (Object.keys(extraConfig).length > 0) {
+    categoryConfig.__extras = extraConfig;
+  }
+
+  document.querySelectorAll('.custom-category-editor').forEach(editor => {
+    const icon = editor.querySelector('.cc-icon')?.value || '📦';
+    const name = editor.querySelector('.cc-name')?.value || '';
+    if (!name) return;
+
+    const tiers = {};
+    editor.querySelectorAll('.cc-tier-row').forEach(row => {
+      const tierKey = row.dataset.tier;
+      const enabled = row.querySelector('.cc-tier-enabled')?.checked ?? false;
+      const label = row.querySelector('.cc-tier-label')?.value || '';
+      const price = parseInt(row.querySelector('.cc-tier-price')?.value) || 0;
+
+      let features = [];
+      try {
+        features = JSON.parse(row.dataset.features || '[]');
+      } catch (e) {
+        features = [];
+      }
+      const brands = row.dataset.brands || '';
+
+      if (enabled && (label || price)) {
+        tiers[tierKey] = { enabled, label, price, features, brands };
+      }
+    });
+
+    if (Object.keys(tiers).length > 0) {
+      customCategories.push({
+        id: editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+        name,
+        icon,
+        desc: '',
+        tiers
+      });
+    }
+  });
+
+  return { categoryConfig, customCategories };
 }
 
 async function saveCustomization() {
@@ -2999,6 +3134,7 @@ async function saveCustomization() {
     
     if (res.ok && data.success) {
       showToast('✓ Customization saved');
+      clearCustomizeDraft();
       closeCustomizeModal();
       loadBudgets();
     } else {
