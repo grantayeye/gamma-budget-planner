@@ -2649,8 +2649,8 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
                  data-has-base="${existsInBase}" 
                  data-base-price="${basePrice}"
                  data-scaled-price="${scaledPrice}"
-                 data-features='${JSON.stringify(features).replace(/'/g, "&#39;")}'
-                 data-brands="${brands.replace(/"/g, '&quot;')}"
+                 data-features="${escapeAttr(JSON.stringify(features))}"
+                 data-brands="${escapeAttr(brands)}"
                  style="display:flex;gap:8px;align-items:center;padding:8px;background:${existsInBase ? 'white' : '#FFF3E0'};border-radius:6px;${!isEnabled ? 'opacity:0.5;' : ''}${!existsInBase ? 'border:1px dashed #FFB74D;' : ''}">
               <label style="width:70px;display:flex;align-items:center;gap:4px;${isTierLocked ? 'opacity:0.5;' : ''}">
                 <input type="checkbox" class="tier-enabled" 
@@ -2659,7 +2659,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
                   onchange="toggleTierEnabled('${cat.id}', '${tierKey}', this.checked)"
                 > ${tierLabels[tierKey]}
               </label>
-              <input type="text" class="tier-label" value="${label}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+              <input type="text" class="tier-label" value="${escapeAttr(label)}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
               <div style="position:relative;">
                 <input type="number" class="tier-price" value="${price}" placeholder="Price" style="width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
                 ${existsInBase && scaledPrice ? `<span style="position:absolute;right:4px;top:-8px;font-size:10px;color:var(--text-light);">base: $${scaledPrice.toLocaleString()}</span>` : ''}
@@ -2681,8 +2681,8 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
   return `
     <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
       <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <input type="text" class="cc-icon" value="${cc.icon || '📦'}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
-        <input type="text" class="cc-name" value="${cc.name || ''}" placeholder="Category Name" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
+        <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
+        <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
       </div>
       <div class="cc-tiers" style="display:grid;gap:8px;">
@@ -2695,8 +2695,8 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
           
           return `
             <div class="cc-tier-row" data-tier="${tierKey}" 
-                 data-features='${JSON.stringify(features).replace(/'/g, "&#39;")}'
-                 data-brands="${(brands || '').replace(/"/g, '&quot;')}"
+                 data-features="${escapeAttr(JSON.stringify(features))}"
+                 data-brands="${escapeAttr(brands || '')}"
                  style="display:flex;gap:8px;align-items:center;padding:8px;background:white;border-radius:6px;${!isEnabled && !isTierLocked ? 'opacity:0.5;' : ''}">
               <label style="width:70px;display:flex;align-items:center;gap:4px;${isTierLocked ? 'opacity:0.5;' : ''}">
                 <input type="checkbox" class="cc-tier-enabled" 
@@ -2705,7 +2705,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
                   onchange="toggleCustomTierEnabled(${index}, '${tierKey}', this.checked)"
                 > ${tierLabels[tierKey]}
               </label>
-              <input type="text" class="cc-tier-label" data-tier="${tierKey}" value="${tier.label || ''}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+              <input type="text" class="cc-tier-label" data-tier="${tierKey}" value="${escapeAttr(tier.label || '')}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
               <input type="number" class="cc-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
               <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
             </div>
@@ -2787,12 +2787,12 @@ function editCustomTierFeatures(index, tierKey) {
   document.getElementById('featuresBody').innerHTML = `
     <div style="margin-bottom:20px;">
       <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
-      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${features.join('\n')}</textarea>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeAttr(features.join('\n'))}</textarea>
     </div>
     
     <div style="margin-bottom:20px;">
       <label style="font-weight:600;display:block;margin-bottom:8px;">Typical Brands</label>
-      <input type="text" id="brandsInput" value="${brands}" placeholder="e.g., Sonos, Control4, Lutron" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
+      <input type="text" id="brandsInput" value="${escapeAttr(brands)}" placeholder="e.g., Sonos, Control4, Lutron" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
     </div>
     
     <div style="display:flex;gap:12px;">
@@ -2885,12 +2885,12 @@ function editTierFeatures(catId, tierKey) {
   document.getElementById('featuresBody').innerHTML = `
     <div style="margin-bottom:20px;">
       <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
-      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${features.join('\n')}</textarea>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeAttr(features.join('\n'))}</textarea>
     </div>
     
     <div style="margin-bottom:20px;">
       <label style="font-weight:600;display:block;margin-bottom:8px;">Typical Brands</label>
-      <input type="text" id="brandsInput" value="${brands}" placeholder="e.g., Sonos, Control4, Lutron" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
+      <input type="text" id="brandsInput" value="${escapeAttr(brands)}" placeholder="e.g., Sonos, Control4, Lutron" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
     </div>
     
     <div style="display:flex;gap:12px;">
@@ -3848,7 +3848,7 @@ function moveItem(catIdx, direction) {
 }
 
 function escAttr(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  return escapeAttr(s);
 }
 
 function editCatTierFeatures(catId, tierKey) {
@@ -3865,7 +3865,7 @@ function editCatTierFeatures(catId, tierKey) {
   document.getElementById('featuresBody').innerHTML = `
     <div style="margin-bottom:20px;">
       <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
-      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${(t.features || []).join('\n')}</textarea>
+      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeAttr((t.features || []).join('\n'))}</textarea>
     </div>
     <div style="display:flex;gap:12px;">
       <button class="btn btn-primary" onclick="saveCatTierFeatures('${catId}', '${tierKey}')" style="flex:1;">Save Features</button>
