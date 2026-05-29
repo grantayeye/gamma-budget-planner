@@ -156,6 +156,10 @@ function preserveBudgetAccess(nextState = {}, existingState = {}) {
 
 const VERSION_META_KEY = '__versionMeta';
 
+function deepClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
 function stripVersionMeta(state = {}) {
   if (!state || typeof state !== 'object') return state;
   const { [VERSION_META_KEY]: _meta, ...cleanState } = state;
@@ -636,6 +640,10 @@ const schemas = {
     homeSize: z.coerce.number().int().min(500).max(50000).optional(),
     propertyType: z.enum(['residential', 'condo']).optional(),
     pricingMode: z.enum(['recalculate', 'preserve']).optional()
+  }),
+
+  cloneBudget: z.object({
+    clientName: z.string().max(200).optional().nullable()
   }),
 
   createLink: z.object({
@@ -1750,6 +1758,55 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Create admin budget error:', err);
     res.status(500).json({ error: 'Failed to create budget' });
+  }
+});
+
+app.post('/api/admin/budgets/:id/clone', requireAuth, async (req, res) => {
+  try {
+    const data = schemas.cloneBudget.parse(req.body || {});
+    const source = await loadBudget(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Budget not found' });
+
+    let id;
+    let exists;
+    do {
+      id = generateCode(8);
+      const { data: check } = await supabase.from('budgets').select('id').eq('id', id).single();
+      exists = !!check;
+    } while (exists);
+
+    const state = deepClone(source.currentState || {});
+    const clientName = data.clientName !== undefined
+      ? (data.clientName || null)
+      : `${source.clientName || state.clientName || 'Unnamed Budget'} Copy`;
+    state.clientName = clientName;
+    state.expiresAt = defaultExpirationDate();
+    state.expiredAt = null;
+
+    const budget = {
+      id,
+      clientName,
+      builder: source.builder || state.builder || null,
+      currentState: state,
+      isCustomized: source.isCustomized,
+      sqftLocked: source.sqftLocked || null,
+      propertyTypeLocked: source.propertyTypeLocked || null,
+      categoryConfig: deepClone(source.categoryConfig || null),
+      customCategories: deepClone(source.customCategories || null),
+      createdByEmail: req.user.email
+    };
+
+    await saveBudget(budget);
+    await addVersion(id, 1, state, `Cloned from ${source.clientName || source.id}`, true, buildVersionMeta(req, req.user));
+
+    const cloned = await loadBudget(id);
+    res.json({ success: true, id, url: `/b/${id}`, budget: cloned });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    }
+    console.error('Clone budget error:', err);
+    res.status(500).json({ error: 'Failed to clone budget' });
   }
 });
 

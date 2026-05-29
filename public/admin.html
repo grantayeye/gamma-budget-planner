@@ -1305,6 +1305,8 @@ function getScaledPrice(basePrice, sqft, scaleFactor) {
 // ============================================================
 let currentUser = null;
 let budgets = [];
+const TIER_ORDER = ['good', 'standard', 'better', 'best'];
+const TIER_NAMES = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
 
 // ============================================================
 // INIT
@@ -1758,6 +1760,7 @@ function renderBudgets() {
       <td>${b.lastClientActivity ? formatRelative(b.lastClientActivity) : '<span style="color:var(--text-light);">Never</span>'}</td>
       <td class="actions-cell">
         <button class="btn btn-secondary btn-small" onclick="viewBudget('${b.id}')">Details</button>
+        <button class="btn btn-secondary btn-small" onclick="cloneBudget('${b.id}')">Clone</button>
         <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">⚙️</button>
         <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">🗑️</button>
       </td>
@@ -2405,6 +2408,31 @@ function copyBudgetLink(id) {
   });
 }
 
+async function cloneBudget(id) {
+  const source = budgets.find(b => b.id === id);
+  const sourceName = source?.clientName || 'Unnamed Budget';
+  const clientName = prompt('Name for cloned budget:', `${sourceName} Copy`);
+  if (clientName === null) return;
+
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${id}/clone`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientName: clientName.trim() || `${sourceName} Copy` })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Clone failed');
+
+    showToast('✓ Budget cloned');
+    await loadBudgets();
+    setTimeout(() => openCustomizeModal(data.id), 250);
+  } catch (err) {
+    console.error('Clone budget error:', err);
+    showToast(err.message || 'Failed to clone budget');
+  }
+}
+
 // ============================================================
 // NEW BUDGET
 // ============================================================
@@ -2461,6 +2489,7 @@ async function handleNewBudgetSubmit(e) {
 let customizeBudgetId = null;
 let customizeBudgetData = null;
 let customizeDraftTimer = null;
+let copySectionSourceBudget = null;
 
 async function openCustomizeModal(budgetId) {
   customizeBudgetId = budgetId;
@@ -2496,6 +2525,7 @@ function closeCustomizeModal() {
   document.getElementById('customizeModal').classList.remove('active');
   customizeBudgetId = null;
   customizeBudgetData = null;
+  copySectionSourceBudget = null;
 }
 
 function customizeDraftKey(budgetId = customizeBudgetId) {
@@ -2560,6 +2590,8 @@ function renderCustomizeEditor() {
       • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions<br>
       <span id="customizeDraftStatus" style="color:var(--text-light);font-size:12px;">Draft autosave is on</span>
     </div>
+
+    ${renderCopySectionControls()}
     
     <div id="categoryEditors" data-sqft="${sqft}">
       ${defaultCategories.map(cat => renderCategoryEditor(cat, existingConfig[cat.id], selections[cat.id], sqft)).join('')}
@@ -2592,6 +2624,235 @@ function renderCustomizeEditor() {
   body.onchange = queueCustomizeDraftSave;
 }
 
+function budgetOptionLabel(budget) {
+  const name = budget.clientName || 'Unnamed Budget';
+  const builder = budget.builder ? ` • ${budget.builder}` : '';
+  return `${name}${builder} (${budget.id})`;
+}
+
+function renderCopySectionControls() {
+  const sourceOptions = budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .map(b => `<option value="${escapeAttr(b.id)}">${escapeAttr(budgetOptionLabel(b))}</option>`)
+    .join('');
+
+  return `
+    <div style="background:#F7FAFC;border:1px solid var(--border-light);border-radius:8px;padding:12px 16px;margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+        <div>
+          <strong>Copy Section From Another Budget</strong>
+          <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Copies pricing, labels, features, brands, visibility, and enabled tiers into this editor. Save customization to apply.</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(220px,1.2fr) minmax(180px,1fr) auto;gap:10px;align-items:center;">
+        <select id="copySourceBudget" onchange="handleCopySourceBudgetChange()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+          <option value="">Choose source budget...</option>
+          ${sourceOptions}
+        </select>
+        <select id="copySourceSection" disabled style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+          <option value="">Choose section...</option>
+        </select>
+        <button type="button" class="btn btn-secondary btn-small" onclick="copySelectedSectionIntoCustomize()">Copy Section</button>
+      </div>
+      <div id="copySectionStatus" style="font-size:12px;color:var(--text-light);margin-top:8px;"></div>
+    </div>
+  `;
+}
+
+async function handleCopySourceBudgetChange() {
+  const budgetId = document.getElementById('copySourceBudget')?.value;
+  const sectionSelect = document.getElementById('copySourceSection');
+  const status = document.getElementById('copySectionStatus');
+  copySectionSourceBudget = null;
+  if (!sectionSelect) return;
+  sectionSelect.disabled = true;
+  sectionSelect.innerHTML = '<option value="">Choose section...</option>';
+  if (!budgetId) {
+    if (status) status.textContent = '';
+    return;
+  }
+
+  if (status) status.textContent = 'Loading source budget...';
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${budgetId}`), { credentials: 'include' });
+    if (!res.ok) throw new Error('Could not load source budget');
+    copySectionSourceBudget = await res.json();
+
+    const propertyType = copySectionSourceBudget.propertyTypeLocked || copySectionSourceBudget.currentState?.propertyType || 'residential';
+    const sourceCategories = getDefaultCategories(propertyType);
+    const targetIds = new Set(Array.from(document.querySelectorAll('.category-editor')).map(el => el.dataset.catId));
+    const options = sourceCategories
+      .filter(cat => targetIds.has(cat.id))
+      .map(cat => `<option value="${escapeAttr(cat.id)}">${escapeAttr(cat.name)}</option>`)
+      .join('');
+    sectionSelect.innerHTML = `<option value="">Choose section...</option>${options}`;
+    sectionSelect.disabled = !options;
+    if (status) status.textContent = options ? 'Pick a section to copy into this budget.' : 'No matching sections found for this budget type.';
+  } catch (err) {
+    console.error('Load copy source error:', err);
+    if (status) status.textContent = err.message || 'Could not load source budget';
+  }
+}
+
+function buildCategoryOverrideFromBudget(budget, catId) {
+  const state = budget.currentState || {};
+  const propertyType = budget.propertyTypeLocked || state.propertyType || 'residential';
+  const sqft = budget.sqftLocked || state.homeSize || 4000;
+  const defaultCat = getDefaultCategories(propertyType).find(cat => cat.id === catId);
+  const override = budget.categoryConfig?.[catId] || {};
+  if (!defaultCat && !override.tiers) return null;
+  const sizeScale = defaultCat?.sizeScale ?? 0.5;
+  const tiers = {};
+
+  TIER_ORDER.forEach(tierKey => {
+    const defaultTier = defaultCat?.tiers?.[tierKey];
+    const tierOverride = override.tiers?.[tierKey] || {};
+    const existsInBase = !!defaultTier;
+    const enabled = existsInBase
+      ? (tierOverride.enabled !== false)
+      : (tierOverride.enabled === true);
+    const basePrice = defaultTier?.price || 0;
+    const tierSizeScale = defaultTier?.sizeScale ?? sizeScale;
+    const scaledPrice = basePrice ? getScaledPrice(basePrice, sqft, tierSizeScale) : 0;
+    tiers[tierKey] = {
+      enabled,
+      label: tierOverride.label ?? (defaultTier?.label || TIER_NAMES[tierKey]),
+      price: tierOverride.price ?? scaledPrice,
+      features: tierOverride.features ?? (defaultTier?.features || []),
+      brands: tierOverride.brands ?? (defaultTier?.brands || '')
+    };
+  });
+
+  return { hidden: override.hidden === true, tiers };
+}
+
+function readTierRowData(row, selectors) {
+  let features = [];
+  try {
+    features = JSON.parse(row.dataset.features || '[]');
+  } catch (_) {
+    features = [];
+  }
+  return {
+    enabled: row.querySelector(selectors.enabled)?.checked ?? true,
+    label: row.querySelector(selectors.label)?.value || '',
+    price: parseInt(row.querySelector(selectors.price)?.value) || 0,
+    features,
+    brands: row.dataset.brands || ''
+  };
+}
+
+function writeTierRowData(row, data, selectors) {
+  const enabledEl = row.querySelector(selectors.enabled);
+  const isLocked = !!enabledEl?.disabled;
+  const enabled = !!data.enabled || isLocked;
+  if (enabledEl) enabledEl.checked = enabled;
+  const labelEl = row.querySelector(selectors.label);
+  if (labelEl) labelEl.value = data.label || '';
+  const priceEl = row.querySelector(selectors.price);
+  if (priceEl) priceEl.value = data.price || '';
+  row.dataset.features = JSON.stringify(data.features || []);
+  row.dataset.brands = data.brands || '';
+  const disabled = !enabled && !isLocked;
+  row.style.opacity = disabled ? '0.5' : '1';
+  row.querySelectorAll(selectors.disable).forEach(el => { el.disabled = disabled; });
+}
+
+function applyCategoryOverrideToEditor(catId, override) {
+  const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  if (!editor || !override) return false;
+
+  const showCheckbox = editor.querySelector('input[type="checkbox"]:not(.tier-enabled)');
+  const isHideLocked = !!showCheckbox?.disabled;
+  const isHidden = override.hidden === true && !isHideLocked;
+  if (showCheckbox && !isHideLocked) showCheckbox.checked = !isHidden;
+  editor.style.opacity = isHidden ? '0.6' : '1';
+  const tierEditors = editor.querySelector('.tier-editors');
+  if (tierEditors) tierEditors.style.display = isHidden ? 'none' : 'grid';
+
+  TIER_ORDER.forEach(tierKey => {
+    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
+    const data = override.tiers?.[tierKey];
+    if (row && data) {
+      writeTierRowData(row, data, {
+        enabled: '.tier-enabled',
+        label: '.tier-label',
+        price: '.tier-price',
+        disable: 'input:not(.tier-enabled), button:not(.tier-swap-btn)'
+      });
+    }
+  });
+  return true;
+}
+
+function copySelectedSectionIntoCustomize() {
+  const catId = document.getElementById('copySourceSection')?.value;
+  const status = document.getElementById('copySectionStatus');
+  if (!copySectionSourceBudget || !catId) {
+    if (status) status.textContent = 'Choose a source budget and section first.';
+    return;
+  }
+
+  const override = buildCategoryOverrideFromBudget(copySectionSourceBudget, catId);
+  if (!applyCategoryOverrideToEditor(catId, override)) {
+    if (status) status.textContent = 'Could not copy that section into this budget.';
+    return;
+  }
+
+  const sectionName = getDefaultCategories(copySectionSourceBudget.propertyTypeLocked || copySectionSourceBudget.currentState?.propertyType || 'residential')
+    .find(cat => cat.id === catId)?.name || catId;
+  markCatDirty();
+  queueCustomizeDraftSave();
+  if (status) status.textContent = `Copied ${sectionName}. Save customization to apply.`;
+  showToast(`✓ Copied ${sectionName}`);
+}
+
+function swapTierRows(rowA, rowB, selectors) {
+  if (!rowA || !rowB) return;
+  const a = readTierRowData(rowA, selectors);
+  const b = readTierRowData(rowB, selectors);
+  writeTierRowData(rowA, b, selectors);
+  writeTierRowData(rowB, a, selectors);
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function swapTierWithNeighbor(catId, tierKey, direction) {
+  const idx = TIER_ORDER.indexOf(tierKey);
+  const otherTier = TIER_ORDER[idx + direction];
+  if (!otherTier) return;
+  const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  swapTierRows(
+    editor?.querySelector(`.tier-row[data-tier="${tierKey}"]`),
+    editor?.querySelector(`.tier-row[data-tier="${otherTier}"]`),
+    {
+      enabled: '.tier-enabled',
+      label: '.tier-label',
+      price: '.tier-price',
+      disable: 'input:not(.tier-enabled), button:not(.tier-swap-btn)'
+    }
+  );
+  showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);
+}
+
+function swapCustomTierWithNeighbor(index, tierKey, direction) {
+  const idx = TIER_ORDER.indexOf(tierKey);
+  const otherTier = TIER_ORDER[idx + direction];
+  if (!otherTier) return;
+  const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  swapTierRows(
+    editor?.querySelector(`.cc-tier-row[data-tier="${tierKey}"]`),
+    editor?.querySelector(`.cc-tier-row[data-tier="${otherTier}"]`),
+    {
+      enabled: '.cc-tier-enabled',
+      label: '.cc-tier-label',
+      price: '.cc-tier-price',
+      disable: 'input:not(.cc-tier-enabled), button:not(.tier-swap-btn)'
+    }
+  );
+  showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);
+}
+
 function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
   const override = existingOverride || {};
   const isHidden = override.hidden === true;
@@ -2599,8 +2860,8 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
   const sizeScale = cat.sizeScale ?? 0.5; // Default scale factor
   
   // All possible tiers - show all of them, even if missing from base data
-  const allTiers = ['good', 'standard', 'better', 'best'];
-  const tierLabels = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+  const allTiers = TIER_ORDER;
+  const tierLabels = TIER_NAMES;
   
   return `
     <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
@@ -2665,6 +2926,10 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
                 ${existsInBase && scaledPrice ? `<span style="position:absolute;right:4px;top:-8px;font-size:10px;color:var(--text-light);">base: $${scaledPrice.toLocaleString()}</span>` : ''}
               </div>
               <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" ${!isEnabled ? 'disabled' : ''}>Features</button>
+              <div style="display:flex;gap:4px;">
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)" ${tierKey === allTiers[0] ? 'disabled' : ''}>↑</button>
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)" ${tierKey === allTiers[allTiers.length - 1] ? 'disabled' : ''}>↓</button>
+              </div>
             </div>
           `;
         }).join('')}
@@ -2675,8 +2940,8 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
 
 function renderCustomCategoryEditor(cc, index, selectedTier) {
   const isLocked = !!selectedTier;
-  const allTiers = ['good', 'standard', 'better', 'best'];
-  const tierLabels = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+  const allTiers = TIER_ORDER;
+  const tierLabels = TIER_NAMES;
   
   return `
     <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
@@ -2708,6 +2973,10 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
               <input type="text" class="cc-tier-label" data-tier="${tierKey}" value="${escapeAttr(tier.label || '')}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
               <input type="number" class="cc-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
               <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
+              <div style="display:flex;gap:4px;">
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)" ${tierKey === allTiers[0] ? 'disabled' : ''}>↑</button>
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)" ${tierKey === allTiers[allTiers.length - 1] ? 'disabled' : ''}>↓</button>
+              </div>
             </div>
           `;
         }).join('')}
@@ -2755,7 +3024,7 @@ function toggleCustomTierEnabled(index, tierKey, enabled) {
     const tierRow = editor.querySelector(`.cc-tier-row[data-tier="${tierKey}"]`);
     if (tierRow) {
       tierRow.style.opacity = enabled ? '1' : '0.5';
-      tierRow.querySelectorAll('input:not(.cc-tier-enabled), button').forEach(el => el.disabled = !enabled);
+      tierRow.querySelectorAll('input:not(.cc-tier-enabled), button:not(.tier-swap-btn)').forEach(el => el.disabled = !enabled);
     }
   }
 }
@@ -2843,7 +3112,7 @@ function toggleTierEnabled(catId, tierKey, enabled) {
     const tierRow = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
     if (tierRow) {
       tierRow.style.opacity = enabled ? '1' : '0.5';
-      tierRow.querySelectorAll('input:not(.tier-enabled), button').forEach(el => el.disabled = !enabled);
+      tierRow.querySelectorAll('input:not(.tier-enabled), button:not(.tier-swap-btn)').forEach(el => el.disabled = !enabled);
     }
   }
 }
