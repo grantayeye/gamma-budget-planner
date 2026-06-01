@@ -333,6 +333,26 @@ function getActiveBudgetBrowsers(budgetId) {
 setInterval(() => pruneBudgetPresence(), PRESENCE_TTL_MS).unref?.();
 
 // Budget functions
+async function ensureBudgetDefaultSnapshotForRow(budget) {
+  if (!budget || hasBudgetDefaultSnapshot(budget.category_config)) {
+    return budget?.category_config || null;
+  }
+
+  const defaults = await loadCategoryDefaultsData();
+  const categoryConfig = mergeBudgetDefaultSnapshot(budget.category_config || {}, defaults);
+  const { error } = await supabase
+    .from('budgets')
+    .update({ category_config: categoryConfig })
+    .eq('id', budget.id);
+
+  if (error) {
+    console.error('snapshotBudgetDefaults error:', error);
+    return budget.category_config || null;
+  }
+
+  return categoryConfig;
+}
+
 async function loadBudget(id) {
   const { data: budget, error } = await supabase
     .from('budgets')
@@ -341,6 +361,8 @@ async function loadBudget(id) {
     .single();
   
   if (error || !budget) return null;
+
+  const categoryConfig = await ensureBudgetDefaultSnapshotForRow(budget);
   
   const { data: views } = await supabase
     .from('budget_views')
@@ -383,7 +405,7 @@ async function loadBudget(id) {
     isCustomized: !!budget.is_customized,
     sqftLocked: budget.sqft_locked,
     propertyTypeLocked: budget.property_type_locked,
-    categoryConfig: budget.category_config,
+    categoryConfig,
     customCategories: budget.custom_categories
   };
 }
@@ -684,6 +706,12 @@ function loadStaticCategoryData() {
 }
 
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
+const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
+const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
+
+function deepClone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
 
 async function loadCategoryDefaultsData() {
   const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
@@ -707,6 +735,49 @@ function getDefaultExtrasFromData(defaults, propertyType) {
   return propertyType === 'condo'
     ? (defaults.condo_extras || [])
     : (defaults.residential_extras || []);
+}
+
+function buildBudgetDefaultSnapshot(defaults) {
+  return {
+    [DEFAULT_CATEGORY_SNAPSHOT_KEY]: {
+      residential: deepClone(defaults.residential_categories || []),
+      condo: deepClone(defaults.condo_categories || [])
+    },
+    [DEFAULT_EXTRA_SNAPSHOT_KEY]: {
+      residential: deepClone(defaults.residential_extras || []),
+      condo: deepClone(defaults.condo_extras || [])
+    }
+  };
+}
+
+function getSnapshotForPropertyType(snapshot, propertyType) {
+  if (Array.isArray(snapshot)) return snapshot;
+  return snapshot?.[propertyType] || null;
+}
+
+function getBudgetDefaultCategoriesFromConfig(categoryConfig, defaults, propertyType) {
+  return getSnapshotForPropertyType(categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
+    || getDefaultCategoriesFromData(defaults, propertyType);
+}
+
+function getBudgetDefaultExtrasFromConfig(categoryConfig, defaults, propertyType) {
+  return getSnapshotForPropertyType(categoryConfig?.[DEFAULT_EXTRA_SNAPSHOT_KEY], propertyType)
+    || getDefaultExtrasFromData(defaults, propertyType);
+}
+
+function hasBudgetDefaultSnapshot(categoryConfig) {
+  return !!(
+    categoryConfig
+    && categoryConfig[DEFAULT_CATEGORY_SNAPSHOT_KEY]
+    && categoryConfig[DEFAULT_EXTRA_SNAPSHOT_KEY]
+  );
+}
+
+function mergeBudgetDefaultSnapshot(categoryConfig, defaults) {
+  return {
+    ...buildBudgetDefaultSnapshot(defaults),
+    ...(categoryConfig || {})
+  };
 }
 
 function getSizeMultiplierForBudget(sqft, scaleFactor) {
@@ -842,7 +913,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
   const customCategories = options.customCategories || [];
   let subtotal = 0;
 
-  const defaultCategories = getDefaultCategoriesFromData(defaults, propertyType);
+  const defaultCategories = getBudgetDefaultCategoriesFromConfig(categoryConfig, defaults, propertyType);
   const customById = new Map((customCategories || []).map(cat => [cat.id, cat]));
   const defaultById = new Map(defaultCategories.map(cat => [cat.id, cat]));
 
@@ -872,7 +943,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
   });
 
   const extraConfig = categoryConfig.__extras || {};
-  const extrasById = new Map(getDefaultExtrasFromData(defaults, propertyType).map(extra => [extra.id, extra]));
+  const extrasById = new Map(getBudgetDefaultExtrasFromConfig(categoryConfig, defaults, propertyType).map(extra => [extra.id, extra]));
   Object.entries(state.extras || {}).forEach(([extraId, selected]) => {
     if (!selected) return;
     const extra = extrasById.get(extraId);
@@ -919,8 +990,40 @@ async function seedCategoryDefaults() {
   }
 }
 
-// Seed on startup (non-blocking)
-seedCategoryDefaults();
+async function backfillBudgetDefaultSnapshots() {
+  try {
+    const defaults = await loadCategoryDefaultsData();
+    const snapshot = buildBudgetDefaultSnapshot(defaults);
+    const { data: budgets, error } = await supabase
+      .from('budgets')
+      .select('id, category_config');
+
+    if (error) {
+      console.warn('[Categories] Budget default snapshot backfill skipped:', error.message);
+      return;
+    }
+
+    const updates = (budgets || [])
+      .filter(budget => !hasBudgetDefaultSnapshot(budget.category_config))
+      .map(budget => supabase
+        .from('budgets')
+        .update({ category_config: { ...snapshot, ...(budget.category_config || {}) } })
+        .eq('id', budget.id));
+
+    if (updates.length) {
+      await Promise.all(updates);
+      console.log(`[Categories] Backfilled default snapshots for ${updates.length} budgets`);
+    }
+  } catch (err) {
+    console.warn('[Categories] Budget default snapshot backfill failed:', err.message);
+  }
+}
+
+// Seed/backfill on startup (non-blocking)
+(async () => {
+  await seedCategoryDefaults();
+  await backfillBudgetDefaultSnapshots();
+})();
 
 // ============================================================
 // CATEGORY API — PUBLIC
@@ -1270,6 +1373,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
       expiresAt: data.state.expiresAt || defaultExpirationDate(),
       expiredAt: data.state.expiredAt || null
     };
+    const defaults = await loadCategoryDefaultsData();
 
     const budget = {
       id,
@@ -1279,7 +1383,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
       isCustomized: false,
       sqftLocked: null,
       propertyTypeLocked: null,
-      categoryConfig: null,
+      categoryConfig: buildBudgetDefaultSnapshot(defaults),
       customCategories: null,
       createdByEmail
     };
@@ -1619,10 +1723,10 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     const customCategories = budget.customCategories || null;
 
     if (pricingChanged) {
-      const oldCategories = getDefaultCategoriesFromData(defaults, oldPropertyType);
-      const newCategories = getDefaultCategoriesFromData(defaults, newPropertyType);
-      const oldExtras = getDefaultExtrasFromData(defaults, oldPropertyType);
-      const newExtras = getDefaultExtrasFromData(defaults, newPropertyType);
+      const oldCategories = getBudgetDefaultCategoriesFromConfig(categoryConfig || {}, defaults, oldPropertyType);
+      const newCategories = getBudgetDefaultCategoriesFromConfig(categoryConfig || {}, defaults, newPropertyType);
+      const oldExtras = getBudgetDefaultExtrasFromConfig(categoryConfig || {}, defaults, oldPropertyType);
+      const newExtras = getBudgetDefaultExtrasFromConfig(categoryConfig || {}, defaults, newPropertyType);
 
       if (data.pricingMode === 'preserve') {
         categoryConfig = preserveCategoryPricesAcrossChange(categoryConfig || {}, oldCategories, newCategories, oldSqft, newSqft);
@@ -1748,8 +1852,16 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
       expiresAt: defaultExpirationDate(),
       expiredAt: null
     };
+    const defaults = await loadCategoryDefaultsData();
     
-    const budget = { id, clientName: clientName || null, builder: builder || null, currentState: state };
+    const budget = {
+      id,
+      clientName: clientName || null,
+      builder: builder || null,
+      currentState: state,
+      isCustomized: false,
+      categoryConfig: buildBudgetDefaultSnapshot(defaults)
+    };
     await saveBudget(budget);
     await addVersion(id, 1, state, 'Initial blank budget', true, buildVersionMeta(req, req.user));
     
@@ -1821,11 +1933,16 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     const sqftLocked = budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize;
     const propertyTypeLocked = budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType;
     const defaults = await loadCategoryDefaultsData();
+    const categoryConfig = {
+      ...buildBudgetDefaultSnapshot(defaults),
+      ...(budget.categoryConfig || {}),
+      ...(data.categoryConfig || {})
+    };
     currentState.total = calculateBudgetTotal(currentState, defaults, {
       sqft: sqftLocked,
       propertyType: propertyTypeLocked,
       isCustomized: true,
-      categoryConfig: data.categoryConfig || {},
+      categoryConfig,
       customCategories: data.customCategories || []
     });
     
@@ -1837,7 +1954,7 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
         sqft_locked: sqftLocked,
         property_type_locked: propertyTypeLocked,
         current_state: currentState,
-        category_config: data.categoryConfig || null,
+        category_config: categoryConfig,
         custom_categories: data.customCategories || null,
         modified_at: now
       })

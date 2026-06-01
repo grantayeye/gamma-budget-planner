@@ -1132,6 +1132,8 @@ let customCategories = null;
 let sqftLocked = null;
 let propertyTypeLocked = null;
 const TIER_ORDER = ['good', 'standard', 'better', 'best'];
+const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
+const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
 
 function orderedTierKeys(tiers) {
   if (!tiers) return [];
@@ -1140,9 +1142,24 @@ function orderedTierKeys(tiers) {
   return [...known, ...unknown];
 }
 
+function snapshotForPropertyType(snapshot, propertyType) {
+  if (Array.isArray(snapshot)) return snapshot;
+  return snapshot?.[propertyType] || null;
+}
+
+function baseCategoriesForBudget() {
+  return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
+    || CONFIGS[state.propertyType].categories;
+}
+
+function baseExtrasForBudget() {
+  return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_EXTRA_SNAPSHOT_KEY], state.propertyType)
+    || CONFIGS[state.propertyType].extras;
+}
+
 // Active data accessors — everything uses these
 function CATEGORIES() {
-  const base = CONFIGS[state.propertyType].categories;
+  const base = baseCategoriesForBudget();
   
   // If not customized, return defaults
   if (!isCustomizedBudget || !customCategoryConfig) {
@@ -1238,7 +1255,7 @@ function CATEGORIES() {
 }
 
 function EXTRAS() {
-  const base = CONFIGS[state.propertyType].extras;
+  const base = baseExtrasForBudget();
   const extraConfig = customCategoryConfig?.__extras;
 
   if (!isCustomizedBudget || !extraConfig) {

@@ -1802,18 +1802,36 @@ function tierDisplayName(tier) {
   return String(tier).charAt(0).toUpperCase() + String(tier).slice(1);
 }
 
+const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
+const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
+
+function snapshotForPropertyType(snapshot, propertyType) {
+  if (Array.isArray(snapshot)) return snapshot;
+  return snapshot?.[propertyType] || null;
+}
+
+function getBudgetDefaultCategories(budget, propertyType) {
+  return snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
+    || getDefaultCategories(propertyType);
+}
+
+function getBudgetDefaultExtras(budget, propertyType) {
+  return snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_EXTRA_SNAPSHOT_KEY], propertyType)
+    || getDefaultExtras(propertyType);
+}
+
 function buildCategoryMap(budget, state = {}) {
   const propertyType = state.propertyType || budget.currentState?.propertyType || 'residential';
   const map = new Map();
-  getDefaultCategories(propertyType).forEach(cat => map.set(cat.id, cat));
+  getBudgetDefaultCategories(budget, propertyType).forEach(cat => map.set(cat.id, cat));
   (budget.customCategories || []).forEach(cat => map.set(cat.id, cat));
   return map;
 }
 
-function buildExtraMap(state = {}) {
-  const propertyType = state.propertyType || 'residential';
+function buildExtraMap(budget, state = {}) {
+  const propertyType = state.propertyType || budget.currentState?.propertyType || 'residential';
   const map = new Map();
-  getDefaultExtras(propertyType).forEach(extra => map.set(extra.id, extra));
+  getBudgetDefaultExtras(budget, propertyType).forEach(extra => map.set(extra.id, extra));
   return map;
 }
 
@@ -1826,7 +1844,7 @@ function describeVersionChanges(previousState, currentState, budget) {
   const prev = previousState || {};
   const cur = currentState || {};
   const categoryMap = buildCategoryMap(budget, cur);
-  const extraMap = buildExtraMap(cur);
+  const extraMap = buildExtraMap(budget, cur);
 
   if (!previousState) {
     return ['Initial budget snapshot'];
@@ -2506,7 +2524,10 @@ async function openCustomizeModal(budgetId) {
 
     const draft = loadCustomizeDraft(budgetId);
     if (draft && confirm(`Restore unsaved customization draft from ${formatDateTime(draft.savedAt)}?`)) {
-      customizeBudgetData.categoryConfig = draft.categoryConfig || {};
+      customizeBudgetData.categoryConfig = {
+        ...(customizeBudgetData.categoryConfig || {}),
+        ...(draft.categoryConfig || {})
+      };
       customizeBudgetData.customCategories = draft.customCategories || [];
     }
     
@@ -2578,9 +2599,8 @@ function renderCustomizeEditor() {
   const existingCustom = budget.customCategories || [];
   const existingExtraConfig = existingConfig.__extras || {};
   
-  // Get default categories from frontend (we'll need to embed these)
-  const defaultCategories = getDefaultCategories(propertyType);
-  const defaultExtras = getDefaultExtras(propertyType);
+  const defaultCategories = getBudgetDefaultCategories(budget, propertyType);
+  const defaultExtras = getBudgetDefaultExtras(budget, propertyType);
   
   body.innerHTML = `
     <div style="background:#FFF8E1;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;">
