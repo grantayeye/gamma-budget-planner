@@ -1817,6 +1817,96 @@ function tierDisplayName(tier) {
 
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
+const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
+
+function slugifySectionId(value) {
+  const slug = String(value || 'other')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || 'other';
+}
+
+function uniqueSectionId(baseId, usedIds) {
+  const base = baseId || 'section';
+  let id = base;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeSectionList(categories = [], sections = []) {
+  const usedIds = new Set();
+  const normalized = [];
+  const byName = new Map();
+  const byId = new Map();
+
+  (sections || []).forEach((section, index) => {
+    const name = String(section?.name || section?.label || section?.id || 'Other').trim() || 'Other';
+    const id = uniqueSectionId(slugifySectionId(section?.id || name), usedIds);
+    const item = { id, name, order: Number.isFinite(Number(section?.order)) ? Number(section.order) : index };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  (categories || []).forEach(cat => {
+    const explicitId = cat?.section_id || cat?.sectionId;
+    if (explicitId && byId.has(explicitId)) return;
+    const name = String(cat?.section || cat?.sectionName || explicitId || 'Other').trim() || 'Other';
+    if (byName.has(name.toLowerCase())) return;
+    const id = uniqueSectionId(slugifySectionId(explicitId || name), usedIds);
+    const item = { id, name, order: normalized.length };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  return normalized.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function normalizeCategoryList(categories = [], sections = []) {
+  const normalizedSections = normalizeSectionList(categories, sections);
+  const byName = new Map(normalizedSections.map(section => [section.name.toLowerCase(), section]));
+  const byId = new Map(normalizedSections.map(section => [section.id, section]));
+  const nextOrderBySection = new Map();
+
+  const normalizedCategories = (categories || []).map((cat, index) => {
+    const copy = JSON.parse(JSON.stringify(cat || {}));
+    let section = byId.get(copy.section_id || copy.sectionId);
+    if (!section) {
+      const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';
+      section = byName.get(name.toLowerCase()) || normalizedSections[0] || { id: 'other', name: 'Other', order: 0 };
+    }
+    const nextOrder = nextOrderBySection.get(section.id) || 0;
+    nextOrderBySection.set(section.id, nextOrder + 1);
+    copy.section_id = section.id;
+    copy.sectionId = section.id;
+    copy.section = section.name;
+    if (!Number.isFinite(Number(copy.sortOrder))) copy.sortOrder = nextOrder;
+    if (!Number.isFinite(Number(copy.order))) copy.order = index;
+    return copy;
+  });
+
+  return { categories: normalizedCategories, sections: normalizedSections };
+}
+
+function normalizeCategoryDefaults(data = {}) {
+  const residential = normalizeCategoryList(data.residential_categories || [], data.residential_sections || []);
+  const condo = normalizeCategoryList(data.condo_categories || [], data.condo_sections || []);
+  return {
+    ...data,
+    residential_categories: residential.categories,
+    residential_sections: residential.sections,
+    condo_categories: condo.categories,
+    condo_sections: condo.sections
+  };
+}
 
 function snapshotForPropertyType(snapshot, propertyType) {
   if (Array.isArray(snapshot)) return snapshot;
@@ -1824,13 +1914,23 @@ function snapshotForPropertyType(snapshot, propertyType) {
 }
 
 function getBudgetDefaultCategories(budget, propertyType) {
-  return snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
+  const categories = snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
     || getDefaultCategories(propertyType);
+  const sections = getBudgetDefaultSections(budget, propertyType);
+  return normalizeCategoryList(categories, sections).categories;
 }
 
 function getBudgetDefaultExtras(budget, propertyType) {
   return snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_EXTRA_SNAPSHOT_KEY], propertyType)
     || getDefaultExtras(propertyType);
+}
+
+function getBudgetDefaultSections(budget, propertyType) {
+  const categories = snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
+    || getDefaultCategories(propertyType);
+  return snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_SECTION_SNAPSHOT_KEY], propertyType)
+    || getDefaultSections(propertyType)
+    || normalizeSectionList(categories);
 }
 
 function buildCategoryMap(budget, state = {}) {
@@ -2606,31 +2706,35 @@ function saveCustomizeDraftNow() {
 function getCustomizeLayoutModel(defaultCategories, customCategories, existingConfig) {
   const savedSections = existingConfig.__layout?.sections || [];
   const sectionMap = new Map(savedSections.map((section, index) => [
-    section.id || section.name,
-    { id: section.id || section.name, name: section.name, order: section.order ?? index }
+    section.id || slugifySectionId(section.name),
+    { id: section.id || slugifySectionId(section.name), name: section.name, order: section.order ?? index }
   ]));
   const items = [];
 
   defaultCategories.forEach((cat, index) => {
     const override = existingConfig[cat.id] || {};
+    const sectionId = override.section_id || override.sectionId || cat.section_id || cat.sectionId || slugifySectionId(override.section || cat.section || 'Other');
     const sectionName = override.section || cat.section || 'Other';
-    if (!sectionMap.has(sectionName)) sectionMap.set(sectionName, { id: sectionName, name: sectionName, order: sectionMap.size });
+    if (!sectionMap.has(sectionId)) sectionMap.set(sectionId, { id: sectionId, name: sectionName, order: sectionMap.size });
     items.push({
       id: cat.id,
       type: 'default',
       name: cat.name,
+      sectionId,
       section: sectionName,
       order: Number.isFinite(Number(override.sortOrder)) ? Number(override.sortOrder) : index
     });
   });
 
   customCategories.forEach((cat, index) => {
+    const sectionId = cat.section_id || cat.sectionId || slugifySectionId(cat.section || 'Custom');
     const sectionName = cat.section || 'Custom';
-    if (!sectionMap.has(sectionName)) sectionMap.set(sectionName, { id: sectionName, name: sectionName, order: sectionMap.size });
+    if (!sectionMap.has(sectionId)) sectionMap.set(sectionId, { id: sectionId, name: sectionName, order: sectionMap.size });
     items.push({
       id: cat.id,
       type: 'custom',
       name: cat.name || 'Custom Category',
+      sectionId,
       section: sectionName,
       order: Number.isFinite(Number(cat.sortOrder)) ? Number(cat.sortOrder) : index
     });
@@ -2642,7 +2746,7 @@ function getCustomizeLayoutModel(defaultCategories, customCategories, existingCo
 
 function renderCustomizeLayoutControls(defaultCategories, customCategories, existingConfig) {
   const layout = getCustomizeLayoutModel(defaultCategories, customCategories, existingConfig);
-  const sectionOptions = layout.sections.map(section => `<option value="${escapeAttr(section.name)}">${escapeAttr(section.name)}</option>`).join('');
+  const sectionOptions = layout.sections.map(section => `<option value="${escapeAttr(section.id)}">${escapeAttr(section.name)}</option>`).join('');
 
   return `
     <div style="background:#F7FAFC;border:1px solid var(--border-light);border-radius:8px;padding:12px 16px;margin-bottom:20px;">
@@ -2656,7 +2760,7 @@ function renderCustomizeLayoutControls(defaultCategories, customCategories, exis
       <div id="customizeLayoutSections" style="display:grid;gap:10px;">
         ${layout.sections.map((section, sectionIndex) => {
           const sectionItems = layout.items
-            .filter(item => item.section === section.name)
+            .filter(item => item.sectionId === section.id)
             .sort((a, b) => a.order - b.order);
           return `
             <div class="customize-layout-section" data-section-id="${escapeAttr(section.id)}" data-section-order="${sectionIndex}" style="border:1px solid var(--border-light);border-radius:8px;background:white;padding:10px;">
@@ -2751,9 +2855,9 @@ function renderCustomizeEditor() {
 
 function syncCustomizeLayoutSelects() {
   document.querySelectorAll('.customize-layout-section').forEach(sectionEl => {
-    const sectionName = sectionEl.querySelector('.customize-section-name')?.value || '';
+    const sectionId = sectionEl.dataset.sectionId || '';
     sectionEl.querySelectorAll('.customize-item-section').forEach(select => {
-      if ([...select.options].some(option => option.value === sectionName)) select.value = sectionName;
+      if ([...select.options].some(option => option.value === sectionId)) select.value = sectionId;
     });
   });
 }
@@ -2764,9 +2868,10 @@ function collectCustomizeLayoutData() {
   const customLayout = {};
   document.querySelectorAll('.customize-layout-section').forEach((sectionEl, sectionIndex) => {
     const sectionName = sectionEl.querySelector('.customize-section-name')?.value.trim() || 'Other';
-    sections.push({ id: sectionName, name: sectionName, order: sectionIndex });
+    const sectionId = sectionEl.dataset.sectionId || slugifySectionId(sectionName);
+    sections.push({ id: sectionId, name: sectionName, order: sectionIndex });
     sectionEl.querySelectorAll('.customize-layout-item').forEach((itemEl, itemIndex) => {
-      const layout = { section: sectionName, sortOrder: itemIndex };
+      const layout = { section_id: sectionId, sectionId, section: sectionName, sortOrder: itemIndex };
       if (itemEl.dataset.itemType === 'custom') customLayout[itemEl.dataset.itemId] = layout;
       else itemLayout[itemEl.dataset.itemId] = layout;
     });
@@ -2789,15 +2894,17 @@ function applyCustomizeLayoutAndRender(mutator) {
   mutator(working);
 
   const config = customizeBudgetData.categoryConfig || {};
-  config.__layout = { sections: working.sections.map((section, index) => ({ id: section.name, name: section.name, order: index })) };
+  config.__layout = { sections: working.sections.map((section, index) => ({ id: section.id || slugifySectionId(section.name), name: section.name, order: index })) };
   working.items.forEach((item, index) => {
-    const sectionItems = working.items.filter(other => other.section === item.section);
+    const sectionItems = working.items.filter(other => other.sectionId === item.sectionId);
     const sortOrder = sectionItems.findIndex(other => other.type === item.type && other.id === item.id);
     if (item.type === 'default') {
-      config[item.id] = { ...(config[item.id] || {}), section: item.section, sortOrder };
+      config[item.id] = { ...(config[item.id] || {}), section_id: item.sectionId, sectionId: item.sectionId, section: item.section, sortOrder };
     } else {
       const custom = (customizeBudgetData.customCategories || []).find(cat => cat.id === item.id);
       if (custom) {
+        custom.section_id = item.sectionId;
+        custom.sectionId = item.sectionId;
         custom.section = item.section;
         custom.sortOrder = sortOrder;
       }
@@ -2814,7 +2921,8 @@ function addCustomizeHeader() {
   if (!name || !name.trim()) return;
   applyCustomizeLayoutAndRender(layout => {
     if (!layout.sections.some(section => section.name.toLowerCase() === name.trim().toLowerCase())) {
-      layout.sections.push({ id: name.trim(), name: name.trim(), order: layout.sections.length });
+      const usedIds = new Set(layout.sections.map(section => section.id));
+      layout.sections.push({ id: uniqueSectionId(slugifySectionId(name.trim()), usedIds), name: name.trim(), order: layout.sections.length });
     }
   });
 }
@@ -2831,7 +2939,7 @@ function moveCustomizeItem(type, id, direction) {
   applyCustomizeLayoutAndRender(layout => {
     const item = layout.items.find(entry => entry.type === type && entry.id === id);
     if (!item) return;
-    const sectionItems = layout.items.filter(entry => entry.section === item.section);
+    const sectionItems = layout.items.filter(entry => entry.sectionId === item.sectionId);
     const current = sectionItems.findIndex(entry => entry.type === type && entry.id === id);
     const target = current + direction;
     if (target < 0 || target >= sectionItems.length) return;
@@ -2845,8 +2953,9 @@ function moveCustomizeItem(type, id, direction) {
 function changeCustomizeItemSection(select) {
   const itemEl = select.closest('.customize-layout-item');
   if (!itemEl) return;
-  let sectionName = select.value;
-  if (sectionName === '__new__') {
+  let sectionId = select.value;
+  let sectionName = select.options[select.selectedIndex]?.textContent || sectionId;
+  if (sectionId === '__new__') {
     sectionName = prompt('New header name:')?.trim();
     if (!sectionName) {
       syncCustomizeLayoutSelects();
@@ -2854,11 +2963,17 @@ function changeCustomizeItemSection(select) {
     }
   }
   applyCustomizeLayoutAndRender(layout => {
-    if (!layout.sections.some(section => section.name === sectionName)) {
-      layout.sections.push({ id: sectionName, name: sectionName, order: layout.sections.length });
+    let section = layout.sections.find(item => item.id === sectionId);
+    if (!section) {
+      const usedIds = new Set(layout.sections.map(item => item.id));
+      section = { id: uniqueSectionId(slugifySectionId(sectionName), usedIds), name: sectionName, order: layout.sections.length };
+      layout.sections.push(section);
     }
     const item = layout.items.find(entry => entry.type === itemEl.dataset.itemType && entry.id === itemEl.dataset.itemId);
-    if (item) item.section = sectionName;
+    if (item) {
+      item.sectionId = section.id;
+      item.section = section.name;
+    }
   });
 }
 
@@ -3956,6 +4071,11 @@ function getDefaultExtras(propertyType) {
   return propertyType === 'condo' ? (catData.condo_extras || []) : (catData.residential_extras || []);
 }
 
+function getDefaultSections(propertyType) {
+  if (!catData) return normalizeSectionList(ADMIN_CATEGORIES);
+  return propertyType === 'condo' ? (catData.condo_sections || []) : (catData.residential_sections || []);
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -4210,7 +4330,7 @@ async function loadCategoryData() {
   try {
     const res = await fetch(api('/api/admin/categories'), { credentials: 'include' });
     if (res.status === 401) return;
-    catData = await res.json();
+    catData = normalizeCategoryDefaults(await res.json());
     document.getElementById('catEditorInfo').style.display = 'block';
     document.getElementById('catBaseSqft').textContent = (catData.base_sqft || 4000).toLocaleString();
     if (catData.updated_at) {
@@ -4227,6 +4347,7 @@ function loadCategoryEditor() {
   if (!catData) return;
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const sectionsList = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
   const extras = propType === 'condo' ? catData.condo_extras : catData.residential_extras;
   
   if (!categories || categories.length === 0) {
@@ -4234,29 +4355,39 @@ function loadCategoryEditor() {
     return;
   }
   
-  // Group by section
-  const sections = {};
-  categories.forEach((cat, idx) => {
-    const sec = cat.section || 'Other';
-    if (!sections[sec]) sections[sec] = [];
-    sections[sec].push({ ...cat, _idx: idx });
-  });
-  const sectionEntries = Object.entries(sections);
+  const normalized = normalizeCategoryList(categories, sectionsList);
+  if (propType === 'condo') {
+    catData.condo_categories = normalized.categories;
+    catData.condo_sections = normalized.sections;
+  } else {
+    catData.residential_categories = normalized.categories;
+    catData.residential_sections = normalized.sections;
+  }
+  const categoriesForRender = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const sectionEntries = normalized.sections
+    .map(section => [
+      section,
+      categoriesForRender
+        .map((cat, idx) => ({ ...cat, _idx: idx }))
+        .filter(cat => (cat.section_id || cat.sectionId) === section.id)
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+    ]);
   
   let html = '';
-  for (const [sectionIndex, [secName, cats]] of sectionEntries.entries()) {
+  for (const [sectionIndex, [section, cats]] of sectionEntries.entries()) {
+    const secName = section.name;
     const itemCount = cats.length;
-    html += `<div class="cat-section-group" data-section="${escAttr(secName)}">
+    html += `<div class="cat-section-group" data-section-id="${escAttr(section.id)}" data-section="${escAttr(secName)}">
       <h3 style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
         <span style="display:flex;align-items:center;gap:8px;">
-          <span class="section-name-display" onclick="startRenameSection(this, '${escAttr(secName)}')" style="cursor:pointer;" title="Click to rename">${secName}</span>
+          <span class="section-name-display" onclick="startRenameSection(this, '${escAttr(section.id)}')" style="cursor:pointer;" title="Click to rename">${secName}</span>
           <span style="font-size:11px;font-weight:400;color:var(--text-light);">(${itemCount} items)</span>
         </span>
         <span style="display:flex;gap:6px;">
-          ${sectionIndex > 0 ? `<button class="btn btn-small" style="padding:2px 8px;font-size:11px;" onclick="moveTemplateSection('${escAttr(secName)}', -1)">↑ Header</button>` : ''}
-          ${sectionIndex < sectionEntries.length - 1 ? `<button class="btn btn-small" style="padding:2px 8px;font-size:11px;" onclick="moveTemplateSection('${escAttr(secName)}', 1)">↓ Header</button>` : ''}
+          ${sectionIndex > 0 ? `<button class="btn btn-small" style="padding:2px 8px;font-size:11px;" onclick="moveTemplateSection('${escAttr(section.id)}', -1)">↑ Header</button>` : ''}
+          ${sectionIndex < sectionEntries.length - 1 ? `<button class="btn btn-small" style="padding:2px 8px;font-size:11px;" onclick="moveTemplateSection('${escAttr(section.id)}', 1)">↓ Header</button>` : ''}
           <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#E3F2FD;color:#1565C0;" onclick="showAddItemModal('${escAttr(secName)}')">+ Item</button>
-          <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#FFEBEE;color:#C62828;" onclick="deleteSection('${escAttr(secName)}', ${itemCount})">🗑️</button>
+          <button class="btn btn-small" style="padding:2px 8px;font-size:11px;background:#FFEBEE;color:#C62828;" onclick="deleteSection('${escAttr(section.id)}', ${itemCount})">🗑️</button>
         </span>
       </h3>`;
     cats.forEach((cat, secIdx) => {
@@ -4434,7 +4565,12 @@ function disableTier(catId, tierKey, catIdx) {
 // ============================================================
 // SECTION MANAGEMENT
 // ============================================================
-function startRenameSection(el, oldName) {
+function startRenameSection(el, sectionId) {
+  const propType = document.getElementById('catPropertyType').value;
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
+  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const section = sections.find(item => item.id === sectionId) || { id: sectionId, name: sectionId };
+  const oldName = section.name;
   const input = document.createElement('input');
   input.type = 'text';
   input.value = oldName;
@@ -4447,10 +4583,16 @@ function startRenameSection(el, oldName) {
     const newName = input.value.trim();
     if (newName && newName !== oldName) {
       collectCategoryEditorData();
-      const propType = document.getElementById('catPropertyType').value;
-      const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
-      categories.forEach(cat => {
-        if (cat.section === oldName) cat.section = newName;
+      const freshSections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
+      const freshCategories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+      const freshSection = freshSections.find(item => item.id === sectionId);
+      if (freshSection) freshSection.name = newName;
+      freshCategories.forEach(cat => {
+        if ((cat.section_id || cat.sectionId) === sectionId || cat.section === oldName) {
+          cat.section_id = sectionId;
+          cat.sectionId = sectionId;
+          cat.section = newName;
+        }
       });
       loadCategoryEditor();
       showToast(`✓ Section renamed to "${newName}"`);
@@ -4472,51 +4614,53 @@ function showAddSectionModal() {
   
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
-  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
   
-  // Check if section already exists
-  if (categories.some(c => c.section === name.trim())) {
+  if (sections.some(section => section.name.toLowerCase() === name.trim().toLowerCase())) {
     showToast('❌ Section already exists');
     return;
   }
-  
-  // Add a placeholder item to create the section
-  showToast(`✓ Section "${name.trim()}" created — add items to it`);
-  showAddItemModal(name.trim());
+
+  const usedIds = new Set(sections.map(section => section.id));
+  sections.push({
+    id: uniqueSectionId(slugifySectionId(name.trim()), usedIds),
+    name: name.trim(),
+    order: sections.length
+  });
+  loadCategoryEditor();
+  showToast(`✓ Section "${name.trim()}" created`);
 }
 
-function deleteSection(secName, itemCount) {
+function deleteSection(sectionId, itemCount) {
   markCatDirty();
+  collectCategoryEditorData();
+  const propType = document.getElementById('catPropertyType').value;
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
+  const index = sections.findIndex(section => section.id === sectionId);
+  const sectionName = sections[index]?.name || sectionId;
   if (itemCount > 0) {
     showToast(`❌ Cannot delete: section has ${itemCount} items. Remove items first.`);
     return;
   }
-  // Empty section — just refresh (it won't appear since no items)
-  showToast(`✓ Section "${secName}" removed`);
+  if (index >= 0) sections.splice(index, 1);
   loadCategoryEditor();
+  showToast(`✓ Section "${sectionName}" removed`);
 }
 
-function moveTemplateSection(secName, direction) {
+function moveTemplateSection(sectionId, direction) {
   markCatDirty();
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
-  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
-  const sectionNames = [];
-  categories.forEach(cat => {
-    const section = cat.section || 'Other';
-    if (!sectionNames.includes(section)) sectionNames.push(section);
-  });
-  const index = sectionNames.indexOf(secName);
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
+  const index = sections.findIndex(section => section.id === sectionId);
   const target = index + direction;
-  if (index < 0 || target < 0 || target >= sectionNames.length) return;
-  [sectionNames[index], sectionNames[target]] = [sectionNames[target], sectionNames[index]];
-  const reordered = [];
-  sectionNames.forEach(section => {
-    categories.filter(cat => (cat.section || 'Other') === section).forEach(cat => reordered.push(cat));
+  if (index < 0 || target < 0 || target >= sections.length) return;
+  [sections[index], sections[target]] = [sections[target], sections[index]];
+  sections.forEach((section, order) => {
+    section.order = order;
   });
-  categories.splice(0, categories.length, ...reordered);
   loadCategoryEditor();
-  showToast(`✓ Moved ${secName}`);
+  showToast(`✓ Moved ${sections[target]?.name || 'section'}`);
 }
 
 // ============================================================
@@ -4525,13 +4669,10 @@ function moveTemplateSection(secName, direction) {
 function showAddItemModal(presetSection) {
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
-  const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
   
-  // Get existing sections
-  const existingSections = [...new Set(categories.map(c => c.section).filter(Boolean))];
-  
-  const sectionOptions = existingSections.map(s => 
-    `<option value="${escAttr(s)}" ${s === presetSection ? 'selected' : ''}>${s}</option>`
+  const sectionOptions = sections.map(section =>
+    `<option value="${escAttr(section.id)}" ${section.name === presetSection || section.id === presetSection ? 'selected' : ''}>${section.name}</option>`
   ).join('');
   
   // Use a simple modal via the features modal
@@ -4586,11 +4727,22 @@ function doAddItem() {
   const name = document.getElementById('newItemName').value.trim();
   if (!name) { showToast('❌ Name is required'); return; }
   
-  let section = document.getElementById('newItemSection').value;
-  if (section === '__new__') {
-    section = document.getElementById('newItemSectionCustom').value.trim();
-    if (!section) { showToast('❌ Section name is required'); return; }
+  const propType = document.getElementById('catPropertyType').value;
+  let sectionId = document.getElementById('newItemSection').value;
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
+  if (sectionId === '__new__') {
+    const sectionName = document.getElementById('newItemSectionCustom').value.trim();
+    if (!sectionName) { showToast('❌ Section name is required'); return; }
+    const usedIds = new Set(sections.map(section => section.id));
+    const section = {
+      id: uniqueSectionId(slugifySectionId(sectionName), usedIds),
+      name: sectionName,
+      order: sections.length
+    };
+    sections.push(section);
+    sectionId = section.id;
   }
+  const section = sections.find(item => item.id === sectionId) || sections[0] || { id: 'other', name: 'Other' };
   
   const icon = document.getElementById('newItemIcon').value.trim() || '📦';
   const desc = document.getElementById('newItemDesc').value.trim();
@@ -4599,12 +4751,14 @@ function doAddItem() {
   // Generate ID from name
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36);
   
-  const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
   
   categories.push({
     id,
-    section,
+    section_id: section.id,
+    sectionId: section.id,
+    section: section.name,
+    sortOrder: categories.filter(cat => (cat.section_id || cat.sectionId) === section.id).length,
     name,
     icon,
     desc,
@@ -4614,7 +4768,7 @@ function doAddItem() {
   
   closeFeaturesModal();
   loadCategoryEditor();
-  showToast(`✓ "${name}" added to ${section}`);
+  showToast(`✓ "${name}" added to ${section.name}`);
   
   // Open the new card
   setTimeout(() => {
@@ -4650,10 +4804,10 @@ function moveItem(catIdx, direction) {
   if (!cat) return;
   
   // Find all items in same section, in array order
-  const section = cat.section;
+  const section = cat.section_id || cat.sectionId || cat.section;
   const sectionItems = categories
     .map((c, i) => ({ c, i }))
-    .filter(x => x.c.section === section);
+    .filter(x => (x.c.section_id || x.c.sectionId || x.c.section) === section);
   
   const posInSection = sectionItems.findIndex(x => x.i === catIdx);
   const targetPosInSection = posInSection + direction;
@@ -4717,6 +4871,7 @@ function collectCategoryEditorData() {
   // Read current editor state back into catData
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
+  const sections = propType === 'condo' ? catData.condo_sections : catData.residential_sections;
   const extras = propType === 'condo' ? catData.condo_extras : catData.residential_extras;
   
   document.querySelectorAll('.cat-editor-card').forEach(card => {
@@ -4732,7 +4887,22 @@ function collectCategoryEditorData() {
     const descEl = card.querySelector('[data-field="desc"]');
     if (descEl) cat.desc = descEl.value;
     const sectionEl = card.querySelector('[data-field="section"]');
-    if (sectionEl) cat.section = sectionEl.value.trim() || 'Other';
+    if (sectionEl) {
+      const sectionName = sectionEl.value.trim() || 'Other';
+      let section = sections.find(item => item.name.toLowerCase() === sectionName.toLowerCase());
+      if (!section) {
+        const usedIds = new Set(sections.map(item => item.id));
+        section = {
+          id: uniqueSectionId(slugifySectionId(sectionName), usedIds),
+          name: sectionName,
+          order: sections.length
+        };
+        sections.push(section);
+      }
+      cat.section_id = section.id;
+      cat.sectionId = section.id;
+      cat.section = section.name;
+    }
     const scaleEl = card.querySelector('[data-field="sizeScale"]');
     if (scaleEl) cat.sizeScale = parseFloat(scaleEl.value) || 0;
     
@@ -4772,6 +4942,9 @@ function collectCategoryEditorData() {
   });
   
   // base_sqft is read-only (always 4000)
+  const normalized = normalizeCategoryList(categories, sections);
+  categories.splice(0, categories.length, ...normalized.categories);
+  sections.splice(0, sections.length, ...normalized.sections);
 }
 
 async function saveCategoryDefaults() {
@@ -4786,8 +4959,10 @@ async function saveCategoryDefaults() {
       credentials: 'include',
       body: JSON.stringify({
         residential_categories: catData.residential_categories,
+        residential_sections: catData.residential_sections,
         residential_extras: catData.residential_extras,
         condo_categories: catData.condo_categories,
+        condo_sections: catData.condo_sections,
         condo_extras: catData.condo_extras,
         base_sqft: catData.base_sqft
       })

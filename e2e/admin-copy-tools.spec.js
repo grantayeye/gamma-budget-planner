@@ -6,6 +6,64 @@ test.describe('Admin copy/customization tools', () => {
     await page.waitForFunction(() => typeof renderCategoryEditor === 'function');
   });
 
+  test('normalizes legacy section strings into stable section ids', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const normalized = normalizeCategoryList([
+        { id: 'networking', section: 'Infrastructure', name: 'Networking', tiers: {} },
+        { id: 'audio', section: 'Audio', name: 'Audio', tiers: {} },
+        { id: 'speakers', section: 'Audio', name: 'Speakers', tiers: {} }
+      ]);
+      return {
+        sections: normalized.sections,
+        categories: normalized.categories.map(cat => ({
+          id: cat.id,
+          section: cat.section,
+          sectionId: cat.section_id,
+          sortOrder: cat.sortOrder
+        }))
+      };
+    });
+
+    expect(result.sections).toEqual([
+      { id: 'infrastructure', name: 'Infrastructure', order: 0 },
+      { id: 'audio', name: 'Audio', order: 1 }
+    ]);
+    expect(result.categories).toEqual([
+      { id: 'networking', section: 'Infrastructure', sectionId: 'infrastructure', sortOrder: 0 },
+      { id: 'audio', section: 'Audio', sectionId: 'audio', sortOrder: 0 },
+      { id: 'speakers', section: 'Audio', sectionId: 'audio', sortOrder: 1 }
+    ]);
+  });
+
+  test('category editor creates stable section ids for typed new headers', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [
+          { id: 'networking', section: 'Infrastructure', name: 'Networking', icon: 'N', sizeScale: 0, tiers: { good: { price: 1000, label: 'Good' } } }
+        ],
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: [],
+        base_sqft: 4000
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+      document.querySelector('.cat-editor-card [data-field="section"]').value = 'Design Services';
+      collectCategoryEditorData();
+      return {
+        sections: catData.residential_sections,
+        category: catData.residential_categories[0]
+      };
+    });
+
+    expect(result.sections).toContainEqual({ id: 'design-services', name: 'Design Services', order: 1 });
+    expect(result.category.section).toBe('Design Services');
+    expect(result.category.section_id).toBe('design-services');
+    expect(result.category.sectionId).toBe('design-services');
+  });
+
   test('clone posts a new budget name and opens the clone', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const calls = [];

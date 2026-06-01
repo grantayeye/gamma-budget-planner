@@ -986,8 +986,10 @@ main {
         // Update CONFIGS references
         CONFIGS.residential.categories = RESIDENTIAL_CATEGORIES;
         CONFIGS.residential.extras = RESIDENTIAL_EXTRAS;
+        CONFIGS.residential.sections = d.residential_sections || [];
         CONFIGS.condo.categories = CONDO_CATEGORIES;
         CONFIGS.condo.extras = CONDO_EXTRAS;
+        CONFIGS.condo.sections = d.condo_sections || [];
         console.log('[Budget] Loaded live category data from API');
       }
     }
@@ -1134,6 +1136,84 @@ let propertyTypeLocked = null;
 const TIER_ORDER = ['good', 'standard', 'better', 'best'];
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
+const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
+
+function slugifySectionId(value) {
+  const slug = String(value || 'other')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || 'other';
+}
+
+function uniqueSectionId(baseId, usedIds) {
+  const base = baseId || 'section';
+  let id = base;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeSectionList(categories = [], sections = []) {
+  const usedIds = new Set();
+  const normalized = [];
+  const byName = new Map();
+  const byId = new Map();
+
+  (sections || []).forEach((section, index) => {
+    const name = String(section?.name || section?.label || section?.id || 'Other').trim() || 'Other';
+    const id = uniqueSectionId(slugifySectionId(section?.id || name), usedIds);
+    const item = { id, name, order: Number.isFinite(Number(section?.order)) ? Number(section.order) : index };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  (categories || []).forEach(cat => {
+    const explicitId = cat?.section_id || cat?.sectionId;
+    if (explicitId && byId.has(explicitId)) return;
+    const name = String(cat?.section || cat?.sectionName || explicitId || 'Other').trim() || 'Other';
+    if (byName.has(name.toLowerCase())) return;
+    const id = uniqueSectionId(slugifySectionId(explicitId || name), usedIds);
+    const item = { id, name, order: normalized.length };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  return normalized.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function normalizeCategoryList(categories = [], sections = []) {
+  const normalizedSections = normalizeSectionList(categories, sections);
+  const byName = new Map(normalizedSections.map(section => [section.name.toLowerCase(), section]));
+  const byId = new Map(normalizedSections.map(section => [section.id, section]));
+  const nextOrderBySection = new Map();
+
+  const normalizedCategories = (categories || []).map((cat, index) => {
+    const copy = JSON.parse(JSON.stringify(cat || {}));
+    let section = byId.get(copy.section_id || copy.sectionId);
+    if (!section) {
+      const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';
+      section = byName.get(name.toLowerCase()) || normalizedSections[0] || { id: 'other', name: 'Other', order: 0 };
+    }
+    const nextOrder = nextOrderBySection.get(section.id) || 0;
+    nextOrderBySection.set(section.id, nextOrder + 1);
+    copy.section_id = section.id;
+    copy.sectionId = section.id;
+    copy.section = section.name;
+    if (!Number.isFinite(Number(copy.sortOrder))) copy.sortOrder = nextOrder;
+    if (!Number.isFinite(Number(copy.order))) copy.order = index;
+    return copy;
+  });
+
+  return { categories: normalizedCategories, sections: normalizedSections };
+}
 
 function orderedTierKeys(tiers) {
   if (!tiers) return [];
@@ -1148,13 +1228,22 @@ function snapshotForPropertyType(snapshot, propertyType) {
 }
 
 function baseCategoriesForBudget() {
-  return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
+  const categories = snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
     || CONFIGS[state.propertyType].categories;
+  return normalizeCategoryList(categories, baseSectionsForBudget()).categories;
 }
 
 function baseExtrasForBudget() {
   return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_EXTRA_SNAPSHOT_KEY], state.propertyType)
     || CONFIGS[state.propertyType].extras;
+}
+
+function baseSectionsForBudget() {
+  const categories = snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
+    || CONFIGS[state.propertyType].categories;
+  return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_SECTION_SNAPSHOT_KEY], state.propertyType)
+    || CONFIGS[state.propertyType].sections
+    || normalizeSectionList(categories);
 }
 
 // Active data accessors — everything uses these
@@ -1181,6 +1270,10 @@ function CATEGORIES() {
     
     // Clone the category
     const customCat = JSON.parse(JSON.stringify(cat));
+    if (override?.section_id || override?.sectionId) {
+      customCat.section_id = override.section_id || override.sectionId;
+      customCat.sectionId = override.section_id || override.sectionId;
+    }
     if (override?.section) customCat.section = override.section;
     if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
     
@@ -1243,6 +1336,8 @@ function CATEGORIES() {
       
       result.push({
         id: cc.id,
+        section_id: cc.section_id || cc.sectionId || slugifySectionId(cc.section || 'Custom'),
+        sectionId: cc.section_id || cc.sectionId || slugifySectionId(cc.section || 'Custom'),
         section: cc.section || 'Custom',
         name: cc.name,
         icon: cc.icon || '📦',
@@ -1259,10 +1354,17 @@ function CATEGORIES() {
 }
 
 function applyCategoryLayout(categories, layoutConfig = {}) {
-  const sectionOrder = new Map((layoutConfig.sections || []).map((section, index) => [section.name, index]));
+  const normalized = normalizeCategoryList(categories, baseSectionsForBudget());
+  const sectionOrder = new Map(normalized.sections.map((section, index) => [section.id, index]));
+  (layoutConfig.sections || []).forEach((section, index) => {
+    const id = section.id || slugifySectionId(section.name);
+    sectionOrder.set(id, Number.isFinite(Number(section.order)) ? Number(section.order) : index);
+  });
   return categories.slice().sort((a, b) => {
-    const sectionA = sectionOrder.has(a.section) ? sectionOrder.get(a.section) : Number.MAX_SAFE_INTEGER;
-    const sectionB = sectionOrder.has(b.section) ? sectionOrder.get(b.section) : Number.MAX_SAFE_INTEGER;
+    const sectionAId = a.section_id || a.sectionId || slugifySectionId(a.section);
+    const sectionBId = b.section_id || b.sectionId || slugifySectionId(b.section);
+    const sectionA = sectionOrder.has(sectionAId) ? sectionOrder.get(sectionAId) : Number.MAX_SAFE_INTEGER;
+    const sectionB = sectionOrder.has(sectionBId) ? sectionOrder.get(sectionBId) : Number.MAX_SAFE_INTEGER;
     if (sectionA !== sectionB) return sectionA - sectionB;
     const orderA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
     const orderB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
