@@ -2947,16 +2947,21 @@ function applyCategoryOverrideToEditor(catId, override) {
   return true;
 }
 
+function findExistingCustomCategoryEditor(customCat) {
+  if (!customCat) return null;
+  return Array.from(document.querySelectorAll('.custom-category-editor')).find(editor => {
+    const editorName = editor.querySelector('.cc-name')?.value || '';
+    return editor.dataset.ccId === customCat.id || editorName.toLowerCase() === String(customCat.name || '').toLowerCase();
+  }) || null;
+}
+
 function applyCustomCategoryToEditor(customCat) {
   if (!customCat) return false;
   const list = document.getElementById('customCategoriesList');
   if (!list) return false;
 
   const existingEditors = Array.from(document.querySelectorAll('.custom-category-editor'));
-  const existing = existingEditors.find(editor => {
-    const editorName = editor.querySelector('.cc-name')?.value || '';
-    return editor.dataset.ccId === customCat.id || editorName.toLowerCase() === String(customCat.name || '').toLowerCase();
-  });
+  const existing = findExistingCustomCategoryEditor(customCat);
 
   if (existing) {
     const index = Number(existing.dataset.index || existingEditors.indexOf(existing));
@@ -3030,10 +3035,6 @@ async function copyCurrentSectionToSelectedBudget() {
     return;
   }
 
-  if (!confirm(`Copy "${copyToPayload.label}" to the selected budget? This will customize that target budget and replace the matching section data.`)) {
-    return;
-  }
-
   try {
     if (status) status.textContent = 'Loading target budget...';
     const res = await fetch(api(`/api/admin/budgets/${targetId}`), { credentials: 'include' });
@@ -3048,14 +3049,25 @@ async function copyCurrentSectionToSelectedBudget() {
       if (!targetHasCategory) {
         throw new Error('Target budget does not have that default section.');
       }
+      if (!confirm(`Overwrite warning: "${copyToPayload.label}" already exists in the target budget. Copying will replace the pricing, labels, features, brands, visibility, and enabled tiers that are there now. Continue?`)) {
+        if (status) status.textContent = 'Copy cancelled.';
+        return;
+      }
       categoryConfig[copyToPayload.catId] = copyToPayload.override;
     } else {
       const copied = JSON.parse(JSON.stringify(copyToPayload.customCategory));
       const existingIndex = customCategories.findIndex(cat =>
         cat.id === copied.id || String(cat.name || '').toLowerCase() === String(copied.name || '').toLowerCase()
       );
-      if (existingIndex >= 0) customCategories[existingIndex] = copied;
-      else customCategories.push(copied);
+      if (existingIndex >= 0) {
+        if (!confirm(`Overwrite warning: "${copied.name}" already exists in the target budget. Copying will replace what is there now. Continue?`)) {
+          if (status) status.textContent = 'Copy cancelled.';
+          return;
+        }
+        customCategories[existingIndex] = copied;
+      } else {
+        customCategories.push(copied);
+      }
     }
 
     if (status) status.textContent = 'Saving target budget...';
@@ -3091,6 +3103,10 @@ function copySelectedSectionIntoCustomize() {
   let sectionName = id;
   if (type === 'custom') {
     const customCat = buildCustomCategoryFromBudget(copySectionSourceBudget, id);
+    if (findExistingCustomCategoryEditor(customCat) && !confirm(`Overwrite warning: "${customCat.name}" already exists in this budget. Copying will replace what is there now. Continue?`)) {
+      if (status) status.textContent = 'Copy cancelled.';
+      return;
+    }
     if (!applyCustomCategoryToEditor(customCat)) {
       if (status) status.textContent = 'Could not copy that custom section into this budget.';
       return;
@@ -3098,12 +3114,17 @@ function copySelectedSectionIntoCustomize() {
     sectionName = customCat.name || id;
   } else {
     const override = buildCategoryOverrideFromBudget(copySectionSourceBudget, id);
+    const sectionLabel = getBudgetDefaultCategories(copySectionSourceBudget, getBudgetPropertyType(copySectionSourceBudget))
+      .find(cat => cat.id === id)?.name || id;
+    if (!confirm(`Overwrite warning: "${sectionLabel}" already exists in this budget. Copying will replace the pricing, labels, features, brands, visibility, and enabled tiers that are there now. Continue?`)) {
+      if (status) status.textContent = 'Copy cancelled.';
+      return;
+    }
     if (!applyCategoryOverrideToEditor(id, override)) {
       if (status) status.textContent = 'Could not copy that section into this budget.';
       return;
     }
-    sectionName = getBudgetDefaultCategories(copySectionSourceBudget, getBudgetPropertyType(copySectionSourceBudget))
-      .find(cat => cat.id === id)?.name || id;
+    sectionName = sectionLabel;
   }
   markCatDirty();
   queueCustomizeDraftSave();
