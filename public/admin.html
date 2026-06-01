@@ -1248,6 +1248,19 @@
   </div>
 </div>
 
+<!-- COPY TO BUDGET MODAL -->
+<div class="modal-overlay" id="copyToModal">
+  <div class="modal" style="max-width: 560px;">
+    <div class="modal-header">
+      <h2>Copy Section To Budget</h2>
+      <button class="modal-close" onclick="closeCopyToModal()">×</button>
+    </div>
+    <div class="modal-body" id="copyToBody">
+      <!-- Content loaded dynamically -->
+    </div>
+  </div>
+</div>
+
 <!-- FEATURES EDITOR MODAL -->
 <div class="modal-overlay" id="featuresModal">
   <div class="modal" style="max-width: 600px;">
@@ -2508,6 +2521,7 @@ let customizeBudgetId = null;
 let customizeBudgetData = null;
 let customizeDraftTimer = null;
 let copySectionSourceBudget = null;
+let copyToPayload = null;
 
 async function openCustomizeModal(budgetId) {
   customizeBudgetId = budgetId;
@@ -2547,6 +2561,7 @@ function closeCustomizeModal() {
   customizeBudgetId = null;
   customizeBudgetData = null;
   copySectionSourceBudget = null;
+  copyToPayload = null;
 }
 
 function customizeDraftKey(budgetId = customizeBudgetId) {
@@ -2642,6 +2657,7 @@ function renderCustomizeEditor() {
 
   body.oninput = queueCustomizeDraftSave;
   body.onchange = queueCustomizeDraftSave;
+  filterCopySourceBudgets();
 }
 
 function budgetOptionLabel(budget) {
@@ -2650,12 +2666,43 @@ function budgetOptionLabel(budget) {
   return `${name}${builder} (${budget.id})`;
 }
 
-function renderCopySectionControls() {
-  const sourceOptions = budgets
-    .filter(b => b.id !== customizeBudgetId)
-    .map(b => `<option value="${escapeAttr(b.id)}">${escapeAttr(budgetOptionLabel(b))}</option>`)
-    .join('');
+function budgetSearchText(budget) {
+  return [budget.clientName, budget.builder, budget.id, budget.createdByEmail, budget.notes]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
 
+function getBudgetPropertyType(budget) {
+  return budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
+}
+
+function getBudgetSqft(budget) {
+  return budget.sqftLocked || budget.currentState?.homeSize || 4000;
+}
+
+function getCopyableSectionsFromBudget(budget, targetDefaultIds = null) {
+  const propertyType = getBudgetPropertyType(budget);
+  const defaults = getBudgetDefaultCategories(budget, propertyType)
+    .filter(cat => !targetDefaultIds || targetDefaultIds.has(cat.id))
+    .map(cat => ({
+      type: 'default',
+      id: cat.id,
+      name: cat.name,
+      section: cat.section || 'Default'
+    }));
+
+  const custom = (budget.customCategories || []).map(cat => ({
+    type: 'custom',
+    id: cat.id,
+    name: cat.name || cat.id,
+    section: 'Custom'
+  }));
+
+  return [...defaults, ...custom];
+}
+
+function renderCopySectionControls() {
   return `
     <div style="background:#F7FAFC;border:1px solid var(--border-light);border-radius:8px;padding:12px 16px;margin-bottom:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
@@ -2664,12 +2711,13 @@ function renderCopySectionControls() {
           <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Copies pricing, labels, features, brands, visibility, and enabled tiers into this editor. Save customization to apply.</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:minmax(220px,1.2fr) minmax(180px,1fr) auto;gap:10px;align-items:center;">
+      <div style="display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1.2fr) minmax(180px,1fr) auto;gap:10px;align-items:center;">
+        <input type="search" id="copySourceBudgetSearch" placeholder="Search projects..." oninput="filterCopySourceBudgets()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         <select id="copySourceBudget" onchange="handleCopySourceBudgetChange()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
           <option value="">Choose source budget...</option>
-          ${sourceOptions}
         </select>
-        <select id="copySourceSection" disabled style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <input type="search" id="copySourceSectionSearch" placeholder="Search sections..." oninput="filterCopySourceSections()" disabled style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <select id="copySourceSection" disabled style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;grid-column:2 / 4;">
           <option value="">Choose section...</option>
         </select>
         <button type="button" class="btn btn-secondary btn-small" onclick="copySelectedSectionIntoCustomize()">Copy Section</button>
@@ -2679,14 +2727,65 @@ function renderCopySectionControls() {
   `;
 }
 
+function filterCopySourceBudgets() {
+  const select = document.getElementById('copySourceBudget');
+  if (!select) return;
+  const search = (document.getElementById('copySourceBudgetSearch')?.value || '').trim().toLowerCase();
+  const selected = select.value;
+  const options = budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .filter(b => !search || budgetSearchText(b).includes(search))
+    .map(b => `<option value="${escapeAttr(b.id)}">${escapeAttr(budgetOptionLabel(b))}</option>`)
+    .join('');
+  select.innerHTML = `<option value="">Choose source budget...</option>${options}`;
+  if (selected && [...select.options].some(opt => opt.value === selected)) {
+    select.value = selected;
+  } else if (selected) {
+    copySectionSourceBudget = null;
+    const sectionSelect = document.getElementById('copySourceSection');
+    if (sectionSelect) sectionSelect.innerHTML = '<option value="">Choose section...</option>';
+  }
+}
+
+function renderCopySourceSections() {
+  const sectionSelect = document.getElementById('copySourceSection');
+  const searchInput = document.getElementById('copySourceSectionSearch');
+  if (!sectionSelect) return;
+  if (!copySectionSourceBudget) {
+    sectionSelect.disabled = true;
+    if (searchInput) searchInput.disabled = true;
+    sectionSelect.innerHTML = '<option value="">Choose section...</option>';
+    return;
+  }
+
+  const targetIds = new Set(Array.from(document.querySelectorAll('.category-editor')).map(el => el.dataset.catId));
+  const search = (searchInput?.value || '').trim().toLowerCase();
+  const entries = getCopyableSectionsFromBudget(copySectionSourceBudget, targetIds)
+    .filter(entry => !search || [entry.name, entry.section, entry.id].filter(Boolean).join(' ').toLowerCase().includes(search));
+  sectionSelect.innerHTML = `<option value="">Choose section...</option>${entries.map(entry => (
+    `<option value="${entry.type}:${escapeAttr(entry.id)}">${escapeAttr(entry.section)} • ${escapeAttr(entry.name)}</option>`
+  )).join('')}`;
+  sectionSelect.disabled = entries.length === 0;
+  if (searchInput) searchInput.disabled = false;
+}
+
+function filterCopySourceSections() {
+  renderCopySourceSections();
+}
+
 async function handleCopySourceBudgetChange() {
   const budgetId = document.getElementById('copySourceBudget')?.value;
   const sectionSelect = document.getElementById('copySourceSection');
+  const sectionSearch = document.getElementById('copySourceSectionSearch');
   const status = document.getElementById('copySectionStatus');
   copySectionSourceBudget = null;
   if (!sectionSelect) return;
   sectionSelect.disabled = true;
   sectionSelect.innerHTML = '<option value="">Choose section...</option>';
+  if (sectionSearch) {
+    sectionSearch.value = '';
+    sectionSearch.disabled = true;
+  }
   if (!budgetId) {
     if (status) status.textContent = '';
     return;
@@ -2698,16 +2797,8 @@ async function handleCopySourceBudgetChange() {
     if (!res.ok) throw new Error('Could not load source budget');
     copySectionSourceBudget = await res.json();
 
-    const propertyType = copySectionSourceBudget.propertyTypeLocked || copySectionSourceBudget.currentState?.propertyType || 'residential';
-    const sourceCategories = getDefaultCategories(propertyType);
-    const targetIds = new Set(Array.from(document.querySelectorAll('.category-editor')).map(el => el.dataset.catId));
-    const options = sourceCategories
-      .filter(cat => targetIds.has(cat.id))
-      .map(cat => `<option value="${escapeAttr(cat.id)}">${escapeAttr(cat.name)}</option>`)
-      .join('');
-    sectionSelect.innerHTML = `<option value="">Choose section...</option>${options}`;
-    sectionSelect.disabled = !options;
-    if (status) status.textContent = options ? 'Pick a section to copy into this budget.' : 'No matching sections found for this budget type.';
+    renderCopySourceSections();
+    if (status) status.textContent = sectionSelect.disabled ? 'No matching sections found for this budget type.' : 'Pick a section to copy into this budget.';
   } catch (err) {
     console.error('Load copy source error:', err);
     if (status) status.textContent = err.message || 'Could not load source budget';
@@ -2716,9 +2807,9 @@ async function handleCopySourceBudgetChange() {
 
 function buildCategoryOverrideFromBudget(budget, catId) {
   const state = budget.currentState || {};
-  const propertyType = budget.propertyTypeLocked || state.propertyType || 'residential';
-  const sqft = budget.sqftLocked || state.homeSize || 4000;
-  const defaultCat = getDefaultCategories(propertyType).find(cat => cat.id === catId);
+  const propertyType = getBudgetPropertyType(budget);
+  const sqft = getBudgetSqft(budget);
+  const defaultCat = getBudgetDefaultCategories(budget, propertyType).find(cat => cat.id === catId);
   const override = budget.categoryConfig?.[catId] || {};
   if (!defaultCat && !override.tiers) return null;
   const sizeScale = defaultCat?.sizeScale ?? 0.5;
@@ -2744,6 +2835,11 @@ function buildCategoryOverrideFromBudget(budget, catId) {
   });
 
   return { hidden: override.hidden === true, tiers };
+}
+
+function buildCustomCategoryFromBudget(budget, customId) {
+  const cat = (budget.customCategories || []).find(item => item.id === customId);
+  return cat ? JSON.parse(JSON.stringify(cat)) : null;
 }
 
 function readTierRowData(row, selectors) {
@@ -2778,6 +2874,52 @@ function writeTierRowData(row, data, selectors) {
   row.querySelectorAll(selectors.disable).forEach(el => { el.disabled = disabled; });
 }
 
+function buildCategoryOverrideFromEditor(catId) {
+  const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  if (!editor) return null;
+  const showCheckbox = editor.querySelector('input[type="checkbox"]:not(.tier-enabled)');
+  const isHidden = showCheckbox && !showCheckbox.checked;
+  const tiers = {};
+  TIER_ORDER.forEach(tierKey => {
+    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
+    if (row) {
+      tiers[tierKey] = readTierRowData(row, {
+        enabled: '.tier-enabled',
+        label: '.tier-label',
+        price: '.tier-price'
+      });
+    }
+  });
+  return { hidden: isHidden, tiers };
+}
+
+function readCustomCategoryEditorData(editor, options = {}) {
+  if (!editor) return null;
+  const customId = options.newId
+    ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    : (editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const name = editor.querySelector('.cc-name')?.value || '';
+  const tiers = {};
+  editor.querySelectorAll('.cc-tier-row').forEach(row => {
+    const tierKey = row.dataset.tier;
+    const data = readTierRowData(row, {
+      enabled: '.cc-tier-enabled',
+      label: '.cc-tier-label',
+      price: '.cc-tier-price'
+    });
+    if (data.enabled && (data.label || data.price || data.features.length || data.brands)) {
+      tiers[tierKey] = data;
+    }
+  });
+  return {
+    id: customId,
+    name,
+    icon: editor.querySelector('.cc-icon')?.value || '📦',
+    desc: '',
+    tiers
+  };
+}
+
 function applyCategoryOverrideToEditor(catId, override) {
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (!editor || !override) return false;
@@ -2805,22 +2947,164 @@ function applyCategoryOverrideToEditor(catId, override) {
   return true;
 }
 
+function applyCustomCategoryToEditor(customCat) {
+  if (!customCat) return false;
+  const list = document.getElementById('customCategoriesList');
+  if (!list) return false;
+
+  const existingEditors = Array.from(document.querySelectorAll('.custom-category-editor'));
+  const existing = existingEditors.find(editor => {
+    const editorName = editor.querySelector('.cc-name')?.value || '';
+    return editor.dataset.ccId === customCat.id || editorName.toLowerCase() === String(customCat.name || '').toLowerCase();
+  });
+
+  if (existing) {
+    const index = Number(existing.dataset.index || existingEditors.indexOf(existing));
+    existing.outerHTML = renderCustomCategoryEditor(customCat, index, null);
+  } else {
+    const index = nextCustomCategoryIndex();
+    list.insertAdjacentHTML('beforeend', renderCustomCategoryEditor(customCat, index, null));
+  }
+  return true;
+}
+
+function getCopyToSourcePayload(type, idOrIndex) {
+  if (type === 'custom') {
+    const editor = document.querySelector(`.custom-category-editor[data-index="${idOrIndex}"]`);
+    const customCat = readCustomCategoryEditorData(editor);
+    if (!customCat || !customCat.name) return null;
+    return { type: 'custom', customCategory: customCat, label: customCat.name };
+  }
+
+  const override = buildCategoryOverrideFromEditor(idOrIndex);
+  const propertyType = getBudgetPropertyType(customizeBudgetData || {});
+  const cat = getBudgetDefaultCategories(customizeBudgetData, propertyType).find(item => item.id === idOrIndex);
+  if (!override || !cat) return null;
+  return { type: 'default', catId: idOrIndex, override, label: cat.name };
+}
+
+function openCopyToModal(type, idOrIndex) {
+  copyToPayload = getCopyToSourcePayload(type, idOrIndex);
+  if (!copyToPayload) {
+    showToast('Could not read section data to copy');
+    return;
+  }
+
+  const body = document.getElementById('copyToBody');
+  body.innerHTML = `
+    <p style="color:var(--text-light);margin-bottom:16px;">Copy <strong>${escapeAttr(copyToPayload.label)}</strong> into another budget. This overwrites the matching default section, or replaces/adds the custom section.</p>
+    <input type="search" id="copyToBudgetSearch" placeholder="Search projects..." oninput="filterCopyToBudgets()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-bottom:10px;">
+    <select id="copyToBudgetSelect" size="8" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></select>
+    <div id="copyToStatus" style="font-size:12px;color:var(--text-light);margin-top:8px;"></div>
+    <div style="display:flex;gap:12px;margin-top:18px;">
+      <button type="button" class="btn btn-primary" onclick="copyCurrentSectionToSelectedBudget()" style="flex:1;">Copy To Selected Budget</button>
+      <button type="button" class="btn btn-secondary" onclick="closeCopyToModal()">Cancel</button>
+    </div>
+  `;
+  filterCopyToBudgets();
+  document.getElementById('copyToModal').classList.add('active');
+}
+
+function closeCopyToModal() {
+  document.getElementById('copyToModal').classList.remove('active');
+  copyToPayload = null;
+}
+
+function filterCopyToBudgets() {
+  const select = document.getElementById('copyToBudgetSelect');
+  if (!select) return;
+  const search = (document.getElementById('copyToBudgetSearch')?.value || '').trim().toLowerCase();
+  const options = budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .filter(b => !search || budgetSearchText(b).includes(search))
+    .map(b => `<option value="${escapeAttr(b.id)}">${escapeAttr(budgetOptionLabel(b))}</option>`)
+    .join('');
+  select.innerHTML = options || '<option value="">No matching budgets</option>';
+}
+
+async function copyCurrentSectionToSelectedBudget() {
+  const targetId = document.getElementById('copyToBudgetSelect')?.value;
+  const status = document.getElementById('copyToStatus');
+  if (!copyToPayload || !targetId) {
+    if (status) status.textContent = 'Choose a target budget first.';
+    return;
+  }
+
+  if (!confirm(`Copy "${copyToPayload.label}" to the selected budget? This will customize that target budget and replace the matching section data.`)) {
+    return;
+  }
+
+  try {
+    if (status) status.textContent = 'Loading target budget...';
+    const res = await fetch(api(`/api/admin/budgets/${targetId}`), { credentials: 'include' });
+    if (!res.ok) throw new Error('Could not load target budget');
+    const target = await res.json();
+    const categoryConfig = { ...(target.categoryConfig || {}) };
+    const customCategories = JSON.parse(JSON.stringify(target.customCategories || []));
+
+    if (copyToPayload.type === 'default') {
+      const targetHasCategory = getBudgetDefaultCategories(target, getBudgetPropertyType(target))
+        .some(cat => cat.id === copyToPayload.catId);
+      if (!targetHasCategory) {
+        throw new Error('Target budget does not have that default section.');
+      }
+      categoryConfig[copyToPayload.catId] = copyToPayload.override;
+    } else {
+      const copied = JSON.parse(JSON.stringify(copyToPayload.customCategory));
+      const existingIndex = customCategories.findIndex(cat =>
+        cat.id === copied.id || String(cat.name || '').toLowerCase() === String(copied.name || '').toLowerCase()
+      );
+      if (existingIndex >= 0) customCategories[existingIndex] = copied;
+      else customCategories.push(copied);
+    }
+
+    if (status) status.textContent = 'Saving target budget...';
+    const saveRes = await fetch(api(`/api/admin/budgets/${targetId}/customize`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ categoryConfig, customCategories })
+    });
+    const data = await saveRes.json();
+    if (!saveRes.ok || !data.success) throw new Error(data.error || 'Could not save target budget');
+
+    const copiedLabel = copyToPayload.label;
+    closeCopyToModal();
+    showToast(`✓ Copied ${copiedLabel}`);
+    loadBudgets();
+  } catch (err) {
+    console.error('Copy to budget error:', err);
+    if (status) status.textContent = err.message || 'Could not copy section';
+    showToast(err.message || 'Could not copy section');
+  }
+}
+
 function copySelectedSectionIntoCustomize() {
-  const catId = document.getElementById('copySourceSection')?.value;
+  const sectionValue = document.getElementById('copySourceSection')?.value;
   const status = document.getElementById('copySectionStatus');
-  if (!copySectionSourceBudget || !catId) {
+  if (!copySectionSourceBudget || !sectionValue) {
     if (status) status.textContent = 'Choose a source budget and section first.';
     return;
   }
 
-  const override = buildCategoryOverrideFromBudget(copySectionSourceBudget, catId);
-  if (!applyCategoryOverrideToEditor(catId, override)) {
-    if (status) status.textContent = 'Could not copy that section into this budget.';
-    return;
+  const [type, id] = sectionValue.split(':');
+  let sectionName = id;
+  if (type === 'custom') {
+    const customCat = buildCustomCategoryFromBudget(copySectionSourceBudget, id);
+    if (!applyCustomCategoryToEditor(customCat)) {
+      if (status) status.textContent = 'Could not copy that custom section into this budget.';
+      return;
+    }
+    sectionName = customCat.name || id;
+  } else {
+    const override = buildCategoryOverrideFromBudget(copySectionSourceBudget, id);
+    if (!applyCategoryOverrideToEditor(id, override)) {
+      if (status) status.textContent = 'Could not copy that section into this budget.';
+      return;
+    }
+    sectionName = getBudgetDefaultCategories(copySectionSourceBudget, getBudgetPropertyType(copySectionSourceBudget))
+      .find(cat => cat.id === id)?.name || id;
   }
-
-  const sectionName = getDefaultCategories(copySectionSourceBudget.propertyTypeLocked || copySectionSourceBudget.currentState?.propertyType || 'residential')
-    .find(cat => cat.id === catId)?.name || catId;
   markCatDirty();
   queueCustomizeDraftSave();
   if (status) status.textContent = `Copied ${sectionName}. Save customization to apply.`;
@@ -2873,6 +3157,18 @@ function swapCustomTierWithNeighbor(index, tierKey, direction) {
   showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);
 }
 
+function tierHasContent(defaultTier, tierOverride = {}, selected = false) {
+  return !!(
+    selected
+    || defaultTier
+    || tierOverride.enabled === true
+    || tierOverride.price
+    || tierOverride.label
+    || tierOverride.brands
+    || (Array.isArray(tierOverride.features) && tierOverride.features.length)
+  );
+}
+
 function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
   const override = existingOverride || {};
   const isHidden = override.hidden === true;
@@ -2882,6 +3178,10 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
   // All possible tiers - show all of them, even if missing from base data
   const allTiers = TIER_ORDER;
   const tierLabels = TIER_NAMES;
+  const tierPresence = Object.fromEntries(allTiers.map(tierKey => {
+    const tierOverride = override.tiers?.[tierKey] || {};
+    return [tierKey, tierHasContent(cat.tiers?.[tierKey], tierOverride, selectedTier === tierKey)];
+  }));
   
   return `
     <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
@@ -2890,13 +3190,16 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
           <strong>${cat.icon} ${cat.name}</strong>
           ${selectedTier ? `<span style="color:var(--accent);font-size:12px;margin-left:8px;">● ${selectedTier} selected</span>` : ''}
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;${isLocked ? 'opacity:0.5;' : ''}">
-          <input type="checkbox" 
-            ${isHidden ? '' : 'checked'} 
-            ${isLocked ? 'disabled' : ''} 
-            onchange="toggleCategoryHidden('${cat.id}', !this.checked)"
-          > Show
-        </label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;${isLocked ? 'opacity:0.5;' : ''}">
+            <input type="checkbox"
+              ${isHidden ? '' : 'checked'}
+              ${isLocked ? 'disabled' : ''}
+              onchange="toggleCategoryHidden('${cat.id}', !this.checked)"
+            > Show
+          </label>
+        </div>
       </div>
       <div class="tier-editors" style="display:${isHidden ? 'none' : 'grid'};gap:8px;">
         ${allTiers.map(tierKey => {
@@ -2925,6 +3228,11 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
           const features = tierOverride.features ?? (defaultTier?.features || []);
           const brands = tierOverride.brands ?? (defaultTier?.brands || '');
           
+          const prevTier = allTiers[allTiers.indexOf(tierKey) - 1];
+          const nextTier = allTiers[allTiers.indexOf(tierKey) + 1];
+          const showUp = !!(tierPresence[tierKey] && prevTier && tierPresence[prevTier]);
+          const showDown = !!(tierPresence[tierKey] && nextTier && tierPresence[nextTier]);
+
           return `
             <div class="tier-row" data-tier="${tierKey}" 
                  data-has-base="${existsInBase}" 
@@ -2947,8 +3255,8 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
               </div>
               <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" ${!isEnabled ? 'disabled' : ''}>Features</button>
               <div style="display:flex;gap:4px;">
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)" ${tierKey === allTiers[0] ? 'disabled' : ''}>↑</button>
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)" ${tierKey === allTiers[allTiers.length - 1] ? 'disabled' : ''}>↓</button>
+                ${showUp ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)">↑</button>` : ''}
+                ${showDown ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)">↓</button>` : ''}
               </div>
             </div>
           `;
@@ -2962,12 +3270,18 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
   const isLocked = !!selectedTier;
   const allTiers = TIER_ORDER;
   const tierLabels = TIER_NAMES;
+  const tierPresence = Object.fromEntries(allTiers.map(tierKey => {
+    const tier = cc.tiers?.[tierKey] || {};
+    return [tierKey, tierHasContent(null, tier, selectedTier === tierKey)];
+  }));
   
   return `
     <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
         <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
+        <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
+        <button type="button" class="btn btn-secondary btn-small" onclick="cloneCustomCategory(${index})">Clone</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
       </div>
       <div class="cc-tiers" style="display:grid;gap:8px;">
@@ -2978,6 +3292,11 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
           const features = tier.features || [];
           const brands = tier.brands || '';
           
+          const prevTier = allTiers[allTiers.indexOf(tierKey) - 1];
+          const nextTier = allTiers[allTiers.indexOf(tierKey) + 1];
+          const showUp = !!(tierPresence[tierKey] && prevTier && tierPresence[prevTier]);
+          const showDown = !!(tierPresence[tierKey] && nextTier && tierPresence[nextTier]);
+
           return `
             <div class="cc-tier-row" data-tier="${tierKey}" 
                  data-features="${escapeAttr(JSON.stringify(features))}"
@@ -2994,8 +3313,8 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
               <input type="number" class="cc-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
               <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
               <div style="display:flex;gap:4px;">
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)" ${tierKey === allTiers[0] ? 'disabled' : ''}>↑</button>
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)" ${tierKey === allTiers[allTiers.length - 1] ? 'disabled' : ''}>↓</button>
+                ${showUp ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)">↑</button>` : ''}
+                ${showDown ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)">↓</button>` : ''}
               </div>
             </div>
           `;
@@ -3223,13 +3542,46 @@ function closeFeaturesModal() {
 }
 
 let customCategoryCount = 0;
+function nextCustomCategoryIndex() {
+  const indexes = Array.from(document.querySelectorAll('.custom-category-editor'))
+    .map(el => Number(el.dataset.index))
+    .filter(Number.isFinite);
+  return indexes.length ? Math.max(...indexes) + 1 : 0;
+}
+
 function addCustomCategory() {
   markCatDirty();
   const list = document.getElementById('customCategoriesList');
-  const index = list.children.length;
+  const index = nextCustomCategoryIndex();
   const html = renderCustomCategoryEditor({ id: `custom-${Date.now()}`, icon: '📦', name: '', tiers: {} }, index, null);
   list.insertAdjacentHTML('beforeend', html);
   queueCustomizeDraftSave();
+}
+
+function nextCustomCloneName(name) {
+  const base = String(name || 'Custom Section').replace(/\s\(\d+\)$/, '');
+  const names = Array.from(document.querySelectorAll('.custom-category-editor .cc-name'))
+    .map(input => input.value.trim().toLowerCase());
+  let index = 1;
+  while (names.includes(`${base} (${index})`.toLowerCase())) index++;
+  return `${base} (${index})`;
+}
+
+function cloneCustomCategory(index) {
+  const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  const source = readCustomCategoryEditorData(editor, { newId: true });
+  if (!source || !source.name) {
+    showToast('Name the custom section before cloning');
+    return;
+  }
+
+  source.name = nextCustomCloneName(source.name);
+  const list = document.getElementById('customCategoriesList');
+  const newIndex = nextCustomCategoryIndex();
+  list.insertAdjacentHTML('beforeend', renderCustomCategoryEditor(source, newIndex, null));
+  markCatDirty();
+  queueCustomizeDraftSave();
+  showToast(`✓ Cloned ${source.name}`);
 }
 
 function removeCustomCategory(index) {
