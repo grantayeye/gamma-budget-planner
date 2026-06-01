@@ -1160,10 +1160,11 @@ function baseExtrasForBudget() {
 // Active data accessors — everything uses these
 function CATEGORIES() {
   const base = baseCategoriesForBudget();
+  const layoutConfig = customCategoryConfig?.__layout || {};
   
   // If not customized, return defaults
   if (!isCustomizedBudget || !customCategoryConfig) {
-    return base;
+    return applyCategoryLayout(base, layoutConfig);
   }
   
   // Apply custom config
@@ -1180,6 +1181,8 @@ function CATEGORIES() {
     
     // Clone the category
     const customCat = JSON.parse(JSON.stringify(cat));
+    if (override?.section) customCat.section = override.section;
+    if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
     
     // Apply tier overrides
     if (override && override.tiers) {
@@ -1240,18 +1243,32 @@ function CATEGORIES() {
       
       result.push({
         id: cc.id,
-        section: 'Custom',
+        section: cc.section || 'Custom',
         name: cc.name,
         icon: cc.icon || '📦',
         desc: cc.desc || '',
         sizeScale: 0, // No scaling for custom
         isCustomized: true,
+        sortOrder: cc.sortOrder,
         tiers
       });
     });
   }
   
-  return result;
+  return applyCategoryLayout(result, layoutConfig);
+}
+
+function applyCategoryLayout(categories, layoutConfig = {}) {
+  const sectionOrder = new Map((layoutConfig.sections || []).map((section, index) => [section.name, index]));
+  return categories.slice().sort((a, b) => {
+    const sectionA = sectionOrder.has(a.section) ? sectionOrder.get(a.section) : Number.MAX_SAFE_INTEGER;
+    const sectionB = sectionOrder.has(b.section) ? sectionOrder.get(b.section) : Number.MAX_SAFE_INTEGER;
+    if (sectionA !== sectionB) return sectionA - sectionB;
+    const orderA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    return 0;
+  });
 }
 
 function EXTRAS() {
@@ -1340,8 +1357,6 @@ function getCategoryPrice(cat, tier) {
 // ============================================================
 // RENDERING
 // ============================================================
-const SECTION_ORDER = ['Infrastructure', 'Audio', 'Video', 'Control & Automation', 'Lighting & Shades', 'Security', 'Custom'];
-
 function renderCategories() {
   const categories = CATEGORIES();
   if (categories.length > 0) {
@@ -1358,12 +1373,11 @@ function renderCategories() {
     sections[section].push(cat);
   });
   
-  // Render in defined order — known sections first, then any custom sections
-  const knownOrder = SECTION_ORDER.filter(s => s !== 'Custom');
-  const allSections = [
-    ...knownOrder,
-    ...Object.keys(sections).filter(s => !knownOrder.includes(s))
-  ];
+  const allSections = [];
+  categories.forEach(cat => {
+    const section = cat.section || 'Other';
+    if (!allSections.includes(section)) allSections.push(section);
+  });
 
   allSections.forEach(sectionName => {
     const cats = sections[sectionName];
