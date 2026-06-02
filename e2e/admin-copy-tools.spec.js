@@ -64,6 +64,39 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.category.sectionId).toBe('design-services');
   });
 
+  test('customize layout does not duplicate old name-based section ids', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const model = getCustomizeLayoutModel(
+        [
+          { id: 'networking', section: 'Infrastructure', section_id: 'infrastructure', name: 'Networking', tiers: {} },
+          { id: 'audio', section: 'Audio', section_id: 'audio', name: 'Audio', tiers: {} }
+        ],
+        [],
+        {
+          __layout: {
+            sections: [
+              { id: 'Infrastructure', name: 'Infrastructure', order: 0 },
+              { id: 'Audio', name: 'Audio', order: 1 }
+            ]
+          }
+        }
+      );
+      return {
+        sections: model.sections,
+        items: model.items.map(item => ({ id: item.id, sectionId: item.sectionId, section: item.section }))
+      };
+    });
+
+    expect(result.sections).toEqual([
+      { id: 'infrastructure', name: 'Infrastructure', order: 0 },
+      { id: 'audio', name: 'Audio', order: 1 }
+    ]);
+    expect(result.items).toEqual([
+      { id: 'networking', sectionId: 'infrastructure', section: 'Infrastructure' },
+      { id: 'audio', sectionId: 'audio', section: 'Audio' }
+    ]);
+  });
+
   test('clone posts a new budget name and opens the clone', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const calls = [];

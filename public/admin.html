@@ -1908,6 +1908,11 @@ function normalizeCategoryDefaults(data = {}) {
   };
 }
 
+function normalizeStoredSectionId(section) {
+  const raw = section?.section_id || section?.sectionId || section?.id || section?.name || 'other';
+  return slugifySectionId(raw);
+}
+
 function snapshotForPropertyType(snapshot, propertyType) {
   if (Array.isArray(snapshot)) return snapshot;
   return snapshot?.[propertyType] || null;
@@ -2705,10 +2710,11 @@ function saveCustomizeDraftNow() {
 
 function getCustomizeLayoutModel(defaultCategories, customCategories, existingConfig) {
   const savedSections = existingConfig.__layout?.sections || [];
-  const sectionMap = new Map(savedSections.map((section, index) => [
-    section.id || slugifySectionId(section.name),
-    { id: section.id || slugifySectionId(section.name), name: section.name, order: section.order ?? index }
-  ]));
+  const sectionMap = new Map();
+  savedSections.forEach((section, index) => {
+    const id = normalizeStoredSectionId(section);
+    sectionMap.set(id, { id, name: section.name || section.id || 'Other', order: section.order ?? index });
+  });
   const items = [];
 
   defaultCategories.forEach((cat, index) => {

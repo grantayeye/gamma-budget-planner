@@ -1215,6 +1215,11 @@ function normalizeCategoryList(categories = [], sections = []) {
   return { categories: normalizedCategories, sections: normalizedSections };
 }
 
+function normalizeStoredSectionId(section) {
+  const raw = section?.section_id || section?.sectionId || section?.id || section?.name || 'other';
+  return slugifySectionId(raw);
+}
+
 function orderedTierKeys(tiers) {
   if (!tiers) return [];
   const known = TIER_ORDER.filter(tierKey => tiers[tierKey]);
@@ -1357,7 +1362,7 @@ function applyCategoryLayout(categories, layoutConfig = {}) {
   const normalized = normalizeCategoryList(categories, baseSectionsForBudget());
   const sectionOrder = new Map(normalized.sections.map((section, index) => [section.id, index]));
   (layoutConfig.sections || []).forEach((section, index) => {
-    const id = section.id || slugifySectionId(section.name);
+    const id = normalizeStoredSectionId(section);
     sectionOrder.set(id, Number.isFinite(Number(section.order)) ? Number(section.order) : index);
   });
   return categories.slice().sort((a, b) => {
