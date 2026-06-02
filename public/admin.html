@@ -2750,52 +2750,79 @@ function getCustomizeLayoutModel(defaultCategories, customCategories, existingCo
   return { sections, items };
 }
 
-function renderCustomizeLayoutControls(defaultCategories, customCategories, existingConfig) {
-  const layout = getCustomizeLayoutModel(defaultCategories, customCategories, existingConfig);
-  const sectionOptions = layout.sections.map(section => `<option value="${escapeAttr(section.id)}">${escapeAttr(section.name)}</option>`).join('');
+function renderCustomizeItemShell(item, layout, itemIndex, itemCount, editorHtml) {
+  const sectionOptions = layout.sections
+    .map(section => `<option value="${escapeAttr(section.id)}" ${section.id === item.sectionId ? 'selected' : ''}>${escapeAttr(section.name)}</option>`)
+    .join('');
 
   return `
-    <div style="background:#F7FAFC;border:1px solid var(--border-light);border-radius:8px;padding:12px 16px;margin-bottom:20px;">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;">
+    <div class="customize-layout-item" data-item-type="${item.type}" data-item-id="${escapeAttr(item.id)}" data-item-order="${itemIndex}" style="border:1px solid var(--border-light);border-radius:8px;background:#FFFFFF;margin-bottom:12px;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 10px;background:#F8FAFC;border-bottom:1px solid var(--border-light);font-size:12px;color:var(--text-light);">
+        <span style="font-weight:600;color:var(--text);">${escapeAttr(item.name)} <span style="font-weight:400;color:var(--text-light);">${item.type === 'custom' ? 'Custom' : 'Default'}</span></span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+          <label style="display:flex;gap:6px;align-items:center;">
+            Header
+            <select class="customize-item-section" onchange="changeCustomizeItemSection(this)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+              ${sectionOptions}
+              <option value="__new__">+ New Header...</option>
+            </select>
+          </label>
+          ${itemIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up">↑</button>` : ''}
+          ${itemIndex < itemCount - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down">↓</button>` : ''}
+        </span>
+      </div>
+      <div style="padding:10px;">
+        ${editorHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderCustomizeGroupedEditors(defaultCategories, customCategories, existingConfig, selections, sqft) {
+  const layout = getCustomizeLayoutModel(defaultCategories, customCategories, existingConfig);
+  const defaultById = new Map(defaultCategories.map(cat => [cat.id, cat]));
+  const customById = new Map(customCategories.map(cat => [cat.id, cat]));
+
+  return `
+    <div id="customizeLayoutSections" style="display:grid;gap:14px;margin-top:18px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
         <div>
-          <strong>Display Layout</strong>
-          <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Rename headers, change header order, move sections under a different header, and change display order for this budget.</div>
+          <h3 style="margin:0;">Sections</h3>
+          <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Edit headers directly here. Move categories between headers or reorder them inside the header.</div>
         </div>
         <button type="button" class="btn btn-secondary btn-small" onclick="addCustomizeHeader()">+ Header</button>
       </div>
-      <div id="customizeLayoutSections" style="display:grid;gap:10px;">
-        ${layout.sections.map((section, sectionIndex) => {
-          const sectionItems = layout.items
-            .filter(item => item.sectionId === section.id)
-            .sort((a, b) => a.order - b.order);
-          return `
-            <div class="customize-layout-section" data-section-id="${escapeAttr(section.id)}" data-section-order="${sectionIndex}" style="border:1px solid var(--border-light);border-radius:8px;background:white;padding:10px;">
-              <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
-                <input type="text" class="customize-section-name" value="${escapeAttr(section.name)}" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-weight:600;">
-                <span style="display:flex;gap:4px;">
-                  ${sectionIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeSection(${sectionIndex}, -1)">↑</button>` : ''}
-                  ${sectionIndex < layout.sections.length - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeSection(${sectionIndex}, 1)">↓</button>` : ''}
-                </span>
-              </div>
-              <div class="customize-layout-items" style="display:grid;gap:6px;">
-                ${sectionItems.map((item, itemIndex) => `
-                  <div class="customize-layout-item" data-item-type="${item.type}" data-item-id="${escapeAttr(item.id)}" data-item-order="${itemIndex}" style="display:grid;grid-template-columns:1fr 180px auto;gap:8px;align-items:center;font-size:13px;">
-                    <span>${escapeAttr(item.name)} <span style="color:var(--text-light);font-size:11px;">${item.type === 'custom' ? 'Custom' : 'Default'}</span></span>
-                    <select class="customize-item-section" onchange="changeCustomizeItemSection(this)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
-                      ${sectionOptions}
-                      <option value="__new__">+ New Header...</option>
-                    </select>
-                    <span style="display:flex;gap:4px;">
-                      ${itemIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)">↑</button>` : ''}
-                      ${itemIndex < sectionItems.length - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)">↓</button>` : ''}
-                    </span>
-                  </div>
-                `).join('') || '<div style="font-size:12px;color:var(--text-light);">Empty header</div>'}
-              </div>
+      ${layout.sections.map((section, sectionIndex) => {
+        const sectionItems = layout.items
+          .filter(item => item.sectionId === section.id)
+          .sort((a, b) => a.order - b.order);
+        return `
+          <div class="customize-layout-section" data-section-id="${escapeAttr(section.id)}" data-section-order="${sectionIndex}" style="border:1px solid var(--border);border-radius:8px;background:#F7FAFC;padding:12px;">
+            <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:12px;">
+              <input type="text" class="customize-section-name" value="${escapeAttr(section.name)}" style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;background:white;">
+              <span style="display:flex;gap:6px;align-items:center;">
+                ${sectionIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeSection(${sectionIndex}, -1)" title="Move header up">↑ Header</button>` : ''}
+                ${sectionIndex < layout.sections.length - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeSection(${sectionIndex}, 1)" title="Move header down">↓ Header</button>` : ''}
+              </span>
             </div>
-          `;
-        }).join('')}
-      </div>
+            <div class="customize-layout-items">
+              ${sectionItems.map((item, itemIndex) => {
+                if (item.type === 'custom') {
+                  const custom = customById.get(item.id);
+                  if (!custom) return '';
+                  const customIndex = customCategories.findIndex(cat => cat.id === custom.id);
+                  return renderCustomizeItemShell(item, layout, itemIndex, sectionItems.length, renderCustomCategoryEditor(custom, customIndex, selections[custom.id]));
+                }
+                const cat = defaultById.get(item.id);
+                if (!cat) return '';
+                return renderCustomizeItemShell(item, layout, itemIndex, sectionItems.length, renderCategoryEditor(cat, existingConfig[cat.id], selections[cat.id], sqft));
+              }).join('') || '<div style="font-size:12px;color:var(--text-light);background:white;border:1px dashed var(--border);border-radius:8px;padding:10px;">Empty header. Move categories here or add a custom category.</div>'}
+            </div>
+          </div>
+        `;
+      }).join('')}
+      <div id="customCategoriesList" style="display:none;"></div>
+      <button type="button" class="btn btn-secondary btn-small" onclick="addCustomCategory()" style="justify-self:start;">+ Add Custom Category</button>
     </div>
   `;
 }
@@ -2824,18 +2851,8 @@ function renderCustomizeEditor() {
     </div>
 
     ${renderCopySectionControls()}
-    ${renderCustomizeLayoutControls(defaultCategories, existingCustom, existingConfig)}
-    
     <div id="categoryEditors" data-sqft="${sqft}">
-      ${defaultCategories.map(cat => renderCategoryEditor(cat, existingConfig[cat.id], selections[cat.id], sqft)).join('')}
-    </div>
-    
-    <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
-      <h3 style="margin-bottom:12px;">➕ Custom Categories</h3>
-      <div id="customCategoriesList">
-        ${existingCustom.map((cc, i) => renderCustomCategoryEditor(cc, i, selections[cc.id])).join('')}
-      </div>
-      <button type="button" class="btn btn-secondary btn-small" onclick="addCustomCategory()" style="margin-top:12px;">+ Add Custom Category</button>
+      ${renderCustomizeGroupedEditors(defaultCategories, existingCustom, existingConfig, selections, sqft)}
     </div>
 
     ${defaultExtras.length > 0 ? `
@@ -3218,9 +3235,10 @@ function buildCategoryOverrideFromEditor(catId) {
 
 function readCustomCategoryEditorData(editor, options = {}) {
   if (!editor) return null;
+  const existingId = editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const customId = options.newId
     ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    : (editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+    : existingId;
   const name = editor.querySelector('.cc-name')?.value || '';
   const tiers = {};
   editor.querySelectorAll('.cc-tier-row').forEach(row => {
@@ -3239,7 +3257,7 @@ function readCustomCategoryEditorData(editor, options = {}) {
     name,
     icon: editor.querySelector('.cc-icon')?.value || '📦',
     desc: '',
-    ...(document.getElementById('customizeLayoutSections') ? (collectCustomizeLayoutData().customLayout[customId] || {}) : {}),
+    ...(document.getElementById('customizeLayoutSections') ? (collectCustomizeLayoutData().customLayout[existingId] || {}) : {}),
     tiers
   };
 }
@@ -3281,19 +3299,19 @@ function findExistingCustomCategoryEditor(customCat) {
 
 function applyCustomCategoryToEditor(customCat) {
   if (!customCat) return false;
-  const list = document.getElementById('customCategoriesList');
-  if (!list) return false;
-
-  const existingEditors = Array.from(document.querySelectorAll('.custom-category-editor'));
-  const existing = findExistingCustomCategoryEditor(customCat);
-
-  if (existing) {
-    const index = Number(existing.dataset.index || existingEditors.indexOf(existing));
-    existing.outerHTML = renderCustomCategoryEditor(customCat, index, null);
+  const current = collectCustomizationData();
+  customizeBudgetData.categoryConfig = current.categoryConfig;
+  const customCategories = current.customCategories || [];
+  const existingIndex = customCategories.findIndex(cat =>
+    cat.id === customCat.id || String(cat.name || '').toLowerCase() === String(customCat.name || '').toLowerCase()
+  );
+  if (existingIndex >= 0) {
+    customCategories[existingIndex] = customCat;
   } else {
-    const index = nextCustomCategoryIndex();
-    list.insertAdjacentHTML('beforeend', renderCustomCategoryEditor(customCat, index, null));
+    customCategories.push(customCat);
   }
+  customizeBudgetData.customCategories = customCategories;
+  renderCustomizeEditor();
   return true;
 }
 
@@ -3896,10 +3914,35 @@ function nextCustomCategoryIndex() {
 
 function addCustomCategory() {
   markCatDirty();
-  const list = document.getElementById('customCategoriesList');
-  const index = nextCustomCategoryIndex();
-  const html = renderCustomCategoryEditor({ id: `custom-${Date.now()}`, icon: '📦', name: '', tiers: {} }, index, null);
-  list.insertAdjacentHTML('beforeend', html);
+  const current = collectCustomizationData();
+  const layout = collectCustomizeLayoutData();
+  let customSection = layout.sections.find(section => section.name.toLowerCase() === 'custom');
+  if (!customSection) {
+    const usedIds = new Set(layout.sections.map(section => section.id));
+    customSection = { id: uniqueSectionId('custom', usedIds), name: 'Custom', order: layout.sections.length };
+    layout.sections.push(customSection);
+  }
+  customizeBudgetData.categoryConfig = {
+    ...current.categoryConfig,
+    __layout: { sections: layout.sections }
+  };
+  customizeBudgetData.customCategories = [
+    ...(current.customCategories || []),
+    {
+      id: `custom-${Date.now()}`,
+      icon: '📦',
+      name: 'New Custom Section',
+      section_id: customSection.id,
+      sectionId: customSection.id,
+      section: customSection.name,
+      sortOrder: [
+        ...Object.values(layout.itemLayout || {}),
+        ...Object.values(layout.customLayout || {})
+      ].filter(item => item.sectionId === customSection.id).length,
+      tiers: {}
+    }
+  ];
+  renderCustomizeEditor();
   queueCustomizeDraftSave();
 }
 
@@ -3921,9 +3964,10 @@ function cloneCustomCategory(index) {
   }
 
   source.name = nextCustomCloneName(source.name);
-  const list = document.getElementById('customCategoriesList');
-  const newIndex = nextCustomCategoryIndex();
-  list.insertAdjacentHTML('beforeend', renderCustomCategoryEditor(source, newIndex, null));
+  const current = collectCustomizationData();
+  customizeBudgetData.categoryConfig = current.categoryConfig;
+  customizeBudgetData.customCategories = [...(current.customCategories || []), source];
+  renderCustomizeEditor();
   markCatDirty();
   queueCustomizeDraftSave();
   showToast(`✓ Cloned ${source.name}`);
@@ -3932,7 +3976,9 @@ function cloneCustomCategory(index) {
 function removeCustomCategory(index) {
   markCatDirty();
   const el = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
-  if (el) el.remove();
+  const shell = el?.closest('.customize-layout-item');
+  if (shell) shell.remove();
+  else if (el) el.remove();
   queueCustomizeDraftSave();
 }
 
