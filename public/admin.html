@@ -2750,30 +2750,28 @@ function getCustomizeLayoutModel(defaultCategories, customCategories, existingCo
   return { sections, items };
 }
 
-function renderCustomizeItemShell(item, layout, itemIndex, itemCount, editorHtml) {
+function renderCustomizeItemControls(item, layout, itemIndex, itemCount) {
   const sectionOptions = layout.sections
     .map(section => `<option value="${escapeAttr(section.id)}" ${section.id === item.sectionId ? 'selected' : ''}>${escapeAttr(section.name)}</option>`)
     .join('');
 
   return `
-    <div class="customize-layout-item" data-item-type="${item.type}" data-item-id="${escapeAttr(item.id)}" data-item-order="${itemIndex}" style="border:1px solid var(--border-light);border-radius:8px;background:#FFFFFF;margin-bottom:12px;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 10px;background:#F8FAFC;border-bottom:1px solid var(--border-light);font-size:12px;color:var(--text-light);">
-        <span style="font-weight:600;color:var(--text);">${escapeAttr(item.name)} <span style="font-weight:400;color:var(--text-light);">${item.type === 'custom' ? 'Custom' : 'Default'}</span></span>
-        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
-          <label style="display:flex;gap:6px;align-items:center;">
-            Header
-            <select class="customize-item-section" onchange="changeCustomizeItemSection(this)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
-              ${sectionOptions}
-              <option value="__new__">+ New Header...</option>
-            </select>
-          </label>
-          ${itemIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up">↑</button>` : ''}
-          ${itemIndex < itemCount - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down">↓</button>` : ''}
-        </span>
-      </div>
-      <div style="padding:10px;">
-        ${editorHtml}
-      </div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-light);white-space:nowrap;">
+      Header
+      <select class="customize-item-section" onchange="changeCustomizeItemSection(this)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;max-width:190px;">
+        ${sectionOptions}
+        <option value="__new__">+ New Header...</option>
+      </select>
+    </label>
+    ${itemIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up">↑</button>` : ''}
+    ${itemIndex < itemCount - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down">↓</button>` : ''}
+  `;
+}
+
+function renderCustomizeItemShell(item, itemIndex, editorHtml) {
+  return `
+    <div class="customize-layout-item" data-item-type="${item.type}" data-item-id="${escapeAttr(item.id)}" data-item-order="${itemIndex}" style="margin-bottom:12px;">
+      ${editorHtml}
     </div>
   `;
 }
@@ -2797,9 +2795,12 @@ function renderCustomizeGroupedEditors(defaultCategories, customCategories, exis
           .filter(item => item.sectionId === section.id)
           .sort((a, b) => a.order - b.order);
         return `
-          <div class="customize-layout-section" data-section-id="${escapeAttr(section.id)}" data-section-order="${sectionIndex}" style="border:1px solid var(--border);border-radius:8px;background:#F7FAFC;padding:12px;">
-            <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:12px;">
-              <input type="text" class="customize-section-name" value="${escapeAttr(section.name)}" style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;background:white;">
+          <div class="customize-layout-section" data-section-id="${escapeAttr(section.id)}" data-section-order="${sectionIndex}" style="padding-top:4px;">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin:26px 0 14px;padding-bottom:12px;border-bottom:2px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                <span style="width:4px;height:24px;background:var(--accent);border-radius:2px;flex:0 0 auto;"></span>
+                <input type="text" class="customize-section-name" value="${escapeAttr(section.name)}" style="width:100%;min-width:0;padding:2px 0;border:0;background:transparent;font-size:20px;font-weight:600;color:var(--primary);outline:none;">
+              </div>
               <span style="display:flex;gap:6px;align-items:center;">
                 ${sectionIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeSection(${sectionIndex}, -1)" title="Move header up">↑ Header</button>` : ''}
                 ${sectionIndex < layout.sections.length - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeSection(${sectionIndex}, 1)" title="Move header down">↓ Header</button>` : ''}
@@ -2811,11 +2812,13 @@ function renderCustomizeGroupedEditors(defaultCategories, customCategories, exis
                   const custom = customById.get(item.id);
                   if (!custom) return '';
                   const customIndex = customCategories.findIndex(cat => cat.id === custom.id);
-                  return renderCustomizeItemShell(item, layout, itemIndex, sectionItems.length, renderCustomCategoryEditor(custom, customIndex, selections[custom.id]));
+                  const controls = renderCustomizeItemControls(item, layout, itemIndex, sectionItems.length);
+                  return renderCustomizeItemShell(item, itemIndex, renderCustomCategoryEditor(custom, customIndex, selections[custom.id], controls));
                 }
                 const cat = defaultById.get(item.id);
                 if (!cat) return '';
-                return renderCustomizeItemShell(item, layout, itemIndex, sectionItems.length, renderCategoryEditor(cat, existingConfig[cat.id], selections[cat.id], sqft));
+                const controls = renderCustomizeItemControls(item, layout, itemIndex, sectionItems.length);
+                return renderCustomizeItemShell(item, itemIndex, renderCategoryEditor(cat, existingConfig[cat.id], selections[cat.id], sqft, controls));
               }).join('') || '<div style="font-size:12px;color:var(--text-light);background:white;border:1px dashed var(--border);border-radius:8px;padding:10px;">Empty header. Move categories here or add a custom category.</div>'}
             </div>
           </div>
@@ -3532,7 +3535,7 @@ function tierHasContent(defaultTier, tierOverride = {}, selected = false) {
   );
 }
 
-function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
+function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutControlsHtml = '') {
   const override = existingOverride || {};
   const isHidden = override.hidden === true;
   const isLocked = selectedTier && !isHidden; // Can't hide if selected
@@ -3548,12 +3551,13 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
   
   return `
     <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
+        <div style="min-width:0;padding-top:3px;">
           <strong>${cat.icon} ${cat.name}</strong>
           ${selectedTier ? `<span style="color:var(--accent);font-size:12px;margin-left:8px;">● ${selectedTier} selected</span>` : ''}
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+          ${layoutControlsHtml}
           <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;${isLocked ? 'opacity:0.5;' : ''}">
             <input type="checkbox"
@@ -3629,7 +3633,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft) {
   `;
 }
 
-function renderCustomCategoryEditor(cc, index, selectedTier) {
+function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml = '') {
   const isLocked = !!selectedTier;
   const allTiers = TIER_ORDER;
   const tierLabels = TIER_NAMES;
@@ -3640,9 +3644,10 @@ function renderCustomCategoryEditor(cc, index, selectedTier) {
   
   return `
     <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
         <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
-        <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
+        <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="flex:1;min-width:220px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
+        ${layoutControlsHtml}
         <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
         <button type="button" class="btn btn-secondary btn-small" onclick="cloneCustomCategory(${index})">Clone</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
