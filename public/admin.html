@@ -662,6 +662,56 @@
       background: white;
     }
 
+    .search-combo {
+      position: relative;
+      min-width: 0;
+    }
+
+    .search-combo-menu {
+      display: none;
+      position: absolute;
+      z-index: 1500;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 240px;
+      overflow-y: auto;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 4px;
+    }
+
+    .search-combo.open .search-combo-menu {
+      display: block;
+    }
+
+    .search-combo-option {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      padding: 8px 10px;
+      border-radius: 6px;
+      text-align: left;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .search-combo-option:hover,
+    .search-combo-option:focus {
+      background: #F5FAFD;
+      outline: none;
+    }
+
+    .search-combo-empty {
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--text-light);
+    }
+
     .custom-category-header {
       display: grid;
       grid-template-columns: 42px minmax(180px, 1fr) 210px 34px 34px 78px 66px 74px;
@@ -3424,7 +3474,31 @@ function collectCustomizeLayoutData() {
   return { sections, itemLayout, customLayout };
 }
 
-function applyCustomizeLayoutAndRender(mutator) {
+function getCustomizeScrollAnchor(selector) {
+  const scrollArea = document.querySelector('#customizeBody .customize-scroll-area');
+  const anchorEl = selector ? document.querySelector(selector) : null;
+  return {
+    selector,
+    scrollTop: scrollArea?.scrollTop || 0,
+    top: anchorEl?.getBoundingClientRect().top ?? null
+  };
+}
+
+function restoreCustomizeScrollAnchor(anchor) {
+  const scrollArea = document.querySelector('#customizeBody .customize-scroll-area');
+  if (!scrollArea || !anchor) return;
+  if (anchor.selector && anchor.top !== null) {
+    const nextEl = document.querySelector(anchor.selector);
+    if (nextEl) {
+      scrollArea.scrollTop += nextEl.getBoundingClientRect().top - anchor.top;
+      return;
+    }
+  }
+  scrollArea.scrollTop = anchor.scrollTop || 0;
+}
+
+function applyCustomizeLayoutAndRender(mutator, anchorSelector = null) {
+  const scrollAnchor = getCustomizeScrollAnchor(anchorSelector);
   const current = collectCustomizationData();
   customizeBudgetData.categoryConfig = current.categoryConfig;
   customizeBudgetData.customCategories = current.customCategories;
@@ -3457,6 +3531,7 @@ function applyCustomizeLayoutAndRender(mutator) {
   });
   customizeBudgetData.categoryConfig = config;
   renderCustomizeEditor();
+  restoreCustomizeScrollAnchor(scrollAnchor);
   markCatDirty();
   queueCustomizeDraftSave();
 }
@@ -3473,14 +3548,17 @@ function addCustomizeHeader() {
 }
 
 function moveCustomizeSection(index, direction) {
+  const sectionId = document.querySelector(`.customize-layout-section[data-section-order="${index}"]`)?.dataset.sectionId || '';
+  const anchorSelector = sectionId ? `.customize-layout-section[data-section-id="${CSS.escape(sectionId)}"]` : null;
   applyCustomizeLayoutAndRender(layout => {
     const target = index + direction;
     if (target < 0 || target >= layout.sections.length) return;
     [layout.sections[index], layout.sections[target]] = [layout.sections[target], layout.sections[index]];
-  });
+  }, anchorSelector);
 }
 
 function moveCustomizeItem(type, id, direction) {
+  const anchorSelector = `.customize-layout-item[data-item-type="${CSS.escape(type)}"][data-item-id="${CSS.escape(id)}"]`;
   applyCustomizeLayoutAndRender(layout => {
     const item = layout.items.find(entry => entry.type === type && entry.id === id);
     if (!item) return;
@@ -3492,7 +3570,7 @@ function moveCustomizeItem(type, id, direction) {
     const currentGlobal = layout.items.findIndex(entry => entry.type === type && entry.id === id);
     const targetGlobal = layout.items.findIndex(entry => entry.type === targetItem.type && entry.id === targetItem.id);
     [layout.items[currentGlobal], layout.items[targetGlobal]] = [layout.items[targetGlobal], layout.items[currentGlobal]];
-  });
+  }, anchorSelector);
 }
 
 function changeCustomizeItemSection(select) {
@@ -3507,6 +3585,7 @@ function changeCustomizeItemSection(select) {
       return;
     }
   }
+  const anchorSelector = `.customize-layout-item[data-item-type="${CSS.escape(itemEl.dataset.itemType)}"][data-item-id="${CSS.escape(itemEl.dataset.itemId)}"]`;
   applyCustomizeLayoutAndRender(layout => {
     let section = layout.sections.find(item => item.id === sectionId);
     if (!section) {
@@ -3519,7 +3598,7 @@ function changeCustomizeItemSection(select) {
       item.sectionId = section.id;
       item.section = section.name;
     }
-  });
+  }, anchorSelector);
 }
 
 function budgetOptionLabel(budget) {
@@ -3574,13 +3653,13 @@ function renderCopySectionControls() {
         </div>
       </div>
       <div class="copy-section-grid">
-        <div>
-          <input type="search" id="copySourceBudgetCombo" list="copySourceBudgetOptions" placeholder="Search or choose source budget..." oninput="handleCopySourceBudgetComboInput()" class="customize-header-combo" autocomplete="off">
-          <datalist id="copySourceBudgetOptions"></datalist>
+        <div class="search-combo" id="copySourceBudgetComboWrap">
+          <input type="search" id="copySourceBudgetCombo" placeholder="Search or choose source budget..." oninput="handleCopySourceBudgetComboInput()" onfocus="renderCopySourceBudgetMenu()" class="customize-header-combo" autocomplete="off">
+          <div class="search-combo-menu" id="copySourceBudgetMenu"></div>
         </div>
-        <div>
-          <input type="search" id="copySourceSectionCombo" list="copySourceSectionOptions" placeholder="Search or choose section..." oninput="handleCopySourceSectionComboInput()" class="customize-header-combo" autocomplete="off" disabled>
-          <datalist id="copySourceSectionOptions"></datalist>
+        <div class="search-combo" id="copySourceSectionComboWrap">
+          <input type="search" id="copySourceSectionCombo" placeholder="Search or choose section..." oninput="handleCopySourceSectionComboInput()" onfocus="renderCopySourceSectionMenu()" class="customize-header-combo" autocomplete="off" disabled>
+          <div class="search-combo-menu" id="copySourceSectionMenu"></div>
         </div>
         <button type="button" class="btn btn-secondary btn-small" onclick="copySelectedSectionIntoCustomize()">Copy Section</button>
       </div>
@@ -3590,22 +3669,72 @@ function renderCopySectionControls() {
 }
 
 function filterCopySourceBudgets() {
-  const list = document.getElementById('copySourceBudgetOptions');
-  if (!list) return;
-  const options = budgets
-    .filter(b => b.id !== customizeBudgetId)
-    .map(b => `<option value="${escapeAttr(budgetOptionLabel(b))}"></option>`)
-    .join('');
-  list.innerHTML = options;
+  renderCopySourceBudgetMenu();
 }
 
 function getCopySourceBudgetMatch() {
   const input = document.getElementById('copySourceBudgetCombo');
   const value = (input?.value || '').trim();
   if (!value) return null;
+  if (input?.dataset.selectedId) {
+    const selected = budgets.find(b => b.id === input.dataset.selectedId && b.id !== customizeBudgetId);
+    if (selected && (budgetOptionLabel(selected) === value || selected.id === value)) return selected;
+    input.dataset.selectedId = '';
+  }
   return budgets
     .filter(b => b.id !== customizeBudgetId)
     .find(b => budgetOptionLabel(b) === value || b.id === value) || null;
+}
+
+function comboMatches(query, label, extra = '') {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  return `${label} ${extra}`.toLowerCase().includes(q);
+}
+
+function closeComboMenu(menuId) {
+  const menu = document.getElementById(menuId);
+  menu?.closest('.search-combo')?.classList.remove('open');
+}
+
+function renderComboMenu(menuId, entries, emptyText) {
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+  menu.innerHTML = entries.length
+    ? entries.map(entry => `
+        <button type="button" class="search-combo-option" data-value="${escapeAttr(entry.value)}" onclick="${entry.onclick}">
+          ${escapeAttr(entry.label)}
+          ${entry.meta ? `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">${escapeAttr(entry.meta)}</div>` : ''}
+        </button>
+      `).join('')
+    : `<div class="search-combo-empty">${escapeAttr(emptyText)}</div>`;
+  menu.closest('.search-combo')?.classList.add('open');
+}
+
+function renderCopySourceBudgetMenu() {
+  const input = document.getElementById('copySourceBudgetCombo');
+  const query = input?.value || '';
+  const entries = budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .filter(b => comboMatches(query, budgetOptionLabel(b), budgetSearchText(b)))
+    .slice(0, 40)
+    .map(b => ({
+      value: b.id,
+      label: budgetOptionLabel(b),
+      meta: b.isCustomized ? 'Customized' : 'Standard',
+      onclick: `selectCopySourceBudget('${escapeAttr(b.id)}')`
+    }));
+  renderComboMenu('copySourceBudgetMenu', entries, 'No matching budgets');
+}
+
+async function selectCopySourceBudget(budgetId) {
+  const budget = budgets.find(b => b.id === budgetId && b.id !== customizeBudgetId);
+  const input = document.getElementById('copySourceBudgetCombo');
+  if (!budget || !input) return;
+  input.value = budgetOptionLabel(budget);
+  input.dataset.selectedId = budget.id;
+  closeComboMenu('copySourceBudgetMenu');
+  await handleCopySourceBudgetChange(budget.id);
 }
 
 function getCopySourceSectionEntries() {
@@ -3620,18 +3749,44 @@ function getCopySourceSectionEntries() {
 
 function renderCopySourceSections() {
   const sectionInput = document.getElementById('copySourceSectionCombo');
-  const list = document.getElementById('copySourceSectionOptions');
-  if (!sectionInput || !list) return;
+  const menu = document.getElementById('copySourceSectionMenu');
+  if (!sectionInput || !menu) return;
   sectionInput.value = '';
   sectionInput.dataset.selectedValue = '';
   if (!copySectionSourceBudget) {
     sectionInput.disabled = true;
-    list.innerHTML = '';
+    menu.innerHTML = '';
+    closeComboMenu('copySourceSectionMenu');
     return;
   }
   const entries = getCopySourceSectionEntries();
-  list.innerHTML = entries.map(entry => `<option value="${escapeAttr(entry.value)}"></option>`).join('');
   sectionInput.disabled = entries.length === 0;
+  renderCopySourceSectionMenu();
+}
+
+function renderCopySourceSectionMenu() {
+  const input = document.getElementById('copySourceSectionCombo');
+  if (!input || input.disabled) return;
+  const query = input.value || '';
+  const entries = getCopySourceSectionEntries()
+    .filter(entry => comboMatches(query, entry.value, entry.sectionValue))
+    .slice(0, 50)
+    .map(entry => ({
+      value: entry.sectionValue,
+      label: entry.value,
+      meta: entry.type === 'custom' ? 'Custom section' : 'Default section',
+      onclick: `selectCopySourceSection('${escapeAttr(entry.sectionValue)}')`
+    }));
+  renderComboMenu('copySourceSectionMenu', entries, 'No matching sections');
+}
+
+function selectCopySourceSection(sectionValue) {
+  const input = document.getElementById('copySourceSectionCombo');
+  const match = getCopySourceSectionEntries().find(entry => entry.sectionValue === sectionValue);
+  if (!input || !match) return;
+  input.value = match.value;
+  input.dataset.selectedValue = match.sectionValue;
+  closeComboMenu('copySourceSectionMenu');
 }
 
 function handleCopySourceSectionComboInput() {
@@ -3639,6 +3794,7 @@ function handleCopySourceSectionComboInput() {
   if (!input) return;
   const match = getCopySourceSectionEntries().find(entry => entry.value === input.value || entry.sectionValue === input.value);
   input.dataset.selectedValue = match ? match.sectionValue : '';
+  renderCopySourceSectionMenu();
 }
 
 async function handleCopySourceBudgetComboInput() {
@@ -3648,12 +3804,13 @@ async function handleCopySourceBudgetComboInput() {
   if (!input) return;
   if (input.dataset.selectedId === budgetId) return;
   input.dataset.selectedId = budgetId;
+  renderCopySourceBudgetMenu();
   await handleCopySourceBudgetChange(budgetId);
 }
 
 async function handleCopySourceBudgetChange(budgetId) {
   const sectionInput = document.getElementById('copySourceSectionCombo');
-  const sectionList = document.getElementById('copySourceSectionOptions');
+  const sectionMenu = document.getElementById('copySourceSectionMenu');
   const status = document.getElementById('copySectionStatus');
   copySectionSourceBudget = null;
   if (sectionInput) {
@@ -3661,7 +3818,8 @@ async function handleCopySourceBudgetChange(budgetId) {
     sectionInput.dataset.selectedValue = '';
     sectionInput.disabled = true;
   }
-  if (sectionList) sectionList.innerHTML = '';
+  if (sectionMenu) sectionMenu.innerHTML = '';
+  closeComboMenu('copySourceSectionMenu');
   if (!budgetId) {
     if (status) status.textContent = '';
     return;
@@ -3924,8 +4082,10 @@ function openCopyToModal(type, idOrIndex) {
   const body = document.getElementById('copyToBody');
   body.innerHTML = `
     <p style="color:var(--text-light);margin-bottom:16px;">Copy <strong>${escapeAttr(copyToPayload.label)}</strong> into another budget. This overwrites the matching default section, or replaces/adds the custom section.</p>
-    <input type="search" id="copyToBudgetCombo" list="copyToBudgetOptions" placeholder="Search or choose target budget..." oninput="handleCopyToBudgetComboInput()" class="customize-header-combo" autocomplete="off">
-    <datalist id="copyToBudgetOptions"></datalist>
+    <div class="search-combo" id="copyToBudgetComboWrap">
+      <input type="search" id="copyToBudgetCombo" placeholder="Search or choose target budget..." oninput="handleCopyToBudgetComboInput()" onfocus="renderCopyToBudgetMenu()" class="customize-header-combo" autocomplete="off">
+      <div class="search-combo-menu" id="copyToBudgetMenu"></div>
+    </div>
     <div id="copyToStatus" style="font-size:12px;color:var(--text-light);margin-top:8px;"></div>
     <div style="display:flex;gap:12px;margin-top:18px;">
       <button type="button" class="btn btn-primary" onclick="copyCurrentSectionToSelectedBudget()" style="flex:1;">Copy To Selected Budget</button>
@@ -3942,22 +4102,48 @@ function closeCopyToModal() {
 }
 
 function filterCopyToBudgets() {
-  const list = document.getElementById('copyToBudgetOptions');
-  if (!list) return;
-  const options = budgets
-    .filter(b => b.id !== customizeBudgetId)
-    .map(b => `<option value="${escapeAttr(budgetOptionLabel(b))}"></option>`)
-    .join('');
-  list.innerHTML = options;
+  renderCopyToBudgetMenu();
 }
 
 function getCopyToBudgetMatch() {
   const input = document.getElementById('copyToBudgetCombo');
   const value = (input?.value || '').trim();
   if (!value) return null;
+  if (input?.dataset.selectedId) {
+    const selected = budgets.find(b => b.id === input.dataset.selectedId && b.id !== customizeBudgetId);
+    if (selected && (budgetOptionLabel(selected) === value || selected.id === value)) return selected;
+    input.dataset.selectedId = '';
+  }
   return budgets
     .filter(b => b.id !== customizeBudgetId)
     .find(b => budgetOptionLabel(b) === value || b.id === value) || null;
+}
+
+function renderCopyToBudgetMenu() {
+  const input = document.getElementById('copyToBudgetCombo');
+  const query = input?.value || '';
+  const entries = budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .filter(b => comboMatches(query, budgetOptionLabel(b), budgetSearchText(b)))
+    .slice(0, 40)
+    .map(b => ({
+      value: b.id,
+      label: budgetOptionLabel(b),
+      meta: b.isCustomized ? 'Customized' : 'Standard',
+      onclick: `selectCopyToBudget('${escapeAttr(b.id)}')`
+    }));
+  renderComboMenu('copyToBudgetMenu', entries, 'No matching budgets');
+}
+
+function selectCopyToBudget(budgetId) {
+  const budget = budgets.find(b => b.id === budgetId && b.id !== customizeBudgetId);
+  const input = document.getElementById('copyToBudgetCombo');
+  if (!budget || !input) return;
+  input.value = budgetOptionLabel(budget);
+  input.dataset.selectedId = budget.id;
+  closeComboMenu('copyToBudgetMenu');
+  const status = document.getElementById('copyToStatus');
+  if (status) status.textContent = `Ready to copy to ${budget.clientName || budget.id}.`;
 }
 
 function handleCopyToBudgetComboInput() {
@@ -3965,7 +4151,14 @@ function handleCopyToBudgetComboInput() {
   if (!input) return;
   const match = getCopyToBudgetMatch();
   input.dataset.selectedId = match?.id || '';
+  renderCopyToBudgetMenu();
 }
+
+document.addEventListener('click', event => {
+  document.querySelectorAll('.search-combo.open').forEach(combo => {
+    if (!combo.contains(event.target)) combo.classList.remove('open');
+  });
+});
 
 async function copyCurrentSectionToSelectedBudget() {
   const input = document.getElementById('copyToBudgetCombo');
@@ -4600,6 +4793,12 @@ function collectCustomizationData() {
   const categoryConfig = {};
   const customCategories = [];
   const layout = document.getElementById('customizeLayoutSections') ? collectCustomizeLayoutData() : { sections: [], itemLayout: {}, customLayout: {} };
+  const existingConfig = customizeBudgetData?.categoryConfig || {};
+  [DEFAULT_CATEGORY_SNAPSHOT_KEY, DEFAULT_EXTRA_SNAPSHOT_KEY, DEFAULT_SECTION_SNAPSHOT_KEY].forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(existingConfig, key)) {
+      categoryConfig[key] = existingConfig[key];
+    }
+  });
 
   document.querySelectorAll('.category-editor').forEach(editor => {
     const catId = editor.dataset.catId;

@@ -185,6 +185,168 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.bestInputDisabled).toBe(true);
   });
 
+  test('copy-from searchable combos select budget and section ids', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: { good: { price: 1000, label: 'Old Good' } }
+      };
+      const sourceBudget = {
+        id: 'source123',
+        clientName: 'Source Residence',
+        builder: 'Gamma Builder',
+        currentState: { propertyType: 'residential', homeSize: 4000 },
+        categoryConfig: {},
+        customCategories: [{ id: 'custom-audio', name: 'Custom Audio', tiers: { good: { enabled: true, label: 'Good', price: 123 } } }]
+      };
+      budgets = [
+        { id: 'target123', clientName: 'Target Residence' },
+        { id: 'source123', clientName: 'Source Residence', builder: 'Gamma Builder' }
+      ];
+      customizeBudgetId = 'target123';
+      catData = {
+        residential_categories: [targetCat],
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      fetch = async url => {
+        if (String(url).endsWith('/api/admin/budgets/source123')) {
+          return { ok: true, json: async () => sourceBudget };
+        }
+        return { ok: false, json: async () => ({}) };
+      };
+
+      document.body.insertAdjacentHTML('beforeend', `
+        <div id="combo-host">
+          ${renderCopySectionControls()}
+          ${renderCategoryEditor(targetCat, null, null, 4000)}
+        </div>
+      `);
+      filterCopySourceBudgets();
+      const budgetInput = document.getElementById('copySourceBudgetCombo');
+      budgetInput.value = 'source';
+      await handleCopySourceBudgetComboInput();
+      const budgetOptionsBefore = [...document.querySelectorAll('#copySourceBudgetMenu .search-combo-option')].map(btn => btn.textContent.trim());
+      document.querySelector('#copySourceBudgetMenu .search-combo-option')?.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const sectionInput = document.getElementById('copySourceSectionCombo');
+      sectionInput.value = 'custom';
+      handleCopySourceSectionComboInput();
+      const sectionOptionsBefore = [...document.querySelectorAll('#copySourceSectionMenu .search-combo-option')].map(btn => btn.textContent.trim());
+      document.querySelector('#copySourceSectionMenu .search-combo-option')?.click();
+
+      return {
+        budgetOptionsBefore,
+        selectedBudgetId: budgetInput.dataset.selectedId,
+        sectionDisabled: sectionInput.disabled,
+        sectionOptionsBefore,
+        selectedSectionValue: sectionInput.dataset.selectedValue,
+        sectionLabel: sectionInput.value
+      };
+    });
+
+    expect(result.budgetOptionsBefore.join(' ')).toContain('Source Residence');
+    expect(result.selectedBudgetId).toBe('source123');
+    expect(result.sectionDisabled).toBe(false);
+    expect(result.sectionOptionsBefore.join(' ')).toContain('Custom Audio');
+    expect(result.selectedSectionValue).toBe('custom:custom-audio');
+    expect(result.sectionLabel).toBe('Custom • Custom Audio');
+  });
+
+  test('copy-to searchable combo selects target budget id', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      budgets = [
+        { id: 'source123', clientName: 'Source Residence' },
+        { id: 'target456', clientName: 'Target Residence', builder: 'Huffman' }
+      ];
+      customizeBudgetId = 'source123';
+      document.body.insertAdjacentHTML('beforeend', `
+        <div id="copyToHost">
+          <div class="search-combo" id="copyToBudgetComboWrap">
+            <input type="search" id="copyToBudgetCombo" oninput="handleCopyToBudgetComboInput()" class="customize-header-combo">
+            <div class="search-combo-menu" id="copyToBudgetMenu"></div>
+          </div>
+          <div id="copyToStatus"></div>
+        </div>
+      `);
+
+      const input = document.getElementById('copyToBudgetCombo');
+      input.value = 'huffman';
+      handleCopyToBudgetComboInput();
+      const optionsBefore = [...document.querySelectorAll('#copyToBudgetMenu .search-combo-option')].map(btn => btn.textContent.trim());
+      document.querySelector('#copyToBudgetMenu .search-combo-option')?.click();
+      return {
+        optionsBefore,
+        selectedId: input.dataset.selectedId,
+        value: input.value,
+        status: document.getElementById('copyToStatus').textContent
+      };
+    });
+
+    expect(result.optionsBefore.join(' ')).toContain('Target Residence');
+    expect(result.selectedId).toBe('target456');
+    expect(result.value).toContain('Target Residence');
+    expect(result.status).toContain('Ready to copy');
+  });
+
+  test('moving a customize item keeps the current scroll position anchored', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const categories = Array.from({ length: 18 }, (_, i) => ({
+        id: `cat-${i}`,
+        section: i < 9 ? 'Infrastructure' : 'Audio',
+        section_id: i < 9 ? 'infrastructure' : 'audio',
+        name: `Category ${i}`,
+        icon: 'C',
+        sizeScale: 0,
+        tiers: { good: { price: 1000 + i, label: `Good ${i}` } }
+      }));
+      customizeBudgetData = {
+        id: 'scroll-budget',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: categories, condo: [] },
+          __defaultSections: {
+            residential: [
+              { id: 'infrastructure', name: 'Infrastructure', order: 0 },
+              { id: 'audio', name: 'Audio', order: 1 }
+            ],
+            condo: []
+          }
+        },
+        customCategories: []
+      };
+      const modal = document.getElementById('customizeModal');
+      modal.classList.add('active');
+      const body = document.getElementById('customizeBody');
+      body.style.height = '520px';
+      renderCustomizeEditor();
+      const scrollArea = document.querySelector('#customizeBody .customize-scroll-area');
+      scrollArea.style.height = '420px';
+      scrollArea.scrollTop = 900;
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const item = document.querySelector('.customize-layout-item[data-item-id="cat-12"]');
+      const beforeTop = Math.round(item.getBoundingClientRect().top);
+      moveCustomizeItem('default', 'cat-12', 1);
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const moved = document.querySelector('.customize-layout-item[data-item-id="cat-12"]');
+      const afterTop = Math.round(moved.getBoundingClientRect().top);
+      return { beforeTop, afterTop, delta: Math.abs(afterTop - beforeTop) };
+    });
+
+    expect(result.delta).toBeLessThanOrEqual(2);
+  });
+
   test('swaps adjacent standard category tiers including labels, price, features, brands, and enabled state', async ({ page }) => {
     const result = await page.evaluate(() => {
       const cat = {
