@@ -734,6 +734,22 @@
       justify-content: flex-end;
     }
 
+    .customize-item-header-control {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-light);
+      white-space: nowrap;
+    }
+
+    .customize-item-move-buttons {
+      display: inline-grid;
+      grid-template-columns: 34px 34px;
+      gap: 6px;
+      align-items: center;
+    }
+
     .is-hidden,
     .tier-swap-btn.is-hidden {
       visibility: hidden;
@@ -815,16 +831,57 @@
       }
 
       .category-editor-actions {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
         justify-content: stretch;
+        align-items: center;
       }
 
       .category-editor-actions > * {
-        flex: 1 1 44%;
+        min-width: 0;
       }
 
       .category-editor-actions .btn,
       .category-editor-actions select {
-        min-height: 38px;
+        min-height: 44px;
+      }
+
+      .customize-item-header-control {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        white-space: normal;
+      }
+
+      .customize-item-header-control select {
+        width: 100%;
+        max-width: none !important;
+      }
+
+      .customize-item-move-buttons {
+        grid-template-columns: 44px 44px;
+        gap: 8px;
+      }
+
+      .customize-item-move-buttons .btn {
+        width: 44px;
+        padding-inline: 0;
+      }
+
+      .category-editor-actions > .btn {
+        width: 100%;
+      }
+
+      .category-editor-actions > label:not(.customize-item-header-control) {
+        min-height: 44px;
+        justify-content: center;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0 10px;
       }
 
       .custom-category-header {
@@ -3212,15 +3269,17 @@ function renderCustomizeItemControls(item, layout, itemIndex, itemCount) {
     .join('');
 
   return `
-    <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-light);white-space:nowrap;">
+    <label class="customize-item-header-control">
       Header
       <select class="customize-item-section" onchange="changeCustomizeItemSection(this)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;max-width:190px;">
         ${sectionOptions}
         <option value="__new__">+ New Header...</option>
       </select>
     </label>
-    <button type="button" class="btn btn-secondary btn-small ${itemIndex > 0 ? '' : 'is-hidden'}" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up" ${itemIndex > 0 ? '' : 'disabled'}>↑</button>
-    <button type="button" class="btn btn-secondary btn-small ${itemIndex < itemCount - 1 ? '' : 'is-hidden'}" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down" ${itemIndex < itemCount - 1 ? '' : 'disabled'}>↓</button>
+    <span class="customize-item-move-buttons">
+      <button type="button" class="btn btn-secondary btn-small ${itemIndex > 0 ? '' : 'is-hidden'}" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up" ${itemIndex > 0 ? '' : 'disabled'}>↑</button>
+      <button type="button" class="btn btn-secondary btn-small ${itemIndex < itemCount - 1 ? '' : 'is-hidden'}" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down" ${itemIndex < itemCount - 1 ? '' : 'disabled'}>↓</button>
+    </span>
   `;
 }
 
