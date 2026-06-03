@@ -3190,6 +3190,7 @@ async function handleNewBudgetSubmit(e) {
 let customizeBudgetId = null;
 let customizeBudgetData = null;
 let customizeDraftTimer = null;
+let customizeDirty = false;
 let copySectionSourceBudget = null;
 let copyToPayload = null;
 
@@ -3206,18 +3207,12 @@ async function openCustomizeModal(budgetId) {
     if (!res.ok) throw new Error('Failed to load budget');
     customizeBudgetData = await res.json();
 
-    const draft = loadCustomizeDraft(budgetId);
-    if (draft && confirm(`Restore unsaved customization draft from ${formatDateTime(draft.savedAt)}?`)) {
-      customizeBudgetData.categoryConfig = {
-        ...(customizeBudgetData.categoryConfig || {}),
-        ...(draft.categoryConfig || {})
-      };
-      customizeBudgetData.customCategories = draft.customCategories || [];
-    }
+    clearCustomizeDraft(budgetId);
     
     document.getElementById('customizeTitle').textContent = customizeBudgetData.clientName || budgetId;
     
     renderCustomizeEditor();
+    customizeDirty = false;
     document.getElementById('customizeModal').classList.add('active');
   } catch (err) {
     console.error('Load budget error:', err);
@@ -3225,13 +3220,18 @@ async function openCustomizeModal(budgetId) {
   }
 }
 
-function closeCustomizeModal() {
+function closeCustomizeModal(force = false) {
+  if (!force && customizeDirty && !confirm('Are you sure you want to close without saving?')) {
+    return false;
+  }
   if (customizeDraftTimer) clearTimeout(customizeDraftTimer);
   document.getElementById('customizeModal').classList.remove('active');
   customizeBudgetId = null;
   customizeBudgetData = null;
+  customizeDirty = false;
   copySectionSourceBudget = null;
   copyToPayload = null;
+  return true;
 }
 
 function customizeDraftKey(budgetId = customizeBudgetId) {
@@ -3254,23 +3254,12 @@ function clearCustomizeDraft(budgetId = customizeBudgetId) {
 
 function queueCustomizeDraftSave() {
   if (!customizeBudgetId || !document.getElementById('customizeModal')?.classList.contains('active')) return;
+  customizeDirty = true;
   if (customizeDraftTimer) clearTimeout(customizeDraftTimer);
-  customizeDraftTimer = setTimeout(saveCustomizeDraftNow, 500);
 }
 
 function saveCustomizeDraftNow() {
-  if (!customizeBudgetId) return;
-  try {
-    const draft = {
-      ...collectCustomizationData(),
-      savedAt: new Date().toISOString()
-    };
-    localStorage.setItem(customizeDraftKey(), JSON.stringify(draft));
-    const status = document.getElementById('customizeDraftStatus');
-    if (status) status.textContent = `Draft saved ${formatRelative(draft.savedAt)}`;
-  } catch (err) {
-    console.warn('Customize draft save failed:', err);
-  }
+  return;
 }
 
 function getCustomizeLayoutModel(defaultCategories, customCategories, existingConfig) {
@@ -3418,7 +3407,6 @@ function renderCustomizeEditor() {
         • Sqft locked at: <strong>${sqft.toLocaleString()}</strong><br>
         • Property type: <strong>${propertyType}</strong><br>
         • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions<br>
-        <span id="customizeDraftStatus" style="color:var(--text-light);font-size:12px;">Draft autosave is on</span>
       </div>
 
       ${renderCopySectionControls()}
@@ -3444,7 +3432,6 @@ function renderCustomizeEditor() {
 
   body.oninput = queueCustomizeDraftSave;
   body.onchange = queueCustomizeDraftSave;
-  filterCopySourceBudgets();
   syncCustomizeLayoutSelects();
 }
 
@@ -4092,7 +4079,6 @@ function openCopyToModal(type, idOrIndex) {
       <button type="button" class="btn btn-secondary" onclick="closeCopyToModal()">Cancel</button>
     </div>
   `;
-  filterCopyToBudgets();
   document.getElementById('copyToModal').classList.add('active');
 }
 
@@ -4904,7 +4890,8 @@ async function saveCustomization() {
     if (res.ok && data.success) {
       showToast('✓ Customization saved');
       clearCustomizeDraft();
-      closeCustomizeModal();
+      customizeDirty = false;
+      closeCustomizeModal(true);
       loadBudgets();
     } else {
       showToast('❌ ' + (data.error || 'Failed to save'));

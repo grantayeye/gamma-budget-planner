@@ -185,6 +185,167 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.bestInputDisabled).toBe(true);
   });
 
+  test('customize open ignores stale local drafts and keeps search menus closed', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: { good: { price: 1000, label: 'Good' } }
+      };
+      catData = {
+        residential_categories: [targetCat],
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      budgets = [
+        { id: 'draft123', clientName: 'Draft Test' },
+        { id: 'source123', clientName: 'Source Residence' }
+      ];
+      localStorage.setItem('budgetCustomizeDraft:draft123', JSON.stringify({
+        savedAt: '2026-06-03T15:19:00.000Z',
+        customCategories: [{ id: 'stale-custom', name: 'Stale Custom', tiers: {} }],
+        categoryConfig: { networking: { hidden: true } }
+      }));
+      let confirmCalled = false;
+      confirm = () => {
+        confirmCalled = true;
+        return true;
+      };
+      fetch = async url => {
+        if (String(url).endsWith('/api/admin/budgets/draft123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'draft123',
+              clientName: 'Draft Test',
+              sqftLocked: 4000,
+              propertyTypeLocked: 'residential',
+              currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+              categoryConfig: {
+                __defaultCategories: { residential: [targetCat], condo: [] },
+                __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] }
+              },
+              customCategories: []
+            })
+          };
+        }
+        return { ok: false, json: async () => ({}) };
+      };
+
+      await openCustomizeModal('draft123');
+      return {
+        active: document.getElementById('customizeModal').classList.contains('active'),
+        confirmCalled,
+        draftExists: !!localStorage.getItem('budgetCustomizeDraft:draft123'),
+        customCount: customizeBudgetData.customCategories.length,
+        copySourceOpen: document.getElementById('copySourceBudgetComboWrap')?.classList.contains('open') || false,
+        openMenus: document.querySelectorAll('.search-combo.open').length
+      };
+    });
+
+    expect(result.active).toBe(true);
+    expect(result.confirmCalled).toBe(false);
+    expect(result.draftExists).toBe(false);
+    expect(result.customCount).toBe(0);
+    expect(result.copySourceOpen).toBe(false);
+    expect(result.openMenus).toBe(0);
+  });
+
+  test('customize close only prompts when unsaved changes exist', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: { good: { price: 1000, label: 'Good' } }
+      };
+      customizeBudgetId = 'close123';
+      customizeBudgetData = {
+        id: 'close123',
+        clientName: 'Close Test',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+      const modal = document.getElementById('customizeModal');
+      modal.classList.add('active');
+
+      const messages = [];
+      confirm = message => {
+        messages.push(message);
+        return false;
+      };
+
+      const cleanCloseResult = closeCustomizeModal();
+      const cleanClosed = !modal.classList.contains('active');
+      customizeBudgetId = 'close123';
+      customizeBudgetData = {
+        id: 'close123',
+        clientName: 'Close Test',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+      modal.classList.add('active');
+      queueCustomizeDraftSave();
+      const dirtyCloseResult = closeCustomizeModal();
+      const stillOpenAfterCancel = modal.classList.contains('active');
+      const draftExists = !!localStorage.getItem('budgetCustomizeDraft:close123');
+
+      confirm = message => {
+        messages.push(message);
+        return true;
+      };
+      const confirmedCloseResult = closeCustomizeModal();
+      const closedAfterConfirm = !modal.classList.contains('active');
+
+      return {
+        cleanCloseResult,
+        cleanClosed,
+        dirtyCloseResult,
+        stillOpenAfterCancel,
+        confirmedCloseResult,
+        closedAfterConfirm,
+        messages,
+        draftExists
+      };
+    });
+
+    expect(result.cleanCloseResult).toBe(true);
+    expect(result.cleanClosed).toBe(true);
+    expect(result.dirtyCloseResult).toBe(false);
+    expect(result.stillOpenAfterCancel).toBe(true);
+    expect(result.confirmedCloseResult).toBe(true);
+    expect(result.closedAfterConfirm).toBe(true);
+    expect(result.messages).toEqual([
+      'Are you sure you want to close without saving?',
+      'Are you sure you want to close without saving?'
+    ]);
+    expect(result.draftExists).toBe(false);
+  });
+
   test('copy-from searchable combos select budget and section ids', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const targetCat = {
