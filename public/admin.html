@@ -3694,18 +3694,32 @@ function isTierRowActive(row, enabledSelector) {
   return !!checkbox && (checkbox.checked || checkbox.disabled);
 }
 
+function getAdjacentActiveTierKey(tierKey, activeState, direction) {
+  const activeTiers = TIER_ORDER.filter(key => activeState[key]);
+  const index = activeTiers.indexOf(tierKey);
+  if (index < 0) return null;
+  return activeTiers[index + direction] || null;
+}
+
+function getAdjacentActiveTierKeyFromEditor(editor, rowSelector, enabledSelector, tierKey, direction) {
+  if (!editor) return null;
+  const rowsByTier = new Map(Array.from(editor.querySelectorAll(rowSelector)).map(row => [row.dataset.tier, row]));
+  const activeState = Object.fromEntries(TIER_ORDER.map(key => [key, isTierRowActive(rowsByTier.get(key), enabledSelector)]));
+  return getAdjacentActiveTierKey(tierKey, activeState, direction);
+}
+
 function refreshTierSwapButtons(editor, rowSelector, enabledSelector) {
   if (!editor) return;
   const rowsByTier = new Map(Array.from(editor.querySelectorAll(rowSelector)).map(row => [row.dataset.tier, row]));
-  TIER_ORDER.forEach((tierKey, index) => {
+  const activeState = Object.fromEntries(TIER_ORDER.map(key => [key, isTierRowActive(rowsByTier.get(key), enabledSelector)]));
+  TIER_ORDER.forEach(tierKey => {
     const row = rowsByTier.get(tierKey);
     if (!row) return;
-    const currentActive = isTierRowActive(row, enabledSelector);
     row.querySelectorAll('.tier-swap-btn').forEach(button => {
       const direction = Number(button.dataset.direction || 0);
-      const neighborTier = TIER_ORDER[index + direction];
+      const neighborTier = getAdjacentActiveTierKey(tierKey, activeState, direction);
       const neighborRow = rowsByTier.get(neighborTier);
-      const canSwap = !!neighborRow && currentActive && isTierRowActive(neighborRow, enabledSelector);
+      const canSwap = !!neighborRow;
       button.classList.toggle('is-hidden', !canSwap);
       button.style.visibility = canSwap ? 'visible' : 'hidden';
       button.style.pointerEvents = canSwap ? '' : 'none';
@@ -4014,10 +4028,9 @@ function swapTierRows(rowA, rowB, selectors) {
 }
 
 function swapTierWithNeighbor(catId, tierKey, direction) {
-  const idx = TIER_ORDER.indexOf(tierKey);
-  const otherTier = TIER_ORDER[idx + direction];
-  if (!otherTier) return;
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
+  const otherTier = getAdjacentActiveTierKeyFromEditor(editor, '.tier-row', '.tier-enabled', tierKey, direction);
+  if (!otherTier) return;
   swapTierRows(
     editor?.querySelector(`.tier-row[data-tier="${tierKey}"]`),
     editor?.querySelector(`.tier-row[data-tier="${otherTier}"]`),
@@ -4033,10 +4046,9 @@ function swapTierWithNeighbor(catId, tierKey, direction) {
 }
 
 function swapCustomTierWithNeighbor(index, tierKey, direction) {
-  const idx = TIER_ORDER.indexOf(tierKey);
-  const otherTier = TIER_ORDER[idx + direction];
-  if (!otherTier) return;
   const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  const otherTier = getAdjacentActiveTierKeyFromEditor(editor, '.cc-tier-row', '.cc-tier-enabled', tierKey, direction);
+  if (!otherTier) return;
   swapTierRows(
     editor?.querySelector(`.cc-tier-row[data-tier="${tierKey}"]`),
     editor?.querySelector(`.cc-tier-row[data-tier="${otherTier}"]`),
@@ -4129,10 +4141,8 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
           const features = tierOverride.features ?? (defaultTier?.features || []);
           const brands = tierOverride.brands ?? (defaultTier?.brands || '');
           
-          const prevTier = allTiers[allTiers.indexOf(tierKey) - 1];
-          const nextTier = allTiers[allTiers.indexOf(tierKey) + 1];
-          const showUp = !!(tierEnabledState[tierKey] && prevTier && tierEnabledState[prevTier]);
-          const showDown = !!(tierEnabledState[tierKey] && nextTier && tierEnabledState[nextTier]);
+          const showUp = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, -1);
+          const showDown = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, 1);
 
           return `
             <div class="tier-row customize-tier-row" data-tier="${tierKey}"
@@ -4198,10 +4208,8 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
           const features = tier.features || [];
           const brands = tier.brands || '';
           
-          const prevTier = allTiers[allTiers.indexOf(tierKey) - 1];
-          const nextTier = allTiers[allTiers.indexOf(tierKey) + 1];
-          const showUp = !!(tierEnabledState[tierKey] && prevTier && tierEnabledState[prevTier]);
-          const showDown = !!(tierEnabledState[tierKey] && nextTier && tierEnabledState[nextTier]);
+          const showUp = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, -1);
+          const showDown = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, 1);
 
           return `
             <div class="cc-tier-row customize-tier-row" data-tier="${tierKey}"

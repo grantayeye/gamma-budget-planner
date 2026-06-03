@@ -194,6 +194,7 @@ test.describe('Admin copy/customization tools', () => {
         sizeScale: 0,
         tiers: {
           good: { price: 1000, label: 'Good Original', features: ['good feature'], brands: 'Good Brand' },
+          standard: { price: 1500, label: 'Standard Original', features: ['standard feature'], brands: 'Standard Brand' },
           better: { price: 2000, label: 'Better Original', features: ['better feature'], brands: 'Better Brand' }
         }
       };
@@ -215,14 +216,72 @@ test.describe('Admin copy/customization tools', () => {
       };
     });
 
-    expect(result.goodEnabled).toBe(false);
-    expect(result.goodLabel).toBe('Standard');
-    expect(result.goodPrice).toBe('');
+    expect(result.goodEnabled).toBe(true);
+    expect(result.goodLabel).toBe('Standard Original');
+    expect(result.goodPrice).toBe('1500');
+    expect(result.goodFeatures).toEqual(['standard feature']);
+    expect(result.goodBrands).toBe('Standard Brand');
     expect(result.standardEnabled).toBe(true);
     expect(result.standardLabel).toBe('Good Original');
     expect(result.standardPrice).toBe('1000');
     expect(result.standardFeatures).toEqual(['good feature']);
     expect(result.standardBrands).toBe('Good Brand');
+  });
+
+  test('skips disabled standard tier when showing and applying swap arrows', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const cat = {
+        id: 'skip-disabled-standard',
+        name: 'Skip Disabled Standard',
+        icon: 'S',
+        sizeScale: 0,
+        tiers: {
+          good: { price: 1000, label: 'Good Original', features: ['good feature'], brands: 'Good Brand' },
+          better: { price: 2000, label: 'Better Original', features: ['better feature'], brands: 'Better Brand' },
+          best: { price: 3000, label: 'Best Original', features: ['best feature'], brands: 'Best Brand' }
+        }
+      };
+      const override = {
+        tiers: {
+          standard: { enabled: false, label: 'Standard', price: 0 }
+        }
+      };
+      document.body.insertAdjacentHTML('beforeend', `<div id="skip-disabled-target">${renderCategoryEditor(cat, override, null, 4000)}</div>`);
+      const editor = document.querySelector('.category-editor[data-cat-id="skip-disabled-standard"]');
+      const visibilityBefore = Object.fromEntries(TIER_ORDER.flatMap(tier => {
+        const row = editor.querySelector(`.tier-row[data-tier="${tier}"]`);
+        return Array.from(row.querySelectorAll('.tier-swap-btn')).map(btn => [`${tier}:${btn.dataset.direction}`, getComputedStyle(btn).visibility]);
+      }));
+
+      swapTierWithNeighbor('skip-disabled-standard', 'good', 1);
+      const goodRow = editor.querySelector('.tier-row[data-tier="good"]');
+      const standardRow = editor.querySelector('.tier-row[data-tier="standard"]');
+      const betterRow = editor.querySelector('.tier-row[data-tier="better"]');
+      return {
+        visibilityBefore,
+        goodLabel: goodRow.querySelector('.tier-label').value,
+        goodPrice: goodRow.querySelector('.tier-price').value,
+        standardEnabled: standardRow.querySelector('.tier-enabled').checked,
+        betterLabel: betterRow.querySelector('.tier-label').value,
+        betterPrice: betterRow.querySelector('.tier-price').value,
+        betterFeatures: JSON.parse(betterRow.dataset.features),
+        betterBrands: betterRow.dataset.brands
+      };
+    });
+
+    expect(result.visibilityBefore['good:1']).toBe('visible');
+    expect(result.visibilityBefore['standard:-1']).toBe('hidden');
+    expect(result.visibilityBefore['standard:1']).toBe('hidden');
+    expect(result.visibilityBefore['better:-1']).toBe('visible');
+    expect(result.visibilityBefore['better:1']).toBe('visible');
+    expect(result.visibilityBefore['best:-1']).toBe('visible');
+    expect(result.goodLabel).toBe('Better Original');
+    expect(result.goodPrice).toBe('2000');
+    expect(result.standardEnabled).toBe(false);
+    expect(result.betterLabel).toBe('Good Original');
+    expect(result.betterPrice).toBe('1000');
+    expect(result.betterFeatures).toEqual(['good feature']);
+    expect(result.betterBrands).toBe('Good Brand');
   });
 
   test('swaps adjacent custom category tiers', async ({ page }) => {
@@ -287,9 +346,11 @@ test.describe('Admin copy/customization tools', () => {
       const standardRow = editor.querySelector('.cc-tier-row[data-tier="standard"]');
       const goodDown = editor.querySelector('.cc-tier-row[data-tier="good"] .tier-swap-btn[data-direction="1"]');
       const standardUp = standardRow.querySelector('.tier-swap-btn[data-direction="-1"]');
+      const betterUp = editor.querySelector('.cc-tier-row[data-tier="better"] .tier-swap-btn[data-direction="-1"]');
       const before = {
         goodDown: getComputedStyle(goodDown).visibility,
-        standardUp: getComputedStyle(standardUp).visibility
+        standardUp: getComputedStyle(standardUp).visibility,
+        betterUp: getComputedStyle(betterUp).visibility
       };
 
       standardRow.querySelector('.cc-tier-enabled').checked = true;
@@ -310,8 +371,9 @@ test.describe('Admin copy/customization tools', () => {
       return { before, after };
     });
 
-    expect(result.before.goodDown).toBe('hidden');
+    expect(result.before.goodDown).toBe('visible');
     expect(result.before.standardUp).toBe('hidden');
+    expect(result.before.betterUp).toBe('visible');
     expect(result.after.goodDownClass).not.toContain('is-hidden');
     expect(result.after.standardUpClass).not.toContain('is-hidden');
     expect(result.after.goodDownStyle).toBe('visible');
