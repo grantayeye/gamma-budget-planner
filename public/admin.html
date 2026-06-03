@@ -1513,8 +1513,8 @@
           style="flex:1;min-width:240px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);font-family:inherit;font-size:13px;"
         />
         <div id="statusFilters" style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="status-filter-chip active" data-status="all" onclick="setStatusFilter('all')">All</button>
-          <button class="status-filter-chip" data-status="active" onclick="setStatusFilter('active')">Active</button>
+          <button class="status-filter-chip" data-status="all" onclick="setStatusFilter('all')">All</button>
+          <button class="status-filter-chip active" data-status="active" onclick="setStatusFilter('active')">Active</button>
           <button class="status-filter-chip" data-status="won" onclick="setStatusFilter('won')">Won</button>
           <button class="status-filter-chip" data-status="lost" onclick="setStatusFilter('lost')">Lost</button>
           <button class="status-filter-chip" data-status="expired" onclick="setStatusFilter('expired')">Expired</button>
@@ -2067,7 +2067,6 @@ async function loadBudgets() {
     
     budgets = await res.json();
     renderBudgets();
-    updateStats();
   } catch (err) {
     console.error('Load budgets error:', err);
     showToast('Failed to load budgets');
@@ -2075,7 +2074,7 @@ async function loadBudgets() {
 }
 
 let budgetSort = { column: 'lastClientActivity', direction: 'desc' };
-let budgetStatusFilter = 'all';
+let budgetStatusFilter = 'active';
 let budgetHideExpired = true;
 
 function normalizeBudgetStatus(status) {
@@ -2191,6 +2190,7 @@ function renderBudgets() {
   });
 
   if (rows.length === 0) {
+    updateStats(rows);
     tbody.innerHTML = `
       <tr>
         <td colspan="8" class="empty-state">
@@ -2292,17 +2292,19 @@ function renderBudgets() {
       `;
     }).join('');
   }
+
+  updateStats(rows);
 }
 
-function updateStats() {
-  const totalBudgets = budgets.length;
-  const totalViews = budgets.reduce((sum, b) => sum + (b.viewCount || 0), 0);
-  const totalValue = budgets.reduce((sum, b) => sum + (b.currentTotal || 0), 0);
+function updateStats(rows = budgets) {
+  const totalBudgets = rows.length;
+  const totalViews = rows.reduce((sum, b) => sum + (b.viewCount || 0), 0);
+  const totalValue = rows.reduce((sum, b) => sum + (b.currentTotal || 0), 0);
   
   // Count budgets created this week
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-  const weekBudgets = budgets.filter(b => new Date(b.created) > oneWeekAgo).length;
+  const weekBudgets = rows.filter(b => new Date(b.created) > oneWeekAgo).length;
   
   document.getElementById('statTotalBudgets').textContent = totalBudgets;
   document.getElementById('statTotalViews').textContent = totalViews;
