@@ -640,6 +640,7 @@ main {
   font-family: 'Poppins', sans-serif;
   cursor: pointer;
   transition: var(--transition);
+  min-height: 44px;
 }
 .btn-primary {
   background: var(--accent);
@@ -769,7 +770,7 @@ main {
 
 /* RESPONSIVE */
 @media (max-width: 600px) {
-  body { padding-bottom: 140px; }
+  body { padding-bottom: 170px; }
   header { padding: 14px 16px; }
   header .header-inner {
     flex-wrap: nowrap;
@@ -784,8 +785,13 @@ main {
   header .total-label { font-size: 9px; letter-spacing: 0.5px; }
   header .total-amount { font-size: 20px; }
   .project-details, .presets, .extras-section, .pm-section { padding: 22px 18px; }
+  main { padding: 20px 14px; }
   .category-header { padding: 16px 18px; }
   .category-body { padding: 0 18px 18px; }
+  .category-icon { width: 48px; height: 48px; }
+  .category-name { font-size: 16px; }
+  .category-price { min-width: 82px; font-size: 18px; }
+  .category-price.no-selection { font-size: 13px; }
   .form-grid { grid-template-columns: 1fr; }
   .summary-bar { 
     padding: 12px 16px; 
@@ -796,15 +802,41 @@ main {
   .summary-actions { 
     width: 100%; 
     display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px; 
   }
   .summary-actions .btn { 
+    min-height: 44px;
     padding: 10px 8px; 
-    font-size: 11px; 
+    font-size: 12px;
     white-space: nowrap;
   }
   .pm-row { flex-direction: column; align-items: flex-start; }
+  .modal-overlay {
+    padding: 12px;
+    align-items: stretch;
+  }
+  .modal {
+    border-radius: 16px;
+    max-height: calc(100dvh - 24px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 18px 20px;
+  }
+  .modal-body {
+    padding: 20px;
+    overflow: auto;
+  }
+  .modal-footer {
+    padding: 14px 20px;
+    flex-wrap: wrap;
+  }
+  .summary-table {
+    min-width: 560px;
+  }
 }
 </style>
 </head>
@@ -986,8 +1018,10 @@ main {
         // Update CONFIGS references
         CONFIGS.residential.categories = RESIDENTIAL_CATEGORIES;
         CONFIGS.residential.extras = RESIDENTIAL_EXTRAS;
+        CONFIGS.residential.sections = d.residential_sections || [];
         CONFIGS.condo.categories = CONDO_CATEGORIES;
         CONFIGS.condo.extras = CONDO_EXTRAS;
+        CONFIGS.condo.sections = d.condo_sections || [];
         console.log('[Budget] Loaded live category data from API');
       }
     }
@@ -1134,6 +1168,89 @@ let propertyTypeLocked = null;
 const TIER_ORDER = ['good', 'standard', 'better', 'best'];
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
+const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
+
+function slugifySectionId(value) {
+  const slug = String(value || 'other')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || 'other';
+}
+
+function uniqueSectionId(baseId, usedIds) {
+  const base = baseId || 'section';
+  let id = base;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeSectionList(categories = [], sections = []) {
+  const usedIds = new Set();
+  const normalized = [];
+  const byName = new Map();
+  const byId = new Map();
+
+  (sections || []).forEach((section, index) => {
+    const name = String(section?.name || section?.label || section?.id || 'Other').trim() || 'Other';
+    const id = uniqueSectionId(slugifySectionId(section?.id || name), usedIds);
+    const item = { id, name, order: Number.isFinite(Number(section?.order)) ? Number(section.order) : index };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  (categories || []).forEach(cat => {
+    const explicitId = cat?.section_id || cat?.sectionId;
+    if (explicitId && byId.has(explicitId)) return;
+    const name = String(cat?.section || cat?.sectionName || explicitId || 'Other').trim() || 'Other';
+    if (byName.has(name.toLowerCase())) return;
+    const id = uniqueSectionId(slugifySectionId(explicitId || name), usedIds);
+    const item = { id, name, order: normalized.length };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  return normalized.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function normalizeCategoryList(categories = [], sections = []) {
+  const normalizedSections = normalizeSectionList(categories, sections);
+  const byName = new Map(normalizedSections.map(section => [section.name.toLowerCase(), section]));
+  const byId = new Map(normalizedSections.map(section => [section.id, section]));
+  const nextOrderBySection = new Map();
+
+  const normalizedCategories = (categories || []).map((cat, index) => {
+    const copy = JSON.parse(JSON.stringify(cat || {}));
+    let section = byId.get(copy.section_id || copy.sectionId);
+    if (!section) {
+      const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';
+      section = byName.get(name.toLowerCase()) || normalizedSections[0] || { id: 'other', name: 'Other', order: 0 };
+    }
+    const nextOrder = nextOrderBySection.get(section.id) || 0;
+    nextOrderBySection.set(section.id, nextOrder + 1);
+    copy.section_id = section.id;
+    copy.sectionId = section.id;
+    copy.section = section.name;
+    if (!Number.isFinite(Number(copy.sortOrder))) copy.sortOrder = nextOrder;
+    if (!Number.isFinite(Number(copy.order))) copy.order = index;
+    return copy;
+  });
+
+  return { categories: normalizedCategories, sections: normalizedSections };
+}
+
+function normalizeStoredSectionId(section) {
+  const raw = section?.section_id || section?.sectionId || section?.id || section?.name || 'other';
+  return slugifySectionId(raw);
+}
 
 function orderedTierKeys(tiers) {
   if (!tiers) return [];
@@ -1148,8 +1265,9 @@ function snapshotForPropertyType(snapshot, propertyType) {
 }
 
 function baseCategoriesForBudget() {
-  return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
+  const categories = snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
     || CONFIGS[state.propertyType].categories;
+  return normalizeCategoryList(categories, baseSectionsForBudget()).categories;
 }
 
 function baseExtrasForBudget() {
@@ -1157,13 +1275,22 @@ function baseExtrasForBudget() {
     || CONFIGS[state.propertyType].extras;
 }
 
+function baseSectionsForBudget() {
+  const categories = snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
+    || CONFIGS[state.propertyType].categories;
+  return snapshotForPropertyType(customCategoryConfig?.[DEFAULT_SECTION_SNAPSHOT_KEY], state.propertyType)
+    || CONFIGS[state.propertyType].sections
+    || normalizeSectionList(categories);
+}
+
 // Active data accessors — everything uses these
 function CATEGORIES() {
   const base = baseCategoriesForBudget();
+  const layoutConfig = customCategoryConfig?.__layout || {};
   
   // If not customized, return defaults
   if (!isCustomizedBudget || !customCategoryConfig) {
-    return base;
+    return applyCategoryLayout(base, layoutConfig);
   }
   
   // Apply custom config
@@ -1180,6 +1307,12 @@ function CATEGORIES() {
     
     // Clone the category
     const customCat = JSON.parse(JSON.stringify(cat));
+    if (override?.section_id || override?.sectionId) {
+      customCat.section_id = override.section_id || override.sectionId;
+      customCat.sectionId = override.section_id || override.sectionId;
+    }
+    if (override?.section) customCat.section = override.section;
+    if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
     
     // Apply tier overrides
     if (override && override.tiers) {
@@ -1240,18 +1373,41 @@ function CATEGORIES() {
       
       result.push({
         id: cc.id,
-        section: 'Custom',
+        section_id: cc.section_id || cc.sectionId || slugifySectionId(cc.section || 'Custom'),
+        sectionId: cc.section_id || cc.sectionId || slugifySectionId(cc.section || 'Custom'),
+        section: cc.section || 'Custom',
         name: cc.name,
         icon: cc.icon || '📦',
         desc: cc.desc || '',
         sizeScale: 0, // No scaling for custom
         isCustomized: true,
+        sortOrder: cc.sortOrder,
         tiers
       });
     });
   }
   
-  return result;
+  return applyCategoryLayout(result, layoutConfig);
+}
+
+function applyCategoryLayout(categories, layoutConfig = {}) {
+  const normalized = normalizeCategoryList(categories, baseSectionsForBudget());
+  const sectionOrder = new Map(normalized.sections.map((section, index) => [section.id, index]));
+  (layoutConfig.sections || []).forEach((section, index) => {
+    const id = normalizeStoredSectionId(section);
+    sectionOrder.set(id, Number.isFinite(Number(section.order)) ? Number(section.order) : index);
+  });
+  return categories.slice().sort((a, b) => {
+    const sectionAId = a.section_id || a.sectionId || slugifySectionId(a.section);
+    const sectionBId = b.section_id || b.sectionId || slugifySectionId(b.section);
+    const sectionA = sectionOrder.has(sectionAId) ? sectionOrder.get(sectionAId) : Number.MAX_SAFE_INTEGER;
+    const sectionB = sectionOrder.has(sectionBId) ? sectionOrder.get(sectionBId) : Number.MAX_SAFE_INTEGER;
+    if (sectionA !== sectionB) return sectionA - sectionB;
+    const orderA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    return 0;
+  });
 }
 
 function EXTRAS() {
@@ -1340,8 +1496,6 @@ function getCategoryPrice(cat, tier) {
 // ============================================================
 // RENDERING
 // ============================================================
-const SECTION_ORDER = ['Infrastructure', 'Audio', 'Video', 'Control & Automation', 'Lighting & Shades', 'Security', 'Custom'];
-
 function renderCategories() {
   const categories = CATEGORIES();
   if (categories.length > 0) {
@@ -1358,12 +1512,11 @@ function renderCategories() {
     sections[section].push(cat);
   });
   
-  // Render in defined order — known sections first, then any custom sections
-  const knownOrder = SECTION_ORDER.filter(s => s !== 'Custom');
-  const allSections = [
-    ...knownOrder,
-    ...Object.keys(sections).filter(s => !knownOrder.includes(s))
-  ];
+  const allSections = [];
+  categories.forEach(cat => {
+    const section = cat.section || 'Other';
+    if (!allSections.includes(section)) allSections.push(section);
+  });
 
   allSections.forEach(sectionName => {
     const cats = sections[sectionName];

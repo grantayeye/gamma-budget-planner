@@ -156,6 +156,10 @@ function preserveBudgetAccess(nextState = {}, existingState = {}) {
 
 const VERSION_META_KEY = '__versionMeta';
 
+function deepClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
 function stripVersionMeta(state = {}) {
   if (!state || typeof state !== 'object') return state;
   const { [VERSION_META_KEY]: _meta, ...cleanState } = state;
@@ -660,6 +664,10 @@ const schemas = {
     pricingMode: z.enum(['recalculate', 'preserve']).optional()
   }),
 
+  cloneBudget: z.object({
+    clientName: z.string().max(200).optional().nullable()
+  }),
+
   createLink: z.object({
     config: z.string().min(1).max(5000),
     clientName: z.string().max(200).optional().nullable(),
@@ -688,33 +696,131 @@ function loadStaticCategoryData() {
   const sandbox = { JSON, Object, Math, Array, console };
   vm.createContext(sandbox);
   vm.runInContext(modCode, sandbox);
-  return {
+  return normalizeCategoryDefaults({
     residential_categories: sandbox.RESIDENTIAL_CATEGORIES,
     residential_extras: sandbox.RESIDENTIAL_EXTRAS,
     condo_categories: sandbox.CONDO_CATEGORIES,
     condo_extras: sandbox.CONDO_EXTRAS,
     base_sqft: 4000
-  };
+  });
 }
 
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
+const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
 
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function slugifySectionId(value) {
+  const slug = String(value || 'other')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || 'other';
+}
+
+function uniqueSectionId(baseId, usedIds) {
+  const base = baseId || 'section';
+  let id = base;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeSectionList(categories = [], sections = []) {
+  const usedIds = new Set();
+  const normalized = [];
+  const byName = new Map();
+  const byId = new Map();
+
+  (sections || []).forEach((section, index) => {
+    const name = String(section?.name || section?.label || section?.id || 'Other').trim() || 'Other';
+    const id = uniqueSectionId(slugifySectionId(section?.id || name), usedIds);
+    const item = {
+      id,
+      name,
+      order: Number.isFinite(Number(section?.order)) ? Number(section.order) : index
+    };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  (categories || []).forEach(cat => {
+    const explicitId = cat?.section_id || cat?.sectionId;
+    if (explicitId && byId.has(explicitId)) return;
+    const name = String(cat?.section || cat?.sectionName || explicitId || 'Other').trim() || 'Other';
+    if (byName.has(name.toLowerCase())) return;
+    const id = uniqueSectionId(slugifySectionId(explicitId || name), usedIds);
+    const item = { id, name, order: normalized.length };
+    normalized.push(item);
+    byName.set(name.toLowerCase(), item);
+    byId.set(id, item);
+  });
+
+  return normalized.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function normalizeCategoryList(categories = [], sections = []) {
+  const normalizedSections = normalizeSectionList(categories, sections);
+  const byName = new Map(normalizedSections.map(section => [section.name.toLowerCase(), section]));
+  const byId = new Map(normalizedSections.map(section => [section.id, section]));
+  const nextOrderBySection = new Map();
+
+  const normalizedCategories = (categories || []).map((cat, index) => {
+    const copy = deepClone(cat) || {};
+    let section = byId.get(copy.section_id || copy.sectionId);
+    if (!section) {
+      const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';
+      section = byName.get(name.toLowerCase()) || normalizedSections[0] || { id: 'other', name: 'Other', order: 0 };
+    }
+    const nextOrder = nextOrderBySection.get(section.id) || 0;
+    nextOrderBySection.set(section.id, nextOrder + 1);
+    copy.section_id = section.id;
+    copy.sectionId = section.id;
+    copy.section = section.name;
+    if (!Number.isFinite(Number(copy.sortOrder))) copy.sortOrder = nextOrder;
+    if (!Number.isFinite(Number(copy.order))) copy.order = index;
+    return copy;
+  });
+
+  return { categories: normalizedCategories, sections: normalizedSections };
+}
+
+function normalizeCategoryDefaults(defaults = {}) {
+  const residential = normalizeCategoryList(defaults.residential_categories || [], defaults.residential_sections || []);
+  const condo = normalizeCategoryList(defaults.condo_categories || [], defaults.condo_sections || []);
+  return {
+    residential_categories: residential.categories,
+    residential_sections: residential.sections,
+    residential_extras: defaults.residential_extras || [],
+    condo_categories: condo.categories,
+    condo_sections: condo.sections,
+    condo_extras: defaults.condo_extras || [],
+    base_sqft: defaults.base_sqft || 4000
+  };
+}
+
 async function loadCategoryDefaultsData() {
   const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
   if (error || !data) return loadStaticCategoryData();
-  return {
+  return normalizeCategoryDefaults({
     residential_categories: data.residential_categories || [],
+    residential_sections: data.residential_sections || [],
     residential_extras: data.residential_extras || [],
     condo_categories: data.condo_categories || [],
+    condo_sections: data.condo_sections || [],
     condo_extras: data.condo_extras || [],
     base_sqft: data.base_sqft || 4000
-  };
+  });
 }
 
 function getDefaultCategoriesFromData(defaults, propertyType) {
@@ -729,15 +835,26 @@ function getDefaultExtrasFromData(defaults, propertyType) {
     : (defaults.residential_extras || []);
 }
 
+function getDefaultSectionsFromData(defaults, propertyType) {
+  return propertyType === 'condo'
+    ? (defaults.condo_sections || [])
+    : (defaults.residential_sections || []);
+}
+
 function buildBudgetDefaultSnapshot(defaults) {
+  const normalized = normalizeCategoryDefaults(defaults);
   return {
     [DEFAULT_CATEGORY_SNAPSHOT_KEY]: {
-      residential: deepClone(defaults.residential_categories || []),
-      condo: deepClone(defaults.condo_categories || [])
+      residential: deepClone(normalized.residential_categories || []),
+      condo: deepClone(normalized.condo_categories || [])
     },
     [DEFAULT_EXTRA_SNAPSHOT_KEY]: {
-      residential: deepClone(defaults.residential_extras || []),
-      condo: deepClone(defaults.condo_extras || [])
+      residential: deepClone(normalized.residential_extras || []),
+      condo: deepClone(normalized.condo_extras || [])
+    },
+    [DEFAULT_SECTION_SNAPSHOT_KEY]: {
+      residential: deepClone(normalized.residential_sections || []),
+      condo: deepClone(normalized.condo_sections || [])
     }
   };
 }
@@ -748,13 +865,23 @@ function getSnapshotForPropertyType(snapshot, propertyType) {
 }
 
 function getBudgetDefaultCategoriesFromConfig(categoryConfig, defaults, propertyType) {
-  return getSnapshotForPropertyType(categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
+  const categories = getSnapshotForPropertyType(categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
     || getDefaultCategoriesFromData(defaults, propertyType);
+  const sections = getBudgetDefaultSectionsFromConfig(categoryConfig, defaults, propertyType);
+  return normalizeCategoryList(categories, sections).categories;
 }
 
 function getBudgetDefaultExtrasFromConfig(categoryConfig, defaults, propertyType) {
   return getSnapshotForPropertyType(categoryConfig?.[DEFAULT_EXTRA_SNAPSHOT_KEY], propertyType)
     || getDefaultExtrasFromData(defaults, propertyType);
+}
+
+function getBudgetDefaultSectionsFromConfig(categoryConfig, defaults, propertyType) {
+  const categories = getSnapshotForPropertyType(categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
+    || getDefaultCategoriesFromData(defaults, propertyType);
+  return getSnapshotForPropertyType(categoryConfig?.[DEFAULT_SECTION_SNAPSHOT_KEY], propertyType)
+    || getDefaultSectionsFromData(defaults, propertyType)
+    || normalizeSectionList(categories);
 }
 
 function hasBudgetDefaultSnapshot(categoryConfig) {
@@ -1028,13 +1155,15 @@ app.get('/api/categories', async (req, res) => {
       const staticData = loadStaticCategoryData();
       return res.json(staticData);
     }
-    res.json({
+    res.json(normalizeCategoryDefaults({
       residential_categories: data.residential_categories,
+      residential_sections: data.residential_sections || [],
       residential_extras: data.residential_extras,
       condo_categories: data.condo_categories,
+      condo_sections: data.condo_sections || [],
       condo_extras: data.condo_extras,
       base_sqft: data.base_sqft
-    });
+    }));
   } catch (err) {
     console.error('GET /api/categories error:', err);
     const staticData = loadStaticCategoryData();
@@ -1053,7 +1182,7 @@ app.get('/api/admin/categories', requireAuth, async (req, res) => {
       const staticData = loadStaticCategoryData();
       return res.json({ ...staticData, updated_at: null, updated_by: null, source: 'static' });
     }
-    res.json({ ...data, source: 'database' });
+    res.json({ ...data, ...normalizeCategoryDefaults(data), source: 'database' });
   } catch (err) {
     console.error('GET /api/admin/categories error:', err);
     res.status(500).json({ error: 'Failed to load categories' });
@@ -1062,20 +1191,46 @@ app.get('/api/admin/categories', requireAuth, async (req, res) => {
 
 app.put('/api/admin/categories', requireAuth, async (req, res) => {
   try {
-    const { residential_categories, residential_extras, condo_categories, condo_extras, base_sqft } = req.body;
+    const {
+      residential_categories,
+      residential_sections,
+      residential_extras,
+      condo_categories,
+      condo_sections,
+      condo_extras,
+      base_sqft
+    } = req.body;
     if (!residential_categories || !condo_categories) {
       return res.status(400).json({ error: 'Missing required category data' });
     }
-    const { error } = await supabase.from('category_defaults').upsert({
-      id: 'current',
+    const normalized = normalizeCategoryDefaults({
       residential_categories,
-      residential_extras: residential_extras || [],
+      residential_sections,
+      residential_extras,
       condo_categories,
-      condo_extras: condo_extras || [],
-      base_sqft: base_sqft || 4000,
+      condo_sections,
+      condo_extras,
+      base_sqft
+    });
+    const row = {
+      id: 'current',
+      residential_categories: normalized.residential_categories,
+      residential_sections: normalized.residential_sections,
+      residential_extras: normalized.residential_extras || [],
+      condo_categories: normalized.condo_categories,
+      condo_sections: normalized.condo_sections,
+      condo_extras: normalized.condo_extras || [],
+      base_sqft: normalized.base_sqft || 4000,
       updated_at: new Date().toISOString(),
       updated_by: req.user.email
-    });
+    };
+    let { error } = await supabase.from('category_defaults').upsert(row);
+    if (error && /residential_sections|condo_sections|schema cache|column/i.test(error.message || '')) {
+      const legacyRow = { ...row };
+      delete legacyRow.residential_sections;
+      delete legacyRow.condo_sections;
+      ({ error } = await supabase.from('category_defaults').upsert(legacyRow));
+    }
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {
@@ -1087,12 +1242,19 @@ app.put('/api/admin/categories', requireAuth, async (req, res) => {
 app.post('/api/admin/categories/reset', requireAuth, async (req, res) => {
   try {
     const staticData = loadStaticCategoryData();
-    const { error } = await supabase.from('category_defaults').upsert({
+    const row = {
       id: 'current',
       ...staticData,
       updated_at: new Date().toISOString(),
       updated_by: req.user.email + ' (reset)'
-    });
+    };
+    let { error } = await supabase.from('category_defaults').upsert(row);
+    if (error && /residential_sections|condo_sections|schema cache|column/i.test(error.message || '')) {
+      const legacyRow = { ...row };
+      delete legacyRow.residential_sections;
+      delete legacyRow.condo_sections;
+      ({ error } = await supabase.from('category_defaults').upsert(legacyRow));
+    }
     if (error) throw error;
     res.json({ success: true, message: 'Reset to factory defaults' });
   } catch (err) {
@@ -1862,6 +2024,55 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Create admin budget error:', err);
     res.status(500).json({ error: 'Failed to create budget' });
+  }
+});
+
+app.post('/api/admin/budgets/:id/clone', requireAuth, async (req, res) => {
+  try {
+    const data = schemas.cloneBudget.parse(req.body || {});
+    const source = await loadBudget(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Budget not found' });
+
+    let id;
+    let exists;
+    do {
+      id = generateCode(8);
+      const { data: check } = await supabase.from('budgets').select('id').eq('id', id).single();
+      exists = !!check;
+    } while (exists);
+
+    const state = deepClone(source.currentState || {});
+    const clientName = data.clientName !== undefined
+      ? (data.clientName || null)
+      : `${source.clientName || state.clientName || 'Unnamed Budget'} Copy`;
+    state.clientName = clientName;
+    state.expiresAt = defaultExpirationDate();
+    state.expiredAt = null;
+
+    const budget = {
+      id,
+      clientName,
+      builder: source.builder || state.builder || null,
+      currentState: state,
+      isCustomized: source.isCustomized,
+      sqftLocked: source.sqftLocked || null,
+      propertyTypeLocked: source.propertyTypeLocked || null,
+      categoryConfig: deepClone(source.categoryConfig || null),
+      customCategories: deepClone(source.customCategories || null),
+      createdByEmail: req.user.email
+    };
+
+    await saveBudget(budget);
+    await addVersion(id, 1, state, `Cloned from ${source.clientName || source.id}`, true, buildVersionMeta(req, req.user));
+
+    const cloned = await loadBudget(id);
+    res.json({ success: true, id, url: `/b/${id}`, budget: cloned });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    }
+    console.error('Clone budget error:', err);
+    res.status(500).json({ error: 'Failed to clone budget' });
   }
 });
 
