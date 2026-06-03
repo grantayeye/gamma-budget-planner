@@ -185,6 +185,137 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.bestInputDisabled).toBe(true);
   });
 
+  test('default category comparison matrix saves legacy tier features for compatibility', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: 'W',
+          sizeScale: 0,
+          tiers: {
+            good: { price: 1000, label: 'Good', features: ['WiFi coverage'], brands: 'Brand A' },
+            better: { price: 2000, label: 'Better', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand B' },
+            best: { price: 3000, label: 'Best', features: ['WiFi coverage', 'UPS backup', 'Enterprise switching'], brands: 'Brand C' }
+          }
+        }],
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+      const card = document.querySelector('.cat-editor-card[data-cat-idx="0"]');
+      card.classList.add('open');
+      const select = card.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'networking');
+      const upsRow = [...card.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
+      upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
+      upsRow.querySelector('.fm-status[data-tier="good"]').value = 'addon';
+      collectCategoryEditorData();
+      const cat = catData.residential_categories[0];
+      return {
+        mode: cat.presentationMode,
+        matrixLabels: cat.featureMatrix.map(feature => feature.label),
+        goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
+        betterFeatures: cat.tiers.better.features,
+        goodFeatures: cat.tiers.good.features
+      };
+    });
+
+    expect(result.mode).toBe('matrix');
+    expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);
+    expect(result.goodUpsStatus).toBe('addon');
+    expect(result.betterFeatures).toEqual(['WiFi coverage', 'UPS backup']);
+    expect(result.goodFeatures).toEqual(['WiFi coverage']);
+  });
+
+  test('customize category comparison matrix is collected with generated legacy features', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: {
+          good: { price: 1000, label: 'Good', features: ['WiFi coverage'], brands: 'Brand A' },
+          better: { price: 2000, label: 'Better', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand B' }
+        }
+      };
+      customizeBudgetData = {
+        id: 'matrix-budget',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] },
+          __layout: {
+            sections: [
+              { id: 'infrastructure', name: 'Infrastructure', order: 0 },
+              { id: 'custom', name: 'Custom', order: 1 }
+            ]
+          }
+        },
+        customCategories: [{
+          id: 'custom-matrix',
+          name: 'Custom Matrix',
+          icon: 'C',
+          section_id: 'custom',
+          sectionId: 'custom',
+          section: 'Custom',
+          sortOrder: 0,
+          tiers: {
+            good: { enabled: true, label: 'Good', price: 111, features: ['Custom base'], brands: 'CB1' },
+            better: { enabled: true, label: 'Better', price: 222, features: ['Custom base', 'Custom upgrade'], brands: 'CB2' }
+          }
+        }]
+      };
+      renderCustomizeEditor();
+
+      const defaultEditor = document.querySelector('.category-editor[data-cat-id="networking"]');
+      const defaultSelect = defaultEditor.querySelector('.presentation-mode-select');
+      defaultSelect.value = 'matrix';
+      setMatrixMode(defaultSelect, 'networking');
+      const upsRow = [...defaultEditor.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
+      upsRow.querySelector('.fm-status[data-tier="good"]').value = 'addon';
+
+      const customEditor = document.querySelector('.custom-category-editor[data-cc-id="custom-matrix"]');
+      const customSelect = customEditor.querySelector('.presentation-mode-select');
+      customSelect.value = 'matrix';
+      setMatrixMode(customSelect, 'custom-matrix');
+      const customUpgradeRow = [...customEditor.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Custom upgrade');
+      customUpgradeRow.querySelector('.fm-status[data-tier="good"]').value = 'addon';
+
+      const collected = collectCustomizationData();
+      return {
+        defaultMode: collected.categoryConfig.networking.presentationMode,
+        defaultGoodStatus: collected.categoryConfig.networking.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
+        defaultGoodFeatures: collected.categoryConfig.networking.tiers.good.features,
+        customMode: collected.customCategories[0].presentationMode,
+        customGoodStatus: collected.customCategories[0].featureMatrix.find(feature => feature.label === 'Custom upgrade')?.tierStatus.good,
+        customBetterFeatures: collected.customCategories[0].tiers.better.features
+      };
+    });
+
+    expect(result.defaultMode).toBe('matrix');
+    expect(result.defaultGoodStatus).toBe('addon');
+    expect(result.defaultGoodFeatures).toEqual(['WiFi coverage']);
+    expect(result.customMode).toBe('matrix');
+    expect(result.customGoodStatus).toBe('addon');
+    expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
+  });
+
   test('customize open ignores stale local drafts and keeps search menus closed', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const targetCat = {

@@ -528,6 +528,145 @@ main {
   font-style: italic;
 }
 
+.comparison-matrix {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(15,47,68,0.07);
+}
+.comparison-matrix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, #FFFFFF 0%, var(--accent-bg) 100%);
+  border-bottom: 1px solid var(--border);
+}
+.comparison-matrix-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.comparison-matrix-note {
+  font-size: 12px;
+  color: var(--text-light);
+  text-align: right;
+}
+.comparison-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.comparison-table {
+  width: 100%;
+  min-width: 660px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.comparison-table th,
+.comparison-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+  font-size: 13px;
+}
+.comparison-table th {
+  background: #FBFCFD;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.comparison-table th:first-child,
+.comparison-table td:first-child {
+  text-align: left;
+  width: 34%;
+}
+.comparison-table tr:last-child td {
+  border-bottom: none;
+}
+.comparison-table .selected-col {
+  background: var(--accent-bg);
+  box-shadow: inset 2px 0 0 var(--accent), inset -2px 0 0 var(--accent);
+}
+.comparison-table th.selected-col {
+  color: var(--accent);
+}
+.matrix-feature-label {
+  color: var(--text);
+  font-weight: 650;
+  line-height: 1.35;
+}
+.matrix-feature-label.has-description {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: help;
+}
+.matrix-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-weight: 900;
+  font-size: 14px;
+}
+.matrix-addon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #FFF7E8;
+  border: 1px solid #F0D39B;
+  color: #8A5A00;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.matrix-empty {
+  color: var(--text-lighter);
+  font-size: 18px;
+  line-height: 1;
+}
+@media (max-width: 640px) {
+  .comparison-matrix-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .comparison-matrix-note {
+    text-align: left;
+  }
+  .comparison-table {
+    min-width: 600px;
+  }
+  .comparison-table th,
+  .comparison-table td {
+    padding: 12px 10px;
+  }
+  .comparison-table .selected-col {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    box-shadow: inset 2px 0 0 var(--accent), -10px 0 18px rgba(15,47,68,0.08);
+  }
+  .comparison-table th.selected-col {
+    z-index: 3;
+  }
+}
+
 /* EXTRAS */
 .extras-section {
   background: var(--card);
@@ -1259,6 +1398,64 @@ function orderedTierKeys(tiers) {
   return [...known, ...unknown];
 }
 
+const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
+const FEATURE_MATRIX_STATUS_LABELS = {
+  included: 'Included',
+  addon: 'Add-on',
+  not_included: 'Not included'
+};
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, '&#096;');
+}
+
+function splitFeatureLines(features) {
+  return (features || [])
+    .flatMap(feature => String(feature).split(/\r?\n/))
+    .map(feature => feature.trim())
+    .filter(Boolean);
+}
+
+function normalizeFeatureMatrix(matrix = []) {
+  return (Array.isArray(matrix) ? matrix : []).map((feature, index) => {
+    const label = String(feature?.label || feature?.name || '').trim();
+    if (!label) return null;
+    const tierStatus = {};
+    TIER_ORDER.forEach(tierKey => {
+      const status = feature?.tierStatus?.[tierKey] || feature?.tiers?.[tierKey] || feature?.[tierKey] || 'not_included';
+      tierStatus[tierKey] = FEATURE_MATRIX_STATUSES.includes(status) ? status : 'not_included';
+    });
+    return {
+      id: String(feature?.id || `feature-${index + 1}`),
+      label,
+      description: String(feature?.description || feature?.details || '').trim(),
+      group: String(feature?.group || '').trim(),
+      tierStatus
+    };
+  }).filter(Boolean);
+}
+
+function getCategoryPresentationMode(cat) {
+  return cat?.presentationMode === 'matrix' ? 'matrix' : 'list';
+}
+
+function getFeatureMatrix(cat) {
+  return normalizeFeatureMatrix(cat?.featureMatrix || []);
+}
+
+function featureStatusForTier(feature, tierKey) {
+  return feature?.tierStatus?.[tierKey] || 'not_included';
+}
+
 function snapshotForPropertyType(snapshot, propertyType) {
   if (Array.isArray(snapshot)) return snapshot;
   return snapshot?.[propertyType] || null;
@@ -1313,6 +1510,8 @@ function CATEGORIES() {
     }
     if (override?.section) customCat.section = override.section;
     if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
+    if (override?.presentationMode) customCat.presentationMode = override.presentationMode;
+    if (override?.featureMatrix) customCat.featureMatrix = override.featureMatrix;
     
     // Apply tier overrides
     if (override && override.tiers) {
@@ -1382,6 +1581,8 @@ function CATEGORIES() {
         sizeScale: 0, // No scaling for custom
         isCustomized: true,
         sortOrder: cc.sortOrder,
+        presentationMode: cc.presentationMode,
+        featureMatrix: cc.featureMatrix,
         tiers
       });
     });
@@ -1525,7 +1726,7 @@ function renderCategories() {
     // Add section header
     const header = document.createElement('div');
     header.className = 'section-header';
-    header.innerHTML = `<h3>${sectionName}</h3>`;
+    header.innerHTML = `<h3>${escapeHtml(sectionName)}</h3>`;
     container.appendChild(header);
     
     // Render categories in this section
@@ -1560,8 +1761,8 @@ function renderCategories() {
         <div class="category-header" onclick="toggleCategory('${cat.id}')">
           <div class="category-icon">${cat.icon}</div>
           <div class="category-info">
-            <div class="category-name">${cat.name}</div>
-            <div class="category-desc">${cat.desc}</div>
+            <div class="category-name">${escapeHtml(cat.name)}</div>
+            <div class="category-desc">${escapeHtml(cat.desc)}</div>
           </div>
           <div class="category-price ${!selected ? 'no-selection' : ''}">
             ${selected ? formatCurrency(price) : 'Not selected'}
@@ -1583,14 +1784,14 @@ function renderCategories() {
               }
               return `
                 <div class="tier-btn ${t}-btn ${selected === t ? 'selected' : ''} ${tierDisabled ? 'tier-disabled' : ''}" ${tierDisabled ? '' : `onclick="selectTier('${cat.id}', '${t}')"`}>
-                  <div class="tier-label">${cat.tiers[t].label}</div>
+                  <div class="tier-label">${escapeHtml(cat.tiers[t].label)}</div>
                   <div class="tier-price">${tierDisabled ? 'N/A' : formatCurrency(tp)}</div>
-                  <div class="tier-tag">${tierDisabled ? 'Not available' : (cat.tiers[t].tag || t.charAt(0).toUpperCase() + t.slice(1))}</div>
+                  <div class="tier-tag">${tierDisabled ? 'Not available' : escapeHtml(cat.tiers[t].tag || t.charAt(0).toUpperCase() + t.slice(1))}</div>
                 </div>
               `;
             }).join('')}
           </div>
-          ${selected ? renderTierDetails(cat, selected) : '<div class="tier-details" style="text-align:center;color:var(--text-lighter);padding:20px;">Select a tier to see what\'s included</div>'}
+          ${renderCategoryDetails(cat, selected)}
           <div class="cat-modifier" style="padding:8px 16px 12px;border-top:1px dashed var(--border);display:flex;gap:8px;align-items:center;">
             <span style="font-size:12px;color:var(--text-lighter);white-space:nowrap;">± Adjust:</span>
             <input type="text" placeholder="Note" value="${(state.catMods[cat.id]?.name || '').replace(/"/g, '&quot;')}" 
@@ -1610,19 +1811,78 @@ function renderCategories() {
 }
 
 function featureLines(features) {
-  return (features || [])
-    .flatMap(feature => String(feature).split(/\r?\n/))
-    .map(feature => feature.trim())
-    .filter(Boolean);
+  return splitFeatureLines(features);
+}
+
+function renderCategoryDetails(cat, selectedTier) {
+  const matrix = getFeatureMatrix(cat);
+  if (getCategoryPresentationMode(cat) === 'matrix' && matrix.length) {
+    return renderFeatureComparison(cat, selectedTier);
+  }
+  return selectedTier
+    ? renderTierDetails(cat, selectedTier)
+    : '<div class="tier-details" style="text-align:center;color:var(--text-lighter);padding:20px;">Select a tier to see what\'s included</div>';
+}
+
+function renderFeatureStatusCell(status) {
+  if (status === 'included') return '<span class="matrix-check" aria-label="Included">✓</span>';
+  if (status === 'addon') return '<span class="matrix-addon">Add-on</span>';
+  return '<span class="matrix-empty" aria-label="Not included">—</span>';
+}
+
+function renderFeatureComparison(cat, selectedTier) {
+  const matrix = getFeatureMatrix(cat);
+  const tiers = orderedTierKeys(cat.tiers);
+  const selectedLabel = selectedTier && cat.tiers[selectedTier]?.label
+    ? `${cat.tiers[selectedTier].label} selected`
+    : 'Choose an option above';
+  return `
+    <div class="comparison-matrix">
+      <div class="comparison-matrix-header">
+        <div class="comparison-matrix-title">Compare what's included</div>
+        <div class="comparison-matrix-note">${escapeHtml(selectedLabel)}</div>
+      </div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              ${tiers.map(tierKey => `
+                <th class="${selectedTier === tierKey ? 'selected-col' : ''}">
+                  ${escapeHtml(cat.tiers[tierKey]?.label || tierKey)}
+                </th>
+              `).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${matrix.map(feature => `
+              <tr>
+                <td>
+                  <span class="matrix-feature-label ${feature.description ? 'has-description' : ''}" ${feature.description ? `title="${escapeAttr(feature.description)}"` : ''}>
+                    ${escapeHtml(feature.label)}
+                  </span>
+                </td>
+                ${tiers.map(tierKey => `
+                  <td class="${selectedTier === tierKey ? 'selected-col' : ''}">
+                    ${renderFeatureStatusCell(featureStatusForTier(feature, tierKey))}
+                  </td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 function renderTierDetails(cat, tier) {
   const t = cat.tiers[tier];
   return `
     <div class="tier-details">
-      <h4>${t.label} — What's Included</h4>
-      <ul>${featureLines(t.features).map(f => `<li>${f}</li>`).join('')}</ul>
-      <div class="brands">Typical brands: ${t.brands}</div>
+      <h4>${escapeHtml(t.label)} — What's Included</h4>
+      <ul>${featureLines(t.features).map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+      <div class="brands">Typical brands: ${escapeHtml(t.brands)}</div>
     </div>
   `;
 }

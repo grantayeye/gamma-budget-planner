@@ -763,6 +763,67 @@
       justify-content: end;
     }
 
+    .matrix-mode-panel {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+
+    .matrix-mode-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: #F5FAFD;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .feature-matrix-list {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .feature-matrix-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1.1fr) minmax(120px, 0.8fr) minmax(180px, 1.2fr) minmax(280px, 1.4fr) auto;
+      gap: 8px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .feature-matrix-row input,
+    .feature-matrix-row textarea,
+    .feature-matrix-row select {
+      width: 100%;
+      min-width: 0;
+      padding: 7px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      background: white;
+    }
+
+    .fm-tier-statuses {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(74px, 1fr));
+      gap: 6px;
+    }
+
+    .fm-tier-statuses label {
+      display: grid;
+      gap: 3px;
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
     .category-editor-header-row {
       display: flex;
       justify-content: space-between;
@@ -817,6 +878,10 @@
 
       .customize-tier-row {
         grid-template-columns: 82px minmax(140px, 1fr) 104px 86px 76px;
+      }
+
+      .feature-matrix-row {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -2405,6 +2470,223 @@ function uniqueSectionId(baseId, usedIds) {
   return id;
 }
 
+const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
+const FEATURE_MATRIX_STATUS_LABELS = {
+  included: 'Included',
+  addon: 'Add-on',
+  not_included: 'Not included'
+};
+
+function slugifyFeatureId(value) {
+  return slugifySectionId(value || 'feature');
+}
+
+function splitFeatureLines(features) {
+  return (features || [])
+    .flatMap(feature => String(feature).split(/\r?\n/))
+    .map(feature => feature.trim())
+    .filter(Boolean);
+}
+
+function normalizeFeatureMatrix(matrix = []) {
+  const usedIds = new Set();
+  return (Array.isArray(matrix) ? matrix : [])
+    .map((feature, index) => {
+      const label = String(feature.label || feature.name || '').trim();
+      if (!label) return null;
+      const id = uniqueSectionId(slugifyFeatureId(feature.id || label), usedIds);
+      const tierStatus = {};
+      TIER_ORDER.forEach(tierKey => {
+        const status = feature.tierStatus?.[tierKey] || feature.tiers?.[tierKey] || 'not_included';
+        tierStatus[tierKey] = FEATURE_MATRIX_STATUSES.includes(status) ? status : 'not_included';
+      });
+      return {
+        id,
+        label,
+        description: String(feature.description || '').trim(),
+        group: String(feature.group || '').trim(),
+        order: Number.isFinite(Number(feature.order)) ? Number(feature.order) : index,
+        tierStatus
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+function getFeatureMatrix(cat = {}, override = {}) {
+  return normalizeFeatureMatrix(override.featureMatrix || cat.featureMatrix || []);
+}
+
+function getCategoryPresentationMode(cat = {}, override = {}) {
+  return (override.presentationMode || cat.presentationMode) === 'matrix' ? 'matrix' : 'list';
+}
+
+function buildFeatureMatrixFromTiers(tiers = {}) {
+  const rowsByLabel = new Map();
+  TIER_ORDER.forEach(tierKey => {
+    splitFeatureLines(tiers[tierKey]?.features || []).forEach(label => {
+      const key = label.toLowerCase();
+      if (!rowsByLabel.has(key)) {
+        rowsByLabel.set(key, {
+          id: slugifyFeatureId(label),
+          label,
+          description: '',
+          group: '',
+          tierStatus: Object.fromEntries(TIER_ORDER.map(key => [key, 'not_included']))
+        });
+      }
+      rowsByLabel.get(key).tierStatus[tierKey] = 'included';
+    });
+  });
+  return normalizeFeatureMatrix(Array.from(rowsByLabel.values()));
+}
+
+function legacyFeaturesFromMatrix(matrix = [], tierKey) {
+  return normalizeFeatureMatrix(matrix)
+    .filter(feature => feature.tierStatus?.[tierKey] === 'included')
+    .map(feature => feature.label);
+}
+
+function featureMatrixStatusOptions(selected = 'not_included') {
+  return FEATURE_MATRIX_STATUSES
+    .map(status => `<option value="${status}" ${selected === status ? 'selected' : ''}>${FEATURE_MATRIX_STATUS_LABELS[status]}</option>`)
+    .join('');
+}
+
+function renderFeatureMatrixRows(matrix = []) {
+  const rows = normalizeFeatureMatrix(matrix);
+  return rows.map((feature, index) => `
+    <div class="feature-matrix-row" data-feature-id="${escapeAttr(feature.id)}" data-order="${index}">
+      <input class="fm-label" type="text" value="${escapeAttr(feature.label)}" placeholder="Short feature name">
+      <input class="fm-group" type="text" value="${escapeAttr(feature.group || '')}" placeholder="Group">
+      <textarea class="fm-description" rows="2" placeholder="Tooltip / description">${escapeAttr(feature.description || '')}</textarea>
+      <div class="fm-tier-statuses">
+        ${TIER_ORDER.map(tierKey => `
+          <label>
+            <span>${TIER_NAMES[tierKey]}</span>
+            <select class="fm-status" data-tier="${tierKey}">
+              ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
+            </select>
+          </label>
+        `).join('')}
+      </div>
+      <button type="button" class="btn btn-secondary btn-small" onclick="removeFeatureMatrixRow(this)">Remove</button>
+    </div>
+  `).join('');
+}
+
+function readFeatureMatrixFromContainer(container) {
+  if (!container) return [];
+  return normalizeFeatureMatrix(Array.from(container.querySelectorAll('.feature-matrix-row')).map((row, index) => {
+    const label = row.querySelector('.fm-label')?.value || '';
+    const tierStatus = {};
+    row.querySelectorAll('.fm-status[data-tier]').forEach(select => {
+      tierStatus[select.dataset.tier] = select.value;
+    });
+    return {
+      id: row.dataset.featureId || slugifyFeatureId(label),
+      label,
+      group: row.querySelector('.fm-group')?.value || '',
+      description: row.querySelector('.fm-description')?.value || '',
+      order: index,
+      tierStatus
+    };
+  }));
+}
+
+function getTierFeaturesFromEditor(editor) {
+  const tiers = {};
+  editor?.querySelectorAll('.tier-row, .tier-edit-card[data-tier], .cc-tier-row').forEach(row => {
+    const tierKey = row.dataset.tier;
+    let features = [];
+    if (row.dataset.features) {
+      try { features = JSON.parse(row.dataset.features || '[]'); } catch (_) { features = []; }
+    } else {
+      const idx = parseInt(editor.closest?.('.cat-editor-card')?.dataset.catIdx || '-1');
+      const propType = document.getElementById('catPropertyType')?.value || 'residential';
+      const categories = propType === 'condo' ? catData?.condo_categories : catData?.residential_categories;
+      features = categories?.[idx]?.tiers?.[tierKey]?.features || [];
+    }
+    tiers[tierKey] = { features };
+  });
+  return tiers;
+}
+
+function setMatrixMode(select, catId) {
+  const editor = select.closest('.category-editor, .cat-editor-card, .custom-category-editor');
+  if (!editor) return;
+  editor.dataset.presentationMode = select.value;
+  const panel = editor.querySelector('.matrix-mode-panel');
+  if (panel) panel.style.display = select.value === 'matrix' ? 'block' : 'none';
+  if (select.value === 'matrix') {
+    const list = editor.querySelector('.feature-matrix-list');
+    if (list && !list.querySelector('.feature-matrix-row')) {
+      list.innerHTML = renderFeatureMatrixRows(buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor)));
+    }
+  }
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function convertCategoryFeaturesToMatrix(button) {
+  const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor');
+  const list = editor?.querySelector('.feature-matrix-list');
+  if (!editor || !list) return;
+  list.innerHTML = renderFeatureMatrixRows(buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor)));
+  const select = editor.querySelector('.presentation-mode-select');
+  if (select) select.value = 'matrix';
+  editor.dataset.presentationMode = 'matrix';
+  const panel = editor.querySelector('.matrix-mode-panel');
+  if (panel) panel.style.display = 'block';
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function addFeatureMatrixRow(button) {
+  const list = button.closest('.matrix-mode-panel')?.querySelector('.feature-matrix-list');
+  if (!list) return;
+  const existing = readFeatureMatrixFromContainer(list);
+  existing.push({
+    id: uniqueSectionId('new-feature', new Set(existing.map(feature => feature.id))),
+    label: 'New feature',
+    description: '',
+    group: '',
+    order: existing.length,
+    tierStatus: Object.fromEntries(TIER_ORDER.map(tierKey => [tierKey, 'not_included']))
+  });
+  list.innerHTML = renderFeatureMatrixRows(existing);
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function removeFeatureMatrixRow(button) {
+  button.closest('.feature-matrix-row')?.remove();
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function renderFeatureMatrixEditorPanel(cat, override = {}) {
+  const mode = getCategoryPresentationMode(cat, override);
+  const matrix = getFeatureMatrix(cat, override);
+  return `
+    <div class="matrix-mode-panel" style="display:${mode === 'matrix' ? 'block' : 'none'};">
+      <div class="matrix-mode-header">
+        <div>
+          <strong>Comparison Table Features</strong>
+          <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Feature rows become the customer comparison table. Included rows are also saved back to legacy tier feature lists.</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          <button type="button" class="btn btn-secondary btn-small" onclick="convertCategoryFeaturesToMatrix(this)">Convert current features</button>
+          <button type="button" class="btn btn-secondary btn-small" onclick="addFeatureMatrixRow(this)">+ Feature</button>
+        </div>
+      </div>
+      <div class="feature-matrix-list">
+        ${renderFeatureMatrixRows(matrix)}
+      </div>
+    </div>
+  `;
+}
+
 function normalizeSectionList(categories = [], sections = []) {
   const usedIds = new Set();
   const normalized = [];
@@ -3855,7 +4137,20 @@ function buildCategoryOverrideFromBudget(budget, catId) {
     };
   });
 
-  return { hidden: override.hidden === true, tiers };
+  const presentationMode = getCategoryPresentationMode(defaultCat, override);
+  const featureMatrix = getFeatureMatrix(defaultCat, override);
+  if (presentationMode === 'matrix') {
+    TIER_ORDER.forEach(tierKey => {
+      if (!tiers[tierKey]) return;
+      tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
+    });
+  }
+  return {
+    hidden: override.hidden === true,
+    tiers,
+    presentationMode,
+    ...(featureMatrix.length ? { featureMatrix } : {})
+  };
 }
 
 function buildCustomCategoryFromBudget(budget, customId) {
@@ -3958,7 +4253,22 @@ function buildCategoryOverrideFromEditor(catId) {
       });
     }
   });
-  return { hidden: isHidden, tiers };
+  const presentationMode = editor.querySelector('.presentation-mode-select')?.value || editor.dataset.presentationMode || 'list';
+  const featureMatrix = presentationMode === 'matrix'
+    ? readFeatureMatrixFromContainer(editor.querySelector('.feature-matrix-list'))
+    : [];
+  if (presentationMode === 'matrix') {
+    TIER_ORDER.forEach(tierKey => {
+      if (!tiers[tierKey]) return;
+      tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
+    });
+  }
+  return {
+    hidden: isHidden,
+    tiers,
+    presentationMode,
+    ...(featureMatrix.length ? { featureMatrix } : {})
+  };
 }
 
 function readCustomCategoryEditorData(editor, options = {}) {
@@ -3980,11 +4290,23 @@ function readCustomCategoryEditorData(editor, options = {}) {
       tiers[tierKey] = data;
     }
   });
+  const presentationMode = editor.querySelector('.presentation-mode-select')?.value || editor.dataset.presentationMode || 'list';
+  const featureMatrix = presentationMode === 'matrix'
+    ? readFeatureMatrixFromContainer(editor.querySelector('.feature-matrix-list'))
+    : [];
+  if (presentationMode === 'matrix') {
+    TIER_ORDER.forEach(tierKey => {
+      if (!tiers[tierKey]) return;
+      tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
+    });
+  }
   return {
     id: customId,
     name,
     icon: editor.querySelector('.cc-icon')?.value || '📦',
     desc: '',
+    presentationMode,
+    ...(featureMatrix.length ? { featureMatrix } : {}),
     ...(document.getElementById('customizeLayoutSections') ? (collectCustomizeLayoutData().customLayout[existingId] || {}) : {}),
     tiers
   };
@@ -4014,6 +4336,14 @@ function applyCategoryOverrideToEditor(catId, override) {
       });
     }
   });
+  const mode = override.presentationMode === 'matrix' ? 'matrix' : 'list';
+  editor.dataset.presentationMode = mode;
+  const modeSelect = editor.querySelector('.presentation-mode-select');
+  if (modeSelect) modeSelect.value = mode;
+  const panel = editor.querySelector('.matrix-mode-panel');
+  if (panel) panel.style.display = mode === 'matrix' ? 'block' : 'none';
+  const list = editor.querySelector('.feature-matrix-list');
+  if (list) list.innerHTML = renderFeatureMatrixRows(override.featureMatrix || []);
   refreshCategoryTierSwapButtons(editor);
   return true;
 }
@@ -4320,6 +4650,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
   const isHidden = override.hidden === true;
   const isLocked = selectedTier && !isHidden; // Can't hide if selected
   const sizeScale = cat.sizeScale ?? 0.5; // Default scale factor
+  const presentationMode = getCategoryPresentationMode(cat, override);
   
   // All possible tiers - show all of them, even if missing from base data
   const allTiers = TIER_ORDER;
@@ -4336,7 +4667,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
   }));
   
   return `
-    <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
+    <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" data-presentation-mode="${presentationMode}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
       <div class="category-editor-header-row">
         <div class="category-editor-title">
           <strong>${cat.icon} ${cat.name}</strong>
@@ -4344,6 +4675,13 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
         </div>
         <div class="category-editor-actions">
           ${layoutControlsHtml}
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
+            View
+            <select class="presentation-mode-select" onchange="setMatrixMode(this, '${cat.id}')" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;">
+              <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
+              <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
+            </select>
+          </label>
           <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;${isLocked ? 'opacity:0.5;' : ''}">
             <input type="checkbox"
@@ -4413,6 +4751,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
           `;
         }).join('')}
       </div>
+      ${renderFeatureMatrixEditorPanel(cat, override)}
     </div>
   `;
 }
@@ -4421,6 +4760,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
   const isLocked = !!selectedTier;
   const allTiers = TIER_ORDER;
   const tierLabels = TIER_NAMES;
+  const presentationMode = getCategoryPresentationMode(cc);
   const tierPresence = Object.fromEntries(allTiers.map(tierKey => {
     const tier = cc.tiers?.[tierKey] || {};
     return [tierKey, tierHasContent(null, tier, selectedTier === tierKey)];
@@ -4431,11 +4771,15 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
   }));
   
   return `
-    <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
+    <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" data-presentation-mode="${presentationMode}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
       <div class="custom-category-header">
         <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
         <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
         ${layoutControlsHtml}
+        <select class="presentation-mode-select" onchange="setMatrixMode(this, '${escapeAttr(cc.id || `custom-${index}`)}')" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:white;">
+          <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
+          <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
+        </select>
         <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
         <button type="button" class="btn btn-secondary btn-small" onclick="cloneCustomCategory(${index})">Clone</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
@@ -4474,6 +4818,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
           `;
         }).join('')}
       </div>
+      ${renderFeatureMatrixEditorPanel(cc)}
     </div>
   `;
 }
@@ -4809,7 +5154,24 @@ function collectCustomizationData() {
       tiers[tierKey] = { enabled, label, price, features, brands };
     });
 
-    categoryConfig[catId] = { hidden: isHidden, tiers, ...(layout.itemLayout[catId] || {}) };
+    const presentationMode = editor.querySelector('.presentation-mode-select')?.value || editor.dataset.presentationMode || 'list';
+    const featureMatrix = presentationMode === 'matrix'
+      ? readFeatureMatrixFromContainer(editor.querySelector('.feature-matrix-list'))
+      : [];
+    if (presentationMode === 'matrix') {
+      TIER_ORDER.forEach(tierKey => {
+        if (!tiers[tierKey]) return;
+        tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
+      });
+    }
+
+    categoryConfig[catId] = {
+      hidden: isHidden,
+      tiers,
+      presentationMode,
+      ...(featureMatrix.length ? { featureMatrix } : {}),
+      ...(layout.itemLayout[catId] || {})
+    };
   });
 
   const extraConfig = {};
@@ -4824,39 +5186,9 @@ function collectCustomizationData() {
   }
 
   document.querySelectorAll('.custom-category-editor').forEach(editor => {
-    const icon = editor.querySelector('.cc-icon')?.value || '📦';
-    const name = editor.querySelector('.cc-name')?.value || '';
-    if (!name) return;
-
-    const tiers = {};
-    editor.querySelectorAll('.cc-tier-row').forEach(row => {
-      const tierKey = row.dataset.tier;
-      const enabled = row.querySelector('.cc-tier-enabled')?.checked ?? false;
-      const label = row.querySelector('.cc-tier-label')?.value || '';
-      const price = parseInt(row.querySelector('.cc-tier-price')?.value) || 0;
-
-      let features = [];
-      try {
-        features = JSON.parse(row.dataset.features || '[]');
-      } catch (e) {
-        features = [];
-      }
-      const brands = row.dataset.brands || '';
-
-      if (enabled && (label || price)) {
-        tiers[tierKey] = { enabled, label, price, features, brands };
-      }
-    });
-
-    if (Object.keys(tiers).length > 0) {
-      customCategories.push({
-        id: editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-        name,
-        icon,
-        desc: '',
-        ...(layout.customLayout[editor.dataset.ccId] || {}),
-        tiers
-      });
+    const customCat = readCustomCategoryEditorData(editor);
+    if (customCat?.name && Object.keys(customCat.tiers || {}).length > 0) {
+      customCategories.push(customCat);
     }
   });
 
@@ -5251,7 +5583,7 @@ function loadCategoryEditor() {
       const isLast = secIdx === cats.length - 1;
       
       html += `
-        <div class="cat-editor-card" data-cat-idx="${cat._idx}" id="catCard-${cat.id}">
+        <div class="cat-editor-card" data-cat-idx="${cat._idx}" data-presentation-mode="${getCategoryPresentationMode(cat)}" id="catCard-${cat.id}">
           <div class="cat-editor-header" onclick="if(event.target.closest('.reorder-btns'))return;this.parentElement.classList.toggle('open')">
             <div style="flex:1;min-width:0;">
               <span class="cat-name">${cat.icon || ''} ${cat.name}</span>
@@ -5284,6 +5616,13 @@ function loadCategoryEditor() {
               <div class="cat-field-row">
                 <label>Size Scale</label>
                 <input type="number" data-field="sizeScale" value="${cat.sizeScale ?? 0}" step="0.1" min="0" max="2" style="width:80px;">
+              </div>
+              <div class="cat-field-row">
+                <label>Display Style</label>
+                <select class="presentation-mode-select" onchange="setMatrixMode(this, '${cat.id}')" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:white;">
+                  <option value="list" ${getCategoryPresentationMode(cat) === 'list' ? 'selected' : ''}>Feature list</option>
+                  <option value="matrix" ${getCategoryPresentationMode(cat) === 'matrix' ? 'selected' : ''}>Comparison table</option>
+                </select>
               </div>
               
               <div class="tier-edit-grid">
@@ -5328,6 +5667,7 @@ function loadCategoryEditor() {
                     </div>`;
                 }).join('')}
               </div>
+              ${renderFeatureMatrixEditorPanel(cat)}
               
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);text-align:right;">
                 <button class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteItem('${cat.id}', ${cat._idx})">🗑️ Delete Item</button>
@@ -5775,6 +6115,18 @@ function collectCategoryEditorData() {
       const brandsEl = tc.querySelector('[data-tf="brands"]');
       if (brandsEl) cat.tiers[tk].brands = brandsEl.value;
     });
+
+    const presentationMode = card.querySelector('.presentation-mode-select')?.value || card.dataset.presentationMode || 'list';
+    cat.presentationMode = presentationMode;
+    if (presentationMode === 'matrix') {
+      cat.featureMatrix = readFeatureMatrixFromContainer(card.querySelector('.feature-matrix-list'));
+      TIER_KEYS.forEach(tk => {
+        if (!cat.tiers[tk]) return;
+        cat.tiers[tk].features = legacyFeaturesFromMatrix(cat.featureMatrix, tk);
+      });
+    } else {
+      delete cat.featureMatrix;
+    }
   });
   
   // Extras
