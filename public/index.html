@@ -640,6 +640,7 @@ main {
   font-family: 'Poppins', sans-serif;
   cursor: pointer;
   transition: var(--transition);
+  min-height: 44px;
 }
 .btn-primary {
   background: var(--accent);
@@ -769,7 +770,7 @@ main {
 
 /* RESPONSIVE */
 @media (max-width: 600px) {
-  body { padding-bottom: 140px; }
+  body { padding-bottom: 170px; }
   header { padding: 14px 16px; }
   header .header-inner {
     flex-wrap: nowrap;
@@ -784,8 +785,13 @@ main {
   header .total-label { font-size: 9px; letter-spacing: 0.5px; }
   header .total-amount { font-size: 20px; }
   .project-details, .presets, .extras-section, .pm-section { padding: 22px 18px; }
+  main { padding: 20px 14px; }
   .category-header { padding: 16px 18px; }
   .category-body { padding: 0 18px 18px; }
+  .category-icon { width: 48px; height: 48px; }
+  .category-name { font-size: 16px; }
+  .category-price { min-width: 82px; font-size: 18px; }
+  .category-price.no-selection { font-size: 13px; }
   .form-grid { grid-template-columns: 1fr; }
   .summary-bar { 
     padding: 12px 16px; 
@@ -796,15 +802,41 @@ main {
   .summary-actions { 
     width: 100%; 
     display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px; 
   }
   .summary-actions .btn { 
+    min-height: 44px;
     padding: 10px 8px; 
-    font-size: 11px; 
+    font-size: 12px;
     white-space: nowrap;
   }
   .pm-row { flex-direction: column; align-items: flex-start; }
+  .modal-overlay {
+    padding: 12px;
+    align-items: stretch;
+  }
+  .modal {
+    border-radius: 16px;
+    max-height: calc(100dvh - 24px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 18px 20px;
+  }
+  .modal-body {
+    padding: 20px;
+    overflow: auto;
+  }
+  .modal-footer {
+    padding: 14px 20px;
+    flex-wrap: wrap;
+  }
+  .summary-table {
+    min-width: 560px;
+  }
 }
 </style>
 </head>
