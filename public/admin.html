@@ -782,20 +782,54 @@
     }
 
     .feature-matrix-list {
-      display: grid;
-      gap: 10px;
-      padding: 12px;
+      background: white;
     }
 
-    .feature-matrix-row {
+    .feature-matrix-table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .feature-matrix-table {
+      width: 100%;
+      min-width: 780px;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: white;
+    }
+
+    .feature-matrix-table th,
+    .feature-matrix-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      text-align: center;
+    }
+
+    .feature-matrix-table th {
+      background: #F8FBFD;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.35px;
+      white-space: nowrap;
+    }
+
+    .feature-matrix-table th:first-child,
+    .feature-matrix-table td:first-child {
+      text-align: left;
+      width: 34%;
+      min-width: 260px;
+    }
+
+    .feature-matrix-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .feature-matrix-feature-cell {
       display: grid;
-      grid-template-columns: minmax(160px, 1.1fr) minmax(120px, 0.8fr) minmax(180px, 1.2fr) minmax(280px, 1.4fr) auto;
-      gap: 8px;
-      align-items: start;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #fff;
+      gap: 6px;
     }
 
     .feature-matrix-row input,
@@ -811,17 +845,38 @@
       background: white;
     }
 
-    .fm-tier-statuses {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(74px, 1fr));
-      gap: 6px;
+    .feature-matrix-row .fm-label {
+      font-weight: 700;
+      color: var(--text);
+      background: #FFFFFF;
     }
 
-    .fm-tier-statuses label {
-      display: grid;
-      gap: 3px;
-      font-size: 11px;
+    .feature-matrix-row .fm-description {
+      min-height: 38px;
+      resize: vertical;
+      background: #FBFCFD;
+    }
+
+    .feature-matrix-row .fm-status {
+      min-width: 108px;
+      font-weight: 600;
+    }
+
+    .feature-matrix-remove {
+      width: 32px;
+      height: 32px;
+      padding: 0 !important;
+      line-height: 1;
+      color: var(--danger) !important;
+      background: #FFF5F5 !important;
+    }
+
+    .feature-matrix-empty {
+      padding: 16px;
       color: var(--text-light);
+      font-size: 13px;
+      text-align: center;
+      border-top: 1px solid var(--border);
     }
 
     .category-editor-header-row {
@@ -2555,23 +2610,35 @@ function featureMatrixStatusOptions(selected = 'not_included') {
 
 function renderFeatureMatrixRows(matrix = []) {
   const rows = normalizeFeatureMatrix(matrix);
+  if (!rows.length) {
+    return `
+      <tr class="feature-matrix-empty-row">
+        <td colspan="${TIER_ORDER.length + 2}" class="feature-matrix-empty">
+          No comparison rows yet. Convert current features or add a feature.
+        </td>
+      </tr>
+    `;
+  }
   return rows.map((feature, index) => `
-    <div class="feature-matrix-row" data-feature-id="${escapeAttr(feature.id)}" data-order="${index}">
-      <input class="fm-label" type="text" value="${escapeAttr(feature.label)}" placeholder="Short feature name">
-      <input class="fm-group" type="text" value="${escapeAttr(feature.group || '')}" placeholder="Group">
-      <textarea class="fm-description" rows="2" placeholder="Tooltip / description">${escapeAttr(feature.description || '')}</textarea>
-      <div class="fm-tier-statuses">
-        ${TIER_ORDER.map(tierKey => `
-          <label>
-            <span>${TIER_NAMES[tierKey]}</span>
-            <select class="fm-status" data-tier="${tierKey}">
-              ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
-            </select>
-          </label>
-        `).join('')}
-      </div>
-      <button type="button" class="btn btn-secondary btn-small" onclick="removeFeatureMatrixRow(this)">Remove</button>
-    </div>
+    <tr class="feature-matrix-row" data-feature-id="${escapeAttr(feature.id)}" data-order="${index}">
+      <td>
+        <div class="feature-matrix-feature-cell">
+          <input class="fm-label" type="text" value="${escapeAttr(feature.label)}" placeholder="Short feature name">
+          <textarea class="fm-description" rows="2" placeholder="Tooltip / customer-facing explanation">${escapeAttr(feature.description || '')}</textarea>
+          <input class="fm-group" type="hidden" value="${escapeAttr(feature.group || '')}">
+        </div>
+      </td>
+      ${TIER_ORDER.map(tierKey => `
+        <td>
+          <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}">
+            ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
+          </select>
+        </td>
+      `).join('')}
+      <td>
+        <button type="button" class="btn btn-secondary btn-small feature-matrix-remove" onclick="removeFeatureMatrixRow(this)" title="Remove feature">×</button>
+      </td>
+    </tr>
   `).join('');
 }
 
@@ -2661,6 +2728,10 @@ function addFeatureMatrixRow(button) {
 
 function removeFeatureMatrixRow(button) {
   button.closest('.feature-matrix-row')?.remove();
+  const list = button.closest('.matrix-mode-panel')?.querySelector('.feature-matrix-list');
+  if (list && !list.querySelector('.feature-matrix-row')) {
+    list.innerHTML = renderFeatureMatrixRows([]);
+  }
   markCatDirty();
   queueCustomizeDraftSave();
 }
@@ -2680,8 +2751,19 @@ function renderFeatureMatrixEditorPanel(cat, override = {}) {
           <button type="button" class="btn btn-secondary btn-small" onclick="addFeatureMatrixRow(this)">+ Feature</button>
         </div>
       </div>
-      <div class="feature-matrix-list">
-        ${renderFeatureMatrixRows(matrix)}
+      <div class="feature-matrix-table-wrap">
+        <table class="feature-matrix-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              ${TIER_ORDER.map(tierKey => `<th>${TIER_NAMES[tierKey]}</th>`).join('')}
+              <th></th>
+            </tr>
+          </thead>
+          <tbody class="feature-matrix-list">
+            ${renderFeatureMatrixRows(matrix)}
+          </tbody>
+        </table>
       </div>
     </div>
   `;
