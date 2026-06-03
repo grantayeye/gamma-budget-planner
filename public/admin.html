@@ -518,6 +518,112 @@
       overflow-y: auto;
       flex: 1;
     }
+
+    #customizeModal .modal {
+      height: min(90vh, 980px);
+    }
+
+    #customizeModal .modal-body {
+      padding: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .customize-scroll-area {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 28px 28px 18px;
+    }
+
+    .customize-actions-sticky {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 12px;
+      padding: 16px 28px;
+      border-top: 1px solid var(--border);
+      background: rgba(255,255,255,0.96);
+      box-shadow: 0 -8px 20px rgba(15,47,68,0.08);
+    }
+
+    .customize-header-combo {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      background: white;
+    }
+
+    .custom-category-header {
+      display: grid;
+      grid-template-columns: 42px minmax(180px, 1fr) 210px 34px 34px 78px 66px 74px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .custom-category-header .cc-icon {
+      width: 42px;
+    }
+
+    .custom-category-header .cc-name {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .customize-tier-row {
+      display: grid;
+      grid-template-columns: 86px minmax(160px, 1fr) 112px 92px 76px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 6px;
+    }
+
+    .customize-tier-name {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .customize-tier-label,
+    .customize-tier-price {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .customize-tier-swap-cell {
+      display: grid;
+      grid-template-columns: 34px 34px;
+      gap: 4px;
+      justify-content: end;
+    }
+
+    .is-hidden,
+    .tier-swap-btn.is-hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    @media (max-width: 900px) {
+      .custom-category-header {
+        grid-template-columns: 42px minmax(160px, 1fr) 190px 34px 34px;
+      }
+
+      .custom-category-header .btn:nth-last-child(-n+3) {
+        grid-column: span 1;
+      }
+
+      .customize-tier-row {
+        grid-template-columns: 82px minmax(140px, 1fr) 104px 86px 76px;
+      }
+    }
     
     .detail-grid {
       display: grid;
@@ -1196,7 +1302,7 @@
       <h2>⚙️ Customize Budget: <span id="customizeTitle"></span></h2>
       <button class="modal-close" onclick="closeCustomizeModal()">×</button>
     </div>
-    <div class="modal-body" id="customizeBody" style="overflow-y:auto; max-height: calc(90vh - 140px);">
+    <div class="modal-body" id="customizeBody">
       <!-- Content loaded dynamically -->
     </div>
   </div>
@@ -2763,8 +2869,8 @@ function renderCustomizeItemControls(item, layout, itemIndex, itemCount) {
         <option value="__new__">+ New Header...</option>
       </select>
     </label>
-    ${itemIndex > 0 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up">↑</button>` : ''}
-    ${itemIndex < itemCount - 1 ? `<button type="button" class="btn btn-secondary btn-small" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down">↓</button>` : ''}
+    <button type="button" class="btn btn-secondary btn-small ${itemIndex > 0 ? '' : 'is-hidden'}" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', -1)" title="Move up" ${itemIndex > 0 ? '' : 'disabled'}>↑</button>
+    <button type="button" class="btn btn-secondary btn-small ${itemIndex < itemCount - 1 ? '' : 'is-hidden'}" onclick="moveCustomizeItem('${item.type}', '${escapeAttr(item.id)}', 1)" title="Move down" ${itemIndex < itemCount - 1 ? '' : 'disabled'}>↓</button>
   `;
 }
 
@@ -2845,29 +2951,31 @@ function renderCustomizeEditor() {
   const defaultExtras = getBudgetDefaultExtras(budget, propertyType);
   
   body.innerHTML = `
-    <div style="background:#FFF8E1;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;">
-      <strong>⚠️ Customization Info:</strong><br>
-      • Sqft locked at: <strong>${sqft.toLocaleString()}</strong><br>
-      • Property type: <strong>${propertyType}</strong><br>
-      • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions<br>
-      <span id="customizeDraftStatus" style="color:var(--text-light);font-size:12px;">Draft autosave is on</span>
-    </div>
-
-    ${renderCopySectionControls()}
-    <div id="categoryEditors" data-sqft="${sqft}">
-      ${renderCustomizeGroupedEditors(defaultCategories, existingCustom, existingConfig, selections, sqft)}
-    </div>
-
-    ${defaultExtras.length > 0 ? `
-      <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
-        <h3 style="margin-bottom:12px;">➕ Additional Items</h3>
-        <div id="customExtrasList">
-          ${defaultExtras.map(extra => renderCustomExtraEditor(extra, existingExtraConfig[extra.id], !!selectedExtras[extra.id], sqft)).join('')}
-        </div>
+    <div class="customize-scroll-area">
+      <div style="background:#FFF8E1;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;">
+        <strong>⚠️ Customization Info:</strong><br>
+        • Sqft locked at: <strong>${sqft.toLocaleString()}</strong><br>
+        • Property type: <strong>${propertyType}</strong><br>
+        • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions<br>
+        <span id="customizeDraftStatus" style="color:var(--text-light);font-size:12px;">Draft autosave is on</span>
       </div>
-    ` : ''}
-    
-    <div style="display:flex;gap:12px;margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+
+      ${renderCopySectionControls()}
+      <div id="categoryEditors" data-sqft="${sqft}">
+        ${renderCustomizeGroupedEditors(defaultCategories, existingCustom, existingConfig, selections, sqft)}
+      </div>
+
+      ${defaultExtras.length > 0 ? `
+        <div style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);">
+          <h3 style="margin-bottom:12px;">➕ Additional Items</h3>
+          <div id="customExtrasList">
+            ${defaultExtras.map(extra => renderCustomExtraEditor(extra, existingExtraConfig[extra.id], !!selectedExtras[extra.id], sqft)).join('')}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="customize-actions-sticky">
       <button class="btn btn-primary" onclick="saveCustomization()" style="flex:1;">💾 Save Customization</button>
       <button class="btn btn-secondary" onclick="closeCustomizeModal()">Cancel</button>
     </div>
@@ -3054,15 +3162,15 @@ function renderCopySectionControls() {
           <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Copies pricing, labels, features, brands, visibility, and enabled tiers into this editor. Save customization to apply.</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1.2fr) minmax(180px,1fr) auto;gap:10px;align-items:center;">
-        <input type="search" id="copySourceBudgetSearch" placeholder="Search projects..." oninput="filterCopySourceBudgets()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
-        <select id="copySourceBudget" onchange="handleCopySourceBudgetChange()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
-          <option value="">Choose source budget...</option>
-        </select>
-        <input type="search" id="copySourceSectionSearch" placeholder="Search sections..." oninput="filterCopySourceSections()" disabled style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
-        <select id="copySourceSection" disabled style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;grid-column:2 / 4;">
-          <option value="">Choose section...</option>
-        </select>
+      <div style="display:grid;grid-template-columns:minmax(220px,1.1fr) minmax(220px,1fr) auto;gap:10px;align-items:center;">
+        <div>
+          <input type="search" id="copySourceBudgetCombo" list="copySourceBudgetOptions" placeholder="Search or choose source budget..." oninput="handleCopySourceBudgetComboInput()" class="customize-header-combo" autocomplete="off">
+          <datalist id="copySourceBudgetOptions"></datalist>
+        </div>
+        <div>
+          <input type="search" id="copySourceSectionCombo" list="copySourceSectionOptions" placeholder="Search or choose section..." oninput="handleCopySourceSectionComboInput()" class="customize-header-combo" autocomplete="off" disabled>
+          <datalist id="copySourceSectionOptions"></datalist>
+        </div>
         <button type="button" class="btn btn-secondary btn-small" onclick="copySelectedSectionIntoCustomize()">Copy Section</button>
       </div>
       <div id="copySectionStatus" style="font-size:12px;color:var(--text-light);margin-top:8px;"></div>
@@ -3071,64 +3179,78 @@ function renderCopySectionControls() {
 }
 
 function filterCopySourceBudgets() {
-  const select = document.getElementById('copySourceBudget');
-  if (!select) return;
-  const search = (document.getElementById('copySourceBudgetSearch')?.value || '').trim().toLowerCase();
-  const selected = select.value;
+  const list = document.getElementById('copySourceBudgetOptions');
+  if (!list) return;
   const options = budgets
     .filter(b => b.id !== customizeBudgetId)
-    .filter(b => !search || budgetSearchText(b).includes(search))
-    .map(b => `<option value="${escapeAttr(b.id)}">${escapeAttr(budgetOptionLabel(b))}</option>`)
+    .map(b => `<option value="${escapeAttr(budgetOptionLabel(b))}"></option>`)
     .join('');
-  select.innerHTML = `<option value="">Choose source budget...</option>${options}`;
-  if (selected && [...select.options].some(opt => opt.value === selected)) {
-    select.value = selected;
-  } else if (selected) {
-    copySectionSourceBudget = null;
-    const sectionSelect = document.getElementById('copySourceSection');
-    if (sectionSelect) sectionSelect.innerHTML = '<option value="">Choose section...</option>';
-  }
+  list.innerHTML = options;
+}
+
+function getCopySourceBudgetMatch() {
+  const input = document.getElementById('copySourceBudgetCombo');
+  const value = (input?.value || '').trim();
+  if (!value) return null;
+  return budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .find(b => budgetOptionLabel(b) === value || b.id === value) || null;
+}
+
+function getCopySourceSectionEntries() {
+  if (!copySectionSourceBudget) return [];
+  const targetIds = new Set(Array.from(document.querySelectorAll('.category-editor')).map(el => el.dataset.catId));
+  return getCopyableSectionsFromBudget(copySectionSourceBudget, targetIds).map(entry => ({
+    ...entry,
+    value: `${entry.section} • ${entry.name}`,
+    sectionValue: `${entry.type}:${entry.id}`
+  }));
 }
 
 function renderCopySourceSections() {
-  const sectionSelect = document.getElementById('copySourceSection');
-  const searchInput = document.getElementById('copySourceSectionSearch');
-  if (!sectionSelect) return;
+  const sectionInput = document.getElementById('copySourceSectionCombo');
+  const list = document.getElementById('copySourceSectionOptions');
+  if (!sectionInput || !list) return;
+  sectionInput.value = '';
+  sectionInput.dataset.selectedValue = '';
   if (!copySectionSourceBudget) {
-    sectionSelect.disabled = true;
-    if (searchInput) searchInput.disabled = true;
-    sectionSelect.innerHTML = '<option value="">Choose section...</option>';
+    sectionInput.disabled = true;
+    list.innerHTML = '';
     return;
   }
-
-  const targetIds = new Set(Array.from(document.querySelectorAll('.category-editor')).map(el => el.dataset.catId));
-  const search = (searchInput?.value || '').trim().toLowerCase();
-  const entries = getCopyableSectionsFromBudget(copySectionSourceBudget, targetIds)
-    .filter(entry => !search || [entry.name, entry.section, entry.id].filter(Boolean).join(' ').toLowerCase().includes(search));
-  sectionSelect.innerHTML = `<option value="">Choose section...</option>${entries.map(entry => (
-    `<option value="${entry.type}:${escapeAttr(entry.id)}">${escapeAttr(entry.section)} • ${escapeAttr(entry.name)}</option>`
-  )).join('')}`;
-  sectionSelect.disabled = entries.length === 0;
-  if (searchInput) searchInput.disabled = false;
+  const entries = getCopySourceSectionEntries();
+  list.innerHTML = entries.map(entry => `<option value="${escapeAttr(entry.value)}"></option>`).join('');
+  sectionInput.disabled = entries.length === 0;
 }
 
-function filterCopySourceSections() {
-  renderCopySourceSections();
+function handleCopySourceSectionComboInput() {
+  const input = document.getElementById('copySourceSectionCombo');
+  if (!input) return;
+  const match = getCopySourceSectionEntries().find(entry => entry.value === input.value || entry.sectionValue === input.value);
+  input.dataset.selectedValue = match ? match.sectionValue : '';
 }
 
-async function handleCopySourceBudgetChange() {
-  const budgetId = document.getElementById('copySourceBudget')?.value;
-  const sectionSelect = document.getElementById('copySourceSection');
-  const sectionSearch = document.getElementById('copySourceSectionSearch');
+async function handleCopySourceBudgetComboInput() {
+  const input = document.getElementById('copySourceBudgetCombo');
+  const match = getCopySourceBudgetMatch();
+  const budgetId = match?.id || '';
+  if (!input) return;
+  if (input.dataset.selectedId === budgetId) return;
+  input.dataset.selectedId = budgetId;
+  await handleCopySourceBudgetChange(budgetId);
+}
+
+async function handleCopySourceBudgetChange(budgetId) {
+  const sectionInput = document.getElementById('copySourceSectionCombo');
+  const sectionList = document.getElementById('copySourceSectionOptions');
   const status = document.getElementById('copySectionStatus');
   copySectionSourceBudget = null;
-  if (!sectionSelect) return;
-  sectionSelect.disabled = true;
-  sectionSelect.innerHTML = '<option value="">Choose section...</option>';
-  if (sectionSearch) {
-    sectionSearch.value = '';
-    sectionSearch.disabled = true;
+  if (sectionInput) {
+    sectionInput.value = '';
+    sectionInput.dataset.selectedValue = '';
+    sectionInput.disabled = true;
   }
+  if (sectionList) sectionList.innerHTML = '';
   if (!budgetId) {
     if (status) status.textContent = '';
     return;
@@ -3141,7 +3263,7 @@ async function handleCopySourceBudgetChange() {
     copySectionSourceBudget = await res.json();
 
     renderCopySourceSections();
-    if (status) status.textContent = sectionSelect.disabled ? 'No matching sections found for this budget type.' : 'Pick a section to copy into this budget.';
+    if (status) status.textContent = sectionInput?.disabled ? 'No matching sections found for this budget type.' : 'Pick a section to copy into this budget.';
   } catch (err) {
     console.error('Load copy source error:', err);
     if (status) status.textContent = err.message || 'Could not load source budget';
@@ -3217,6 +3339,39 @@ function writeTierRowData(row, data, selectors) {
   row.querySelectorAll(selectors.disable).forEach(el => { el.disabled = disabled; });
 }
 
+function isTierRowActive(row, enabledSelector) {
+  const checkbox = row?.querySelector(enabledSelector);
+  return !!checkbox && (checkbox.checked || checkbox.disabled);
+}
+
+function refreshTierSwapButtons(editor, rowSelector, enabledSelector) {
+  if (!editor) return;
+  const rowsByTier = new Map(Array.from(editor.querySelectorAll(rowSelector)).map(row => [row.dataset.tier, row]));
+  TIER_ORDER.forEach((tierKey, index) => {
+    const row = rowsByTier.get(tierKey);
+    if (!row) return;
+    const currentActive = isTierRowActive(row, enabledSelector);
+    row.querySelectorAll('.tier-swap-btn').forEach(button => {
+      const direction = Number(button.dataset.direction || 0);
+      const neighborTier = TIER_ORDER[index + direction];
+      const neighborRow = rowsByTier.get(neighborTier);
+      const canSwap = !!neighborRow && currentActive && isTierRowActive(neighborRow, enabledSelector);
+      button.classList.toggle('is-hidden', !canSwap);
+      button.style.visibility = canSwap ? 'visible' : 'hidden';
+      button.style.pointerEvents = canSwap ? '' : 'none';
+      button.disabled = !canSwap;
+    });
+  });
+}
+
+function refreshCategoryTierSwapButtons(editor) {
+  refreshTierSwapButtons(editor, '.tier-row', '.tier-enabled');
+}
+
+function refreshCustomTierSwapButtons(editor) {
+  refreshTierSwapButtons(editor, '.cc-tier-row', '.cc-tier-enabled');
+}
+
 function buildCategoryOverrideFromEditor(catId) {
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (!editor) return null;
@@ -3289,6 +3444,7 @@ function applyCategoryOverrideToEditor(catId, override) {
       });
     }
   });
+  refreshCategoryTierSwapButtons(editor);
   return true;
 }
 
@@ -3343,8 +3499,8 @@ function openCopyToModal(type, idOrIndex) {
   const body = document.getElementById('copyToBody');
   body.innerHTML = `
     <p style="color:var(--text-light);margin-bottom:16px;">Copy <strong>${escapeAttr(copyToPayload.label)}</strong> into another budget. This overwrites the matching default section, or replaces/adds the custom section.</p>
-    <input type="search" id="copyToBudgetSearch" placeholder="Search projects..." oninput="filterCopyToBudgets()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-bottom:10px;">
-    <select id="copyToBudgetSelect" size="8" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></select>
+    <input type="search" id="copyToBudgetCombo" list="copyToBudgetOptions" placeholder="Search or choose target budget..." oninput="handleCopyToBudgetComboInput()" class="customize-header-combo" autocomplete="off">
+    <datalist id="copyToBudgetOptions"></datalist>
     <div id="copyToStatus" style="font-size:12px;color:var(--text-light);margin-top:8px;"></div>
     <div style="display:flex;gap:12px;margin-top:18px;">
       <button type="button" class="btn btn-primary" onclick="copyCurrentSectionToSelectedBudget()" style="flex:1;">Copy To Selected Budget</button>
@@ -3361,19 +3517,34 @@ function closeCopyToModal() {
 }
 
 function filterCopyToBudgets() {
-  const select = document.getElementById('copyToBudgetSelect');
-  if (!select) return;
-  const search = (document.getElementById('copyToBudgetSearch')?.value || '').trim().toLowerCase();
+  const list = document.getElementById('copyToBudgetOptions');
+  if (!list) return;
   const options = budgets
     .filter(b => b.id !== customizeBudgetId)
-    .filter(b => !search || budgetSearchText(b).includes(search))
-    .map(b => `<option value="${escapeAttr(b.id)}">${escapeAttr(budgetOptionLabel(b))}</option>`)
+    .map(b => `<option value="${escapeAttr(budgetOptionLabel(b))}"></option>`)
     .join('');
-  select.innerHTML = options || '<option value="">No matching budgets</option>';
+  list.innerHTML = options;
+}
+
+function getCopyToBudgetMatch() {
+  const input = document.getElementById('copyToBudgetCombo');
+  const value = (input?.value || '').trim();
+  if (!value) return null;
+  return budgets
+    .filter(b => b.id !== customizeBudgetId)
+    .find(b => budgetOptionLabel(b) === value || b.id === value) || null;
+}
+
+function handleCopyToBudgetComboInput() {
+  const input = document.getElementById('copyToBudgetCombo');
+  if (!input) return;
+  const match = getCopyToBudgetMatch();
+  input.dataset.selectedId = match?.id || '';
 }
 
 async function copyCurrentSectionToSelectedBudget() {
-  const targetId = document.getElementById('copyToBudgetSelect')?.value;
+  const input = document.getElementById('copyToBudgetCombo');
+  const targetId = input?.dataset.selectedId || getCopyToBudgetMatch()?.id || '';
   const status = document.getElementById('copyToStatus');
   if (!copyToPayload || !targetId) {
     if (status) status.textContent = 'Choose a target budget first.';
@@ -3437,7 +3608,12 @@ async function copyCurrentSectionToSelectedBudget() {
 }
 
 function copySelectedSectionIntoCustomize() {
-  const sectionValue = document.getElementById('copySourceSection')?.value;
+  const sectionInput = document.getElementById('copySourceSectionCombo');
+  let sectionValue = sectionInput?.dataset.selectedValue || '';
+  if (!sectionValue && sectionInput?.value) {
+    const match = getCopySourceSectionEntries().find(entry => entry.value === sectionInput.value || entry.sectionValue === sectionInput.value);
+    sectionValue = match?.sectionValue || '';
+  }
   const status = document.getElementById('copySectionStatus');
   if (!copySectionSourceBudget || !sectionValue) {
     if (status) status.textContent = 'Choose a source budget and section first.';
@@ -3502,6 +3678,7 @@ function swapTierWithNeighbor(catId, tierKey, direction) {
       disable: 'input:not(.tier-enabled), button:not(.tier-swap-btn)'
     }
   );
+  refreshCategoryTierSwapButtons(editor);
   showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);
 }
 
@@ -3520,6 +3697,7 @@ function swapCustomTierWithNeighbor(index, tierKey, direction) {
       disable: 'input:not(.cc-tier-enabled), button:not(.tier-swap-btn)'
     }
   );
+  refreshCustomTierSwapButtons(editor);
   showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);
 }
 
@@ -3547,6 +3725,12 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
   const tierPresence = Object.fromEntries(allTiers.map(tierKey => {
     const tierOverride = override.tiers?.[tierKey] || {};
     return [tierKey, tierHasContent(cat.tiers?.[tierKey], tierOverride, selectedTier === tierKey)];
+  }));
+  const tierEnabledState = Object.fromEntries(allTiers.map(tierKey => {
+    const defaultTier = cat.tiers[tierKey];
+    const tierOverride = override.tiers?.[tierKey] || {};
+    const existsInBase = !!defaultTier;
+    return [tierKey, selectedTier === tierKey || (existsInBase ? (tierOverride.enabled !== false) : (tierOverride.enabled === true))];
   }));
   
   return `
@@ -3597,33 +3781,33 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
           
           const prevTier = allTiers[allTiers.indexOf(tierKey) - 1];
           const nextTier = allTiers[allTiers.indexOf(tierKey) + 1];
-          const showUp = !!(tierPresence[tierKey] && prevTier && tierPresence[prevTier]);
-          const showDown = !!(tierPresence[tierKey] && nextTier && tierPresence[nextTier]);
+          const showUp = !!(tierEnabledState[tierKey] && prevTier && tierEnabledState[prevTier]);
+          const showDown = !!(tierEnabledState[tierKey] && nextTier && tierEnabledState[nextTier]);
 
           return `
-            <div class="tier-row" data-tier="${tierKey}" 
+            <div class="tier-row customize-tier-row" data-tier="${tierKey}"
                  data-has-base="${existsInBase}" 
                  data-base-price="${basePrice}"
                  data-scaled-price="${scaledPrice}"
                  data-features="${escapeAttr(JSON.stringify(features))}"
                  data-brands="${escapeAttr(brands)}"
-                 style="display:flex;gap:8px;align-items:center;padding:8px;background:${existsInBase ? 'white' : '#FFF3E0'};border-radius:6px;${!isEnabled ? 'opacity:0.5;' : ''}${!existsInBase ? 'border:1px dashed #FFB74D;' : ''}">
-              <label style="width:70px;display:flex;align-items:center;gap:4px;${isTierLocked ? 'opacity:0.5;' : ''}">
+                 style="background:${existsInBase ? 'white' : '#FFF3E0'};${!isEnabled ? 'opacity:0.5;' : ''}${!existsInBase ? 'border:1px dashed #FFB74D;' : ''}">
+              <label class="customize-tier-name" style="${isTierLocked ? 'opacity:0.5;' : ''}">
                 <input type="checkbox" class="tier-enabled" 
                   ${isEnabled ? 'checked' : ''} 
                   ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
                   onchange="toggleTierEnabled('${cat.id}', '${tierKey}', this.checked)"
                 > ${tierLabels[tierKey]}
               </label>
-              <input type="text" class="tier-label" value="${escapeAttr(label)}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+              <input type="text" class="tier-label customize-tier-label" value="${escapeAttr(label)}" placeholder="Label" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
               <div style="position:relative;">
-                <input type="number" class="tier-price" value="${price}" placeholder="Price" style="width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+                <input type="number" class="tier-price customize-tier-price" value="${price}" placeholder="Price" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
                 ${existsInBase && scaledPrice ? `<span style="position:absolute;right:4px;top:-8px;font-size:10px;color:var(--text-light);">base: $${scaledPrice.toLocaleString()}</span>` : ''}
               </div>
-              <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" ${!isEnabled ? 'disabled' : ''}>Features</button>
-              <div style="display:flex;gap:4px;">
-                ${showUp ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)">↑</button>` : ''}
-                ${showDown ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)">↓</button>` : ''}
+              <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" style="width:100%;" ${!isEnabled ? 'disabled' : ''}>Features</button>
+              <div class="customize-tier-swap-cell">
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showUp ? '' : 'is-hidden'}" data-direction="-1" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)" ${showUp ? '' : 'disabled'}>↑</button>
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showDown ? '' : 'is-hidden'}" data-direction="1" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)" ${showDown ? '' : 'disabled'}>↓</button>
               </div>
             </div>
           `;
@@ -3641,12 +3825,16 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
     const tier = cc.tiers?.[tierKey] || {};
     return [tierKey, tierHasContent(null, tier, selectedTier === tierKey)];
   }));
+  const tierEnabledState = Object.fromEntries(allTiers.map(tierKey => {
+    const tier = cc.tiers?.[tierKey] || {};
+    return [tierKey, selectedTier === tierKey || !!(tier.enabled !== false && (tier.label || tier.price))];
+  }));
   
   return `
     <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
-        <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
-        <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="flex:1;min-width:220px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
+      <div class="custom-category-header">
+        <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
+        <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
         ${layoutControlsHtml}
         <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
         <button type="button" class="btn btn-secondary btn-small" onclick="cloneCustomCategory(${index})">Clone</button>
@@ -3656,33 +3844,33 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
         ${allTiers.map(tierKey => {
           const tier = cc.tiers?.[tierKey] || {};
           const isTierLocked = selectedTier === tierKey;
-          const isEnabled = tier.enabled !== false && (tier.label || tier.price);
+          const isEnabled = !!(tier.enabled !== false && (tier.label || tier.price));
           const features = tier.features || [];
           const brands = tier.brands || '';
           
           const prevTier = allTiers[allTiers.indexOf(tierKey) - 1];
           const nextTier = allTiers[allTiers.indexOf(tierKey) + 1];
-          const showUp = !!(tierPresence[tierKey] && prevTier && tierPresence[prevTier]);
-          const showDown = !!(tierPresence[tierKey] && nextTier && tierPresence[nextTier]);
+          const showUp = !!(tierEnabledState[tierKey] && prevTier && tierEnabledState[prevTier]);
+          const showDown = !!(tierEnabledState[tierKey] && nextTier && tierEnabledState[nextTier]);
 
           return `
-            <div class="cc-tier-row" data-tier="${tierKey}" 
+            <div class="cc-tier-row customize-tier-row" data-tier="${tierKey}"
                  data-features="${escapeAttr(JSON.stringify(features))}"
                  data-brands="${escapeAttr(brands || '')}"
-                 style="display:flex;gap:8px;align-items:center;padding:8px;background:white;border-radius:6px;${!isEnabled && !isTierLocked ? 'opacity:0.5;' : ''}">
-              <label style="width:70px;display:flex;align-items:center;gap:4px;${isTierLocked ? 'opacity:0.5;' : ''}">
+                 style="background:white;${!isEnabled && !isTierLocked ? 'opacity:0.5;' : ''}">
+              <label class="customize-tier-name" style="${isTierLocked ? 'opacity:0.5;' : ''}">
                 <input type="checkbox" class="cc-tier-enabled" 
                   ${isEnabled || isTierLocked ? 'checked' : ''} 
                   ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
                   onchange="toggleCustomTierEnabled(${index}, '${tierKey}', this.checked)"
                 > ${tierLabels[tierKey]}
               </label>
-              <input type="text" class="cc-tier-label" data-tier="${tierKey}" value="${escapeAttr(tier.label || '')}" placeholder="Label" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
-              <input type="number" class="cc-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
-              <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
-              <div style="display:flex;gap:4px;">
-                ${showUp ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)">↑</button>` : ''}
-                ${showDown ? `<button type="button" class="btn btn-secondary btn-small tier-swap-btn" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)">↓</button>` : ''}
+              <input type="text" class="cc-tier-label customize-tier-label" data-tier="${tierKey}" value="${escapeAttr(tier.label || '')}" placeholder="Label" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+              <input type="number" class="cc-tier-price customize-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+              <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" style="width:100%;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
+              <div class="customize-tier-swap-cell">
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showUp ? '' : 'is-hidden'}" data-direction="-1" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)" ${showUp ? '' : 'disabled'}>↑</button>
+                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showDown ? '' : 'is-hidden'}" data-direction="1" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)" ${showDown ? '' : 'disabled'}>↓</button>
               </div>
             </div>
           `;
@@ -3732,6 +3920,7 @@ function toggleCustomTierEnabled(index, tierKey, enabled) {
     if (tierRow) {
       tierRow.style.opacity = enabled ? '1' : '0.5';
       tierRow.querySelectorAll('input:not(.cc-tier-enabled), button:not(.tier-swap-btn)').forEach(el => el.disabled = !enabled);
+      refreshCustomTierSwapButtons(editor);
     }
   }
 }
@@ -3820,6 +4009,7 @@ function toggleTierEnabled(catId, tierKey, enabled) {
     if (tierRow) {
       tierRow.style.opacity = enabled ? '1' : '0.5';
       tierRow.querySelectorAll('input:not(.tier-enabled), button:not(.tier-swap-btn)').forEach(el => el.disabled = !enabled);
+      refreshCategoryTierSwapButtons(editor);
     }
   }
 }

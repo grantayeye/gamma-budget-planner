@@ -261,4 +261,62 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.standardFeatures).toEqual(['cg']);
     expect(result.standardBrands).toBe('CB1');
   });
+
+  test('custom tier swap arrows refresh when a neighboring tier is enabled', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const host = document.createElement('div');
+      host.style.width = '840px';
+      document.body.appendChild(host);
+      const controls = renderCustomizeItemControls(
+        { type: 'custom', id: 'qa-custom', sectionId: 'custom' },
+        { sections: [{ id: 'custom', name: 'Custom' }] },
+        0,
+        3
+      );
+      host.innerHTML = renderCustomCategoryEditor({
+        id: 'qa-custom',
+        name: 'New Custom Section (1)',
+        tiers: {
+          good: { enabled: true, label: 'Good', price: 1000 },
+          standard: { enabled: false, label: 'Standard', price: 2000 },
+          better: { enabled: true, label: 'Better', price: 3000 }
+        }
+      }, 99999, null, controls);
+
+      const editor = host.querySelector('.custom-category-editor');
+      const standardRow = editor.querySelector('.cc-tier-row[data-tier="standard"]');
+      const goodDown = editor.querySelector('.cc-tier-row[data-tier="good"] .tier-swap-btn[data-direction="1"]');
+      const standardUp = standardRow.querySelector('.tier-swap-btn[data-direction="-1"]');
+      const before = {
+        goodDown: getComputedStyle(goodDown).visibility,
+        standardUp: getComputedStyle(standardUp).visibility
+      };
+
+      standardRow.querySelector('.cc-tier-enabled').checked = true;
+      refreshCustomTierSwapButtons(editor);
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
+      const after = {
+        goodDown: getComputedStyle(goodDown).visibility,
+        standardUp: getComputedStyle(standardUp).visibility,
+        goodDownClass: goodDown.className,
+        standardUpClass: standardUp.className,
+        goodDownStyle: goodDown.style.visibility,
+        standardUpStyle: standardUp.style.visibility,
+        goodDownDisabled: goodDown.disabled,
+        standardUpDisabled: standardUp.disabled
+      };
+      host.remove();
+      return { before, after };
+    });
+
+    expect(result.before.goodDown).toBe('hidden');
+    expect(result.before.standardUp).toBe('hidden');
+    expect(result.after.goodDownClass).not.toContain('is-hidden');
+    expect(result.after.standardUpClass).not.toContain('is-hidden');
+    expect(result.after.goodDownStyle).toBe('visible');
+    expect(result.after.standardUpStyle).toBe('visible');
+    expect(result.after.goodDownDisabled).toBe(false);
+    expect(result.after.standardUpDisabled).toBe(false);
+  });
 });
