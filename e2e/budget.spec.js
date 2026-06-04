@@ -3,6 +3,8 @@ const { test, expect } = require('@playwright/test');
 test.describe('Budget Planner', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.evaluate(() => categoryDataReady);
+    await page.waitForFunction(() => document.querySelectorAll('.category-card').length > 0);
     await page.evaluate(() => {
       const gate = document.getElementById('loginGate');
       if (gate) gate.style.display = 'none';
@@ -17,6 +19,61 @@ test.describe('Budget Planner', () => {
 
   test('shows initial categories', async ({ page }) => {
     await expect(page.locator('.categories-header h2')).toHaveText('System Categories');
+  });
+
+  test('customer page loads live category pricing from API instead of static fallback', async ({ page }) => {
+    let apiRequests = 0;
+    await page.route('**/api/categories**', async route => {
+      apiRequests += 1;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          residential_categories: [{
+            id: 'surround',
+            section: 'Audio',
+            section_id: 'audio',
+            name: 'Surround Sound',
+            icon: '🔉',
+            desc: 'Live API category',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 5300, label: 'Good', tag: 'Good', features: [], brands: '' },
+              standard: { price: 11400, label: 'Standard', tag: 'Standard', features: [], brands: '' },
+              better: { price: 14800, label: 'Better', tag: 'Better', features: [], brands: '' },
+              best: { price: 17900, label: 'Best', tag: 'Best', features: [], brands: '' }
+            }
+          }],
+          residential_sections: [{ id: 'audio', name: 'Audio', order: 0 }],
+          residential_extras: [],
+          condo_categories: [],
+          condo_sections: [],
+          condo_extras: [],
+          base_sqft: 4000
+        })
+      });
+    });
+
+    await page.reload();
+    await page.evaluate(() => categoryDataReady);
+    await page.waitForFunction(() => document.querySelectorAll('.category-card').length > 0);
+    await page.evaluate(() => {
+      const gate = document.getElementById('loginGate');
+      if (gate) gate.style.display = 'none';
+      document.querySelector('header').style.display = '';
+      document.querySelector('main').style.display = '';
+    });
+
+    const result = await page.evaluate(() => {
+      const surround = CONFIGS.residential.categories.find(c => c.id === 'surround');
+      return {
+        categoryCount: CONFIGS.residential.categories.length,
+        prices: Object.fromEntries(Object.entries(surround.tiers).map(([key, tier]) => [key, tier.price]))
+      };
+    });
+
+    expect(apiRequests).toBeGreaterThan(0);
+    expect(result.categoryCount).toBe(1);
+    expect(result.prices).toEqual({ good: 5300, standard: 11400, better: 14800, best: 17900 });
   });
 
   test('can expand category', async ({ page }) => {

@@ -1341,6 +1341,7 @@ async function backfillBudgetDefaultSnapshots() {
 // ============================================================
 app.get('/api/categories', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, max-age=0');
     const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
     if (error || !data) {
       // Fallback to static file data

@@ -1680,32 +1680,28 @@ main {
 <script src="/categories-data.js"></script>
 <script>
 // Fetch live category data from API (overrides static file if available)
-(function() {
+const categoryDataReady = (async function() {
   try {
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', '/api/categories', false); // synchronous to ensure data is ready before render
-    xhr.timeout = 3000;
-    xhr.send();
-    if (xhr.status === 200) {
-      const d = JSON.parse(xhr.responseText);
-      if (d.residential_categories && d.residential_categories.length > 0) {
-        RESIDENTIAL_CATEGORIES.length = 0;
-        d.residential_categories.forEach(c => RESIDENTIAL_CATEGORIES.push(c));
-        RESIDENTIAL_EXTRAS.length = 0;
-        (d.residential_extras || []).forEach(e => RESIDENTIAL_EXTRAS.push(e));
-        CONDO_CATEGORIES.length = 0;
-        (d.condo_categories || []).forEach(c => CONDO_CATEGORIES.push(c));
-        CONDO_EXTRAS.length = 0;
-        (d.condo_extras || []).forEach(e => CONDO_EXTRAS.push(e));
-        // Update CONFIGS references
-        CONFIGS.residential.categories = RESIDENTIAL_CATEGORIES;
-        CONFIGS.residential.extras = RESIDENTIAL_EXTRAS;
-        CONFIGS.residential.sections = d.residential_sections || [];
-        CONFIGS.condo.categories = CONDO_CATEGORIES;
-        CONFIGS.condo.extras = CONDO_EXTRAS;
-        CONFIGS.condo.sections = d.condo_sections || [];
-        console.log('[Budget] Loaded live category data from API');
-      }
+    const response = await fetch(`/api/categories?ts=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Category API returned ${response.status}`);
+    const d = await response.json();
+    if (d.residential_categories && d.residential_categories.length > 0) {
+      RESIDENTIAL_CATEGORIES.length = 0;
+      d.residential_categories.forEach(c => RESIDENTIAL_CATEGORIES.push(c));
+      RESIDENTIAL_EXTRAS.length = 0;
+      (d.residential_extras || []).forEach(e => RESIDENTIAL_EXTRAS.push(e));
+      CONDO_CATEGORIES.length = 0;
+      (d.condo_categories || []).forEach(c => CONDO_CATEGORIES.push(c));
+      CONDO_EXTRAS.length = 0;
+      (d.condo_extras || []).forEach(e => CONDO_EXTRAS.push(e));
+      // Update CONFIGS references
+      CONFIGS.residential.categories = RESIDENTIAL_CATEGORIES;
+      CONFIGS.residential.extras = RESIDENTIAL_EXTRAS;
+      CONFIGS.residential.sections = d.residential_sections || [];
+      CONFIGS.condo.categories = CONDO_CATEGORIES;
+      CONFIGS.condo.extras = CONDO_EXTRAS;
+      CONFIGS.condo.sections = d.condo_sections || [];
+      console.log('[Budget] Loaded live category data from API');
     }
   } catch (e) {
     console.log('[Budget] Using static category data (API unavailable)');
@@ -3980,34 +3976,40 @@ function updateCustomerStickyOffset() {
 updateCustomerStickyOffset();
 window.addEventListener('resize', updateCustomerStickyOffset);
 
-// Check for live budget URL (/b/:id) - account for BASE_PATH prefix
-const budgetPathPattern = BASE_PATH ? new RegExp(`^${BASE_PATH}\\/b\\/([a-z0-9]+)$`, 'i') : /^\/b\/([a-z0-9]+)$/i;
-const budgetMatch = window.location.pathname.match(budgetPathPattern);
 let _loadedFromURL = false;
+let budgetMatch = null;
 
-if (budgetMatch) {
-  // Load live budget
-  loadBudget(budgetMatch[1]).then(loaded => {
-    if (loaded) {
-      showSharedBanner();
-    }
-  });
-  _loadedFromURL = true;
-} else {
-  // Check for legacy shared config in URL
-  _loadedFromURL = decodeState(window.location.search);
+function initializeBudgetApp() {
+  // Check for live budget URL (/b/:id) - account for BASE_PATH prefix
+  const budgetPathPattern = BASE_PATH ? new RegExp(`^${BASE_PATH}\\/b\\/([a-z0-9]+)$`, 'i') : /^\/b\/([a-z0-9]+)$/i;
+  budgetMatch = window.location.pathname.match(budgetPathPattern);
+
+  if (budgetMatch) {
+    // Load live budget
+    loadBudget(budgetMatch[1]).then(loaded => {
+      if (loaded) {
+        showSharedBanner();
+      }
+    });
+    _loadedFromURL = true;
+  } else {
+    // Check for legacy shared config in URL
+    _loadedFromURL = decodeState(window.location.search);
+  }
+
+  renderCategories();
+  renderExtras();
+  renderModifiers();
+  updateTotals();
+  applyEditLocks();
+
+  // Show banner if loaded from a shared link (legacy URL params)
+  if (_loadedFromURL && !budgetMatch) {
+    showSharedBanner();
+  }
 }
 
-renderCategories();
-renderExtras();
-renderModifiers();
-updateTotals();
-applyEditLocks();
-
-// Show banner if loaded from a shared link (legacy URL params)
-if (_loadedFromURL && !budgetMatch) {
-  showSharedBanner();
-}
+categoryDataReady.finally(initializeBudgetApp);
 
 // Safety: re-sync state from DOM after browser form restoration (Safari restores form values)
 window.addEventListener('pageshow', function() {
