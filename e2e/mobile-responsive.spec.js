@@ -391,12 +391,17 @@ test.describe('Mobile responsive layout', () => {
       const tierCell = row?.querySelector('td[data-tier-label]');
       const table = card.querySelector('.feature-matrix-table');
       const header = card.querySelector('.feature-matrix-table thead');
+      const tierCard = card.querySelector('.feature-matrix-tier-card[data-tier="good"]');
       return {
         overflow: card.scrollWidth > card.clientWidth + 4,
         tableOverflow: table.scrollWidth > table.clientWidth + 4,
         rowDisplay: getComputedStyle(row).display,
         tierCellDisplay: getComputedStyle(tierCell).display,
         headerDisplay: getComputedStyle(header).display,
+        tierCardDisplay: getComputedStyle(tierCard).display,
+        editableTierLabels: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-label').length,
+        editableTierPrices: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-price').length,
+        editableTierToggles: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-enabled').length,
         applyButtons: card.querySelectorAll('.fm-apply-right').length,
         bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim()
       };
@@ -406,7 +411,11 @@ test.describe('Mobile responsive layout', () => {
     expect(result.tableOverflow).toBe(false);
     expect(result.rowDisplay).toBe('grid');
     expect(result.tierCellDisplay).toBe('grid');
-    expect(result.headerDisplay).toBe('none');
+    expect(result.headerDisplay).toBe('block');
+    expect(result.tierCardDisplay).toBe('grid');
+    expect(result.editableTierLabels).toBeGreaterThan(0);
+    expect(result.editableTierPrices).toBeGreaterThan(0);
+    expect(result.editableTierToggles).toBeGreaterThan(0);
     expect(result.applyButtons).toBeGreaterThan(0);
     expect(result.bottomAddButton).toBe('+ Feature');
   });

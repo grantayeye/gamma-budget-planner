@@ -401,8 +401,8 @@ test.describe('Admin copy/customization tools', () => {
 
     expect(result.visibleOrder).toEqual(['standard', 'better', 'best']);
     expect(result.disabledButtons).toContain('good');
-    expect(result.standardLabel).toBe('Standard');
-    expect(result.betterLabel).toBe('Better');
+    expect(result.standardLabel).toBe('Better');
+    expect(result.betterLabel).toBe('Standard');
     expect(result.standardPrice).toBe(2000);
     expect(result.betterPrice).toBe(1500);
     expect(result.standardFeatures).toEqual(['WiFi coverage', 'UPS backup']);

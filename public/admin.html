@@ -1140,10 +1140,21 @@
         background: #FFFFFF;
       }
 
+      .feature-matrix-table tr.feature-matrix-tier-header-row {
+        display: grid;
+        gap: 10px;
+        margin: 12px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #F8FBFD;
+      }
+
       .feature-matrix-table,
       .feature-matrix-table thead,
       .feature-matrix-table tbody,
       .feature-matrix-table tr,
+      .feature-matrix-table th,
       .feature-matrix-table td {
         display: block;
         width: 100%;
@@ -1154,7 +1165,32 @@
       }
 
       .feature-matrix-table thead {
+        display: block;
+      }
+
+      .feature-matrix-tier-header-row th:first-child,
+      .feature-matrix-tier-header-row th:last-child {
         display: none;
+      }
+
+      .feature-matrix-tier-header-row th {
+        border-bottom: none;
+        padding: 0;
+        background: transparent;
+      }
+
+      .feature-matrix-tier-card {
+        min-width: 0;
+        gap: 8px;
+      }
+
+      .feature-matrix-tier-topline {
+        grid-template-columns: 34px 1fr 34px;
+      }
+
+      .matrix-tier-swap-btn {
+        width: 34px;
+        height: 34px;
       }
 
       .feature-matrix-table td {
@@ -3082,11 +3118,13 @@ function syncMatrixRowsToCards(editor) {
   editor?.querySelectorAll('.feature-matrix-tier-card[data-tier]').forEach(card => {
     const tierKey = card.dataset.tier;
     const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
+    const labelInput = card.querySelector('.matrix-tier-label');
     const priceInput = card.querySelector('.matrix-tier-price');
-    if (priceInput && row) {
-      const rowPrice = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value;
-      if (rowPrice !== undefined) priceInput.value = rowPrice;
-    }
+    if (!row) return;
+    const rowLabel = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value;
+    const rowPrice = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value;
+    if (labelInput && rowLabel !== undefined) labelInput.value = rowLabel;
+    if (priceInput && rowPrice !== undefined) priceInput.value = rowPrice;
   });
 }
 
@@ -3111,7 +3149,7 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
     editor?.querySelector(`${rowSelector}[data-tier="${tierKey}"]`),
     editor?.querySelector(`${rowSelector}[data-tier="${nextTier}"]`),
     selectors,
-    { preserveLabel: true }
+    { preserveLabel: false }
   );
   panel.querySelectorAll('.feature-matrix-row').forEach(row => {
     const currentSelect = row.querySelector(`.fm-status[data-tier="${tierKey}"]`);

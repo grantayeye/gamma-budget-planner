@@ -608,7 +608,7 @@ main {
 .comparison-mobile-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
 }
 .comparison-mobile-guide {
@@ -941,6 +941,45 @@ main {
   }
   .comparison-table {
     min-width: 820px;
+  }
+  .comparison-mobile-panel {
+    padding: 12px;
+  }
+  .comparison-mobile-tier-grid {
+    grid-template-columns: repeat(var(--mobile-tier-count), minmax(0, 1fr));
+    gap: 4px;
+    min-width: 0;
+  }
+  .comparison-mobile-tier-grid .comparison-tier-card {
+    min-width: 0;
+    min-height: 70px;
+    gap: 2px;
+    padding: 6px 3px;
+    border-width: 1.5px;
+  }
+  .comparison-mobile-tier-grid .comparison-tier-badge,
+  .comparison-mobile-tier-grid .comparison-tier-tag {
+    display: none;
+  }
+  .comparison-mobile-tier-grid .comparison-tier-name {
+    font-size: 10px;
+  }
+  .comparison-mobile-tier-grid .comparison-tier-price {
+    font-size: 13px;
+  }
+  .comparison-mobile-guide {
+    font-size: 11px;
+  }
+  .mobile-feature-status {
+    min-height: 54px;
+    padding: 6px 2px;
+  }
+  .mobile-feature-tier-label {
+    font-size: 8px;
+  }
+  .mobile-feature-status .matrix-addon {
+    padding: 2px 4px;
+    font-size: 8px;
   }
   .comparison-mobile-focus {
     display: block;
@@ -2152,8 +2191,10 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
   }
   const tier = cat.tiers[tierKey] || {};
   const tierDisabled = isTierUnavailable(cat, tierKey);
+  const fixedName = tierFixedName(tierKey);
   const price = tierDisabled ? 'N/A' : formatCurrency(getCategoryPrice(cat, tierKey));
-  const tag = tierDisabled ? 'Not available' : (tier.tag || tierKey.charAt(0).toUpperCase() + tierKey.slice(1));
+  const packageName = tier.label && tier.label !== fixedName ? tier.label : '';
+  const tag = tierDisabled ? 'Not available' : (packageName || tier.tag || fixedName);
   const badge = tierKey === 'best' ? 'Best experience' : (tierKey === 'better' ? 'Popular choice' : '');
   return `
     <button type="button"
@@ -2161,17 +2202,21 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
       ${tierDisabled ? 'disabled' : `onclick="selectTier('${cat.id}', '${tierKey}')"`}
       aria-pressed="${selectedTier === tierKey ? 'true' : 'false'}">
       ${badge ? `<span class="comparison-tier-badge">${escapeHtml(badge)}</span>` : ''}
-      <span class="comparison-tier-name">${escapeHtml(tier.label || tierKey)}</span>
+      <span class="comparison-tier-name">${escapeHtml(fixedName)}</span>
       <span class="comparison-tier-price">${escapeHtml(price)}</span>
       <span class="comparison-tier-tag">${escapeHtml(tag)}</span>
     </button>
   `;
 }
 
+function tierFixedName(tierKey) {
+  const fallbackNames = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
+  return fallbackNames[tierKey] || tierKey;
+}
+
 function mobileTierLabel(cat, tierKey) {
   if (tierKey === 'skip') return 'Skip';
-  const fallbackNames = { good: 'Good', standard: 'Standard', better: 'Better', best: 'Best' };
-  return cat.tiers[tierKey]?.label || fallbackNames[tierKey] || tierKey;
+  return tierFixedName(tierKey);
 }
 
 function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) {
@@ -2186,7 +2231,6 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
         </div>
         <div class="comparison-mobile-actions">
           <span class="comparison-mobile-guide">Scroll features to compare every option</span>
-          <button type="button" class="comparison-toggle-all" onclick="toggleCompareAll(this)">Compare all tiers</button>
         </div>
         <div class="mobile-feature-comparison-list">
           ${matrix.length ? matrix.map(feature => `
