@@ -103,8 +103,11 @@ test.describe('Budget Planner', () => {
         tierPrices: [...document.querySelectorAll('.comparison-table .comparison-tier-price')].map(el => el.textContent.trim()),
         skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].map(el => el.textContent.trim()),
         bestBadge: document.querySelector('.comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
-        mobileGroups: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-group-title')].map(el => el.textContent.trim()),
-        mobileMissing: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-group:last-child .mobile-feature-item')]
+        mobileTierNames: [...document.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-name')].map(el => el.textContent.trim()),
+        mobileFeatureRows: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-title')].map(el => el.textContent.trim()),
+        mobileStatusLabels: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-tier-label')]
+          .map(el => el.textContent.trim()),
+        mobileMissingStatuses: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-status')]
           .map(el => el.textContent.replace(/\s+/g, ' ').trim()),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
@@ -120,8 +123,15 @@ test.describe('Budget Planner', () => {
     expect(result.tierPrices).toEqual(['$0', '$1,000', '$2,000', '$3,000']);
     expect(result.skipCells).toEqual(['—', '—', '—', '—']);
     expect(result.bestBadge).toBe('Best experience');
-    expect(result.mobileGroups).toEqual(['Included', 'Available as add-on', 'Not included']);
-    expect(result.mobileMissing).toEqual(['— Dedicated equipment rack']);
+    expect(result.mobileTierNames).toEqual(['Skip', 'Good', 'Better', 'Best']);
+    expect(result.mobileFeatureRows).toEqual([
+      'Whole-home WiFi coverage',
+      'UPS backup',
+      'Enterprise switching',
+      'Dedicated equipment rack'
+    ]);
+    expect(result.mobileStatusLabels).toEqual(['Skip', 'Good', 'Better', 'Best']);
+    expect(result.mobileMissingStatuses).toEqual(['Skip —', 'Good —', 'Better —', 'Best ✓']);
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
     expect(result.legacyTierSelectorVisible).toBe(false);

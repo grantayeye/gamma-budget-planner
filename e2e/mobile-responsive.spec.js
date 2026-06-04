@@ -28,6 +28,88 @@ test.describe('Mobile responsive layout', () => {
     }
   });
 
+  test('customer comparison matrix stays comparison-first on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const result = await page.evaluate(() => {
+      const gate = document.getElementById('loginGate');
+      if (gate) gate.style.display = 'none';
+      document.querySelector('header').style.display = '';
+      document.querySelector('main').style.display = '';
+      CONFIGS.residential = {
+        categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: '📡',
+          desc: 'Enterprise-grade WiFi coverage',
+          sizeScale: 0,
+          presentationMode: 'matrix',
+          featureMatrix: [
+            {
+              id: 'wifi-coverage',
+              label: 'Whole-home WiFi coverage',
+              description: 'Reliable wireless coverage throughout the home.',
+              tierStatus: { good: 'included', standard: 'included', better: 'included', best: 'included' }
+            },
+            {
+              id: 'ups-backup',
+              label: 'UPS backup',
+              tierStatus: { good: 'addon', standard: 'addon', better: 'included', best: 'included' }
+            },
+            {
+              id: 'dedicated-rack',
+              label: 'Dedicated equipment rack',
+              tierStatus: { good: 'not_included', standard: 'not_included', better: 'not_included', best: 'included' }
+            }
+          ],
+          tiers: {
+            good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
+            standard: { price: 1500, label: 'Standard', tag: 'Standard', features: ['Whole-home WiFi coverage'], brands: 'Brand B' },
+            better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage', 'UPS backup'], brands: 'Brand C' },
+            best: { price: 3000, label: 'Best', tag: 'Best', features: ['Whole-home WiFi coverage', 'UPS backup', 'Dedicated equipment rack'], brands: 'Brand D' }
+          }
+        }],
+        sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.selections = { networking: 'good' };
+      state.catMods = { networking: { name: '', amount: 0 } };
+      renderCategories();
+      document.getElementById('cat-networking').classList.add('open');
+
+      const matrix = document.querySelector('.comparison-matrix');
+      const mobile = matrix.querySelector('.comparison-mobile-focus');
+      const table = matrix.querySelector('.comparison-table-scroll');
+      const tierRail = matrix.querySelector('.comparison-mobile-tier-scroll');
+      const missingRow = [...matrix.querySelectorAll('.mobile-feature-compare-card')]
+        .find(card => card.textContent.includes('Dedicated equipment rack'));
+      return {
+        bodyOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4,
+        mobileDisplay: getComputedStyle(mobile).display,
+        tableDisplay: getComputedStyle(table).display,
+        tierNames: [...matrix.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-name')].map(el => el.textContent.trim()),
+        featureRows: matrix.querySelectorAll('.mobile-feature-compare-card').length,
+        missingStatuses: [...missingRow.querySelectorAll('.mobile-feature-status')].map(el => el.textContent.replace(/\s+/g, ' ').trim()),
+        selectedCells: matrix.querySelectorAll('.mobile-feature-status.selected.good-col').length,
+        railCanScroll: tierRail.scrollWidth >= tierRail.clientWidth
+      };
+    });
+
+    expect(result.bodyOverflow).toBe(false);
+    expect(result.mobileDisplay).toBe('block');
+    expect(result.tableDisplay).toBe('none');
+    expect(result.tierNames).toEqual(['Skip', 'Good', 'Standard', 'Better', 'Best']);
+    expect(result.featureRows).toBe(3);
+    expect(result.missingStatuses).toEqual(['Skip —', 'Good —', 'Standard —', 'Better —', 'Best ✓']);
+    expect(result.selectedCells).toBeGreaterThan(0);
+    expect(result.railCanScroll).toBe(true);
+  });
+
   test('admin budget list renders mobile cards while preserving the desktop table', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/admin');
