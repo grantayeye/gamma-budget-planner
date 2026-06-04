@@ -95,6 +95,8 @@ test.describe('Budget Planner', () => {
         featureHeader: document.querySelector('.comparison-table th:first-child')?.textContent.trim(),
         tierNames: [...document.querySelectorAll('.comparison-tier-name')].map(el => el.textContent.trim()),
         tierPrices: [...document.querySelectorAll('.comparison-tier-price')].map(el => el.textContent.trim()),
+        skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].map(el => el.textContent.trim()),
+        bestBadge: document.querySelector('.comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
         legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
@@ -105,8 +107,10 @@ test.describe('Budget Planner', () => {
 
     expect(result.title).toBe("Compare what's included");
     expect(result.featureHeader).toBe('Feature');
-    expect(result.tierNames).toEqual(['Good', 'Better', 'Best']);
-    expect(result.tierPrices).toEqual(['$1,000', '$2,000', '$3,000']);
+    expect(result.tierNames).toEqual(['Skip', 'Good', 'Better', 'Best']);
+    expect(result.tierPrices).toEqual(['$0', '$1,000', '$2,000', '$3,000']);
+    expect(result.skipCells).toEqual(['—', '—', '—']);
+    expect(result.bestBadge).toBe('Best experience');
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
     expect(result.legacyTierSelectorVisible).toBe(false);

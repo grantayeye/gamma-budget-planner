@@ -841,6 +841,35 @@
       letter-spacing: 0;
     }
 
+    .feature-matrix-tier-topline {
+      display: grid;
+      grid-template-columns: 24px 1fr 24px;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .matrix-tier-swap-cell {
+      display: flex;
+      gap: 3px;
+      justify-content: flex-end;
+    }
+
+    .matrix-tier-swap-btn {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .matrix-tier-swap-btn.is-hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
     .feature-matrix-tier-card label {
       display: flex;
       align-items: center;
@@ -934,6 +963,10 @@
       align-items: center;
       color: var(--text-light);
       font-size: 12px;
+    }
+
+    .matrix-disabled-tiers button {
+      min-height: 32px;
     }
 
     .category-editor-header-row {
@@ -2665,6 +2698,13 @@ function featureMatrixStatusOptions(selected = 'not_included') {
     .join('');
 }
 
+function getCategoryTierOrder(cat = {}, override = {}) {
+  const rawOrder = override.tierOrder || override.tier_order || cat.tierOrder || cat.tier_order || [];
+  const ordered = (Array.isArray(rawOrder) ? rawOrder : [])
+    .filter(tierKey => TIER_ORDER.includes(tierKey));
+  return [...ordered, ...TIER_ORDER.filter(tierKey => !ordered.includes(tierKey))];
+}
+
 function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
   const rows = normalizeFeatureMatrix(matrix);
   if (!rows.length) {
@@ -2702,7 +2742,7 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
 function getMatrixTierModels(cat = {}, override = {}, options = {}) {
   const sqft = options.sqft || 4000;
   const categoryScale = cat.sizeScale ?? 0;
-  return TIER_ORDER.map(tierKey => {
+  return getCategoryTierOrder(cat, override).map(tierKey => {
     const defaultTier = cat.tiers?.[tierKey];
     const tierOverride = override.tiers?.[tierKey] || {};
     const existsInBase = !!defaultTier;
@@ -2726,13 +2766,17 @@ function renderMatrixTierHeader(tierModels = []) {
   return `
     <tr class="feature-matrix-tier-header-row">
       <th>Feature</th>
-      ${enabledModels.map(tier => `
+      ${enabledModels.map((tier, index) => `
         <th>
           <div class="feature-matrix-tier-card" data-tier="${tier.tierKey}">
-            <label>
-              <input type="checkbox" class="matrix-tier-enabled" checked onchange="toggleMatrixTierEnabled(this, '${tier.tierKey}', false)">
-              ${TIER_NAMES[tier.tierKey]}
-            </label>
+            <div class="feature-matrix-tier-topline">
+              <button type="button" class="btn btn-secondary btn-small matrix-tier-swap-btn ${index > 0 ? '' : 'is-hidden'}" data-direction="-1" title="Move tier left" onclick="swapMatrixTierWithNeighbor(this, '${tier.tierKey}', -1)">←</button>
+              <label>
+                <input type="checkbox" class="matrix-tier-enabled" checked onchange="toggleMatrixTierEnabled(this, '${tier.tierKey}', false)">
+                ${TIER_NAMES[tier.tierKey]}
+              </label>
+              <button type="button" class="btn btn-secondary btn-small matrix-tier-swap-btn ${index < enabledModels.length - 1 ? '' : 'is-hidden'}" data-direction="1" title="Move tier right" onclick="swapMatrixTierWithNeighbor(this, '${tier.tierKey}', 1)">→</button>
+            </div>
             <input type="text" class="matrix-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${TIER_NAMES[tier.tierKey]} label">
             <input type="number" class="matrix-tier-price" value="${Number(tier.price) || 0}" min="0" step="100" placeholder="Price">
           </div>
@@ -2750,7 +2794,7 @@ function renderMatrixDisabledTierActions(tierModels = []) {
     <div class="matrix-disabled-tiers">
       <span>Disabled tiers:</span>
       ${disabled.map(tier => `
-        <button type="button" class="btn btn-secondary btn-small" onclick="toggleMatrixTierEnabled(this, '${tier.tierKey}', true)">Enable ${TIER_NAMES[tier.tierKey]}</button>
+        <button type="button" class="btn btn-secondary btn-small" data-tier="${tier.tierKey}" onclick="toggleMatrixTierEnabled(this, '${tier.tierKey}', true)">Enable ${TIER_NAMES[tier.tierKey]}</button>
       `).join('')}
     </div>
   `;
@@ -2880,6 +2924,61 @@ function getVisibleMatrixTierKeys(scope) {
     .filter(Boolean);
 }
 
+function getMatrixTierOrderFromEditor(scope) {
+  const visible = getVisibleMatrixTierKeys(scope);
+  const disabled = Array.from(scope?.querySelectorAll('.matrix-disabled-tiers [data-tier]') || [])
+    .map(button => button.dataset.tier)
+    .filter(tierKey => tierKey && !visible.includes(tierKey));
+  return [...visible, ...disabled, ...TIER_ORDER.filter(tierKey => !visible.includes(tierKey) && !disabled.includes(tierKey))];
+}
+
+function swapSiblingElements(a, b) {
+  if (!a || !b || !a.parentNode || a.parentNode !== b.parentNode) return;
+  const marker = document.createTextNode('');
+  a.parentNode.insertBefore(marker, a);
+  b.parentNode.insertBefore(a, b);
+  marker.parentNode.insertBefore(b, marker);
+  marker.remove();
+}
+
+function refreshMatrixTierSwapButtons(panel) {
+  const cards = Array.from(panel?.querySelectorAll('.feature-matrix-tier-card[data-tier]') || []);
+  cards.forEach((card, index) => {
+    card.querySelectorAll('.matrix-tier-swap-btn').forEach(button => {
+      const direction = Number(button.dataset.direction || 0);
+      const canMove = direction < 0 ? index > 0 : index < cards.length - 1;
+      button.classList.toggle('is-hidden', !canMove);
+      button.disabled = !canMove;
+    });
+  });
+}
+
+function swapMatrixTierWithNeighbor(button, tierKey, direction) {
+  const panel = button.closest('.matrix-mode-panel');
+  if (!panel) return;
+  const scrollArea = button.closest('.customize-scroll-area') || document.scrollingElement;
+  const previousScroll = scrollArea?.scrollTop || 0;
+  const cards = Array.from(panel.querySelectorAll('.feature-matrix-tier-card[data-tier]'));
+  const currentIndex = cards.findIndex(card => card.dataset.tier === tierKey);
+  const nextCard = cards[currentIndex + direction];
+  if (currentIndex < 0 || !nextCard) return;
+  const nextTier = nextCard.dataset.tier;
+  const currentHeader = cards[currentIndex].closest('th');
+  const nextHeader = nextCard.closest('th');
+  swapSiblingElements(currentHeader, nextHeader);
+  panel.querySelectorAll('.feature-matrix-row').forEach(row => {
+    const currentCell = row.querySelector(`.fm-status[data-tier="${tierKey}"]`)?.closest('td');
+    const nextCell = row.querySelector(`.fm-status[data-tier="${nextTier}"]`)?.closest('td');
+    swapSiblingElements(currentCell, nextCell);
+  });
+  refreshMatrixTierSwapButtons(panel);
+  requestAnimationFrame(() => {
+    if (scrollArea) scrollArea.scrollTop = previousScroll;
+  });
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
 function syncMatrixTierCardsToRows(editor) {
   if (!editor) return;
   editor.querySelectorAll('.feature-matrix-tier-card[data-tier]').forEach(card => {
@@ -2887,7 +2986,8 @@ function syncMatrixTierCardsToRows(editor) {
     const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
     if (!row) return;
     const enabled = row.querySelector('.tier-enabled, .cc-tier-enabled');
-    if (enabled) enabled.checked = true;
+    const matrixEnabled = card.querySelector('.matrix-tier-enabled')?.checked !== false;
+    if (enabled) enabled.checked = matrixEnabled;
     const labelInput = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]');
     const priceInput = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]');
     const matrixLabel = card.querySelector('.matrix-tier-label')?.value;
@@ -2895,6 +2995,17 @@ function syncMatrixTierCardsToRows(editor) {
     if (labelInput && matrixLabel !== undefined) labelInput.value = matrixLabel;
     if (priceInput && matrixPrice !== undefined) priceInput.value = matrixPrice;
   });
+}
+
+function buildMatrixCategoryFromEditor(editor) {
+  const tiers = {};
+  editor?.querySelectorAll('.tier-row[data-tier], .cc-tier-row[data-tier], .tier-edit-card[data-tier]:not(.tier-not-configured)').forEach(row => {
+    const tierKey = row.dataset.tier;
+    const label = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value || TIER_NAMES[tierKey];
+    const price = parseInt(row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value) || 0;
+    tiers[tierKey] = { label, price, features: [], brands: row.dataset.brands || '' };
+  });
+  return { id: editor?.dataset.catId || editor?.dataset.ccId || '', tiers };
 }
 
 function toggleMatrixTierEnabled(control, tierKey, enabled) {
@@ -2929,7 +3040,7 @@ function toggleMatrixTierEnabled(control, tierKey, enabled) {
   const replacement = editor.classList.contains('custom-category-editor')
     ? renderFeatureMatrixEditorPanel(readCustomCategoryEditorData(editor))
     : renderFeatureMatrixEditorPanel(
-        { id: editor.dataset.catId, tiers: Object.fromEntries(TIER_ORDER.map(key => [key, {}])) },
+        buildMatrixCategoryFromEditor(editor),
         buildCategoryOverrideFromEditor(editor.dataset.catId)
       );
   const panel = editor.querySelector('.matrix-mode-panel');
@@ -4437,6 +4548,7 @@ function buildCategoryOverrideFromBudget(budget, catId) {
     hidden: override.hidden === true,
     tiers,
     presentationMode,
+    tierOrder: getCategoryTierOrder(defaultCat || {}, override),
     ...(featureMatrix.length ? { featureMatrix } : {})
   };
 }
@@ -4556,6 +4668,7 @@ function buildCategoryOverrideFromEditor(catId) {
     hidden: isHidden,
     tiers,
     presentationMode,
+    tierOrder: getMatrixTierOrderFromEditor(editor),
     ...(featureMatrix.length ? { featureMatrix } : {})
   };
 }
@@ -4596,6 +4709,7 @@ function readCustomCategoryEditorData(editor, options = {}) {
     icon: editor.querySelector('.cc-icon')?.value || '📦',
     desc: '',
     presentationMode,
+    tierOrder: getMatrixTierOrderFromEditor(editor),
     ...(featureMatrix.length ? { featureMatrix } : {}),
     ...(document.getElementById('customizeLayoutSections') ? (collectCustomizeLayoutData().customLayout[existingId] || {}) : {}),
     tiers
@@ -4611,8 +4725,6 @@ function applyCategoryOverrideToEditor(catId, override) {
   const isHidden = override.hidden === true && !isHideLocked;
   if (showCheckbox && !isHideLocked) showCheckbox.checked = !isHidden;
   editor.style.opacity = isHidden ? '0.6' : '1';
-  const tierEditors = editor.querySelector('.tier-editors');
-  if (tierEditors) tierEditors.style.display = isHidden ? 'none' : 'grid';
 
   TIER_ORDER.forEach(tierKey => {
     const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
@@ -4631,9 +4743,13 @@ function applyCategoryOverrideToEditor(catId, override) {
   const modeSelect = editor.querySelector('.presentation-mode-select');
   if (modeSelect) modeSelect.value = mode;
   const panel = editor.querySelector('.matrix-mode-panel');
-  if (panel) panel.style.display = mode === 'matrix' ? 'block' : 'none';
-  const list = editor.querySelector('.feature-matrix-list');
-  if (list) list.innerHTML = renderFeatureMatrixRows(override.featureMatrix || []);
+  if (panel && mode === 'matrix') {
+    panel.outerHTML = renderFeatureMatrixEditorPanel(buildMatrixCategoryFromEditor(editor), override);
+  } else if (panel) {
+    panel.style.display = 'none';
+  }
+  const tierEditors = editor.querySelector('.tier-editors');
+  if (tierEditors) tierEditors.style.display = isHidden || mode === 'matrix' ? 'none' : 'grid';
   refreshCategoryTierSwapButtons(editor);
   return true;
 }
@@ -5460,6 +5576,7 @@ function collectCustomizationData() {
       hidden: isHidden,
       tiers,
       presentationMode,
+      tierOrder: getMatrixTierOrderFromEditor(editor),
       ...(featureMatrix.length ? { featureMatrix } : {}),
       ...(layout.itemLayout[catId] || {})
     };
@@ -6428,6 +6545,7 @@ function collectCategoryEditorData() {
     }
 
     cat.presentationMode = presentationMode;
+    cat.tierOrder = getMatrixTierOrderFromEditor(card);
     if (presentationMode === 'matrix') {
       cat.featureMatrix = readFeatureMatrixFromContainer(card.querySelector('.feature-matrix-list'));
       TIER_KEYS.forEach(tk => {

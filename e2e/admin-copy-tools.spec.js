@@ -329,6 +329,72 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
   });
 
+  test('customize matrix hides unchecked tiers and preserves swapped column order', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: {
+          good: { price: 1000, label: 'Good', features: ['WiFi coverage'], brands: 'Brand A' },
+          standard: { price: 1500, label: 'Standard', features: ['WiFi coverage', 'Standard support'], brands: 'Brand S' },
+          better: { price: 2000, label: 'Better', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand B' },
+          best: { price: 3000, label: 'Best', features: ['WiFi coverage', 'UPS backup', 'Enterprise switching'], brands: 'Brand C' }
+        }
+      };
+      customizeBudgetData = {
+        id: 'matrix-order-budget',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+
+      const editor = document.querySelector('.category-editor[data-cat-id="networking"]');
+      const select = editor.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'networking');
+
+      swapMatrixTierWithNeighbor(
+        editor.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-swap-btn[data-direction="-1"]'),
+        'better',
+        -1
+      );
+      swapMatrixTierWithNeighbor(
+        editor.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-swap-btn[data-direction="-1"]'),
+        'better',
+        -1
+      );
+      const standardToggle = editor.querySelector('.feature-matrix-tier-card[data-tier="standard"] .matrix-tier-enabled');
+      standardToggle.checked = false;
+      toggleMatrixTierEnabled(standardToggle, 'standard', false);
+
+      const collected = collectCustomizationData();
+      const override = collected.categoryConfig.networking;
+      return {
+        visibleOrder: [...editor.querySelectorAll('.feature-matrix-tier-card[data-tier]')].map(card => card.dataset.tier),
+        disabledButtons: [...editor.querySelectorAll('.matrix-disabled-tiers [data-tier]')].map(button => button.dataset.tier),
+        collectedOrder: override.tierOrder,
+        standardEnabled: override.tiers.standard.enabled,
+        standardStatusCellsVisible: !!editor.querySelector('.fm-status[data-tier="standard"]')
+      };
+    });
+
+    expect(result.visibleOrder).toEqual(['better', 'good', 'best']);
+    expect(result.disabledButtons).toContain('standard');
+    expect(result.collectedOrder.slice(0, 4)).toEqual(['better', 'good', 'best', 'standard']);
+    expect(result.standardEnabled).toBe(false);
+    expect(result.standardStatusCellsVisible).toBe(false);
+  });
+
   test('customize open ignores stale local drafts and keeps search menus closed', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const targetCat = {

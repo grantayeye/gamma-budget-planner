@@ -581,7 +581,8 @@ main {
 }
 .comparison-table {
   width: 100%;
-  min-width: 660px;
+  min-width: 760px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -604,23 +605,30 @@ main {
 .comparison-table th:first-child,
 .comparison-table td:first-child {
   text-align: left;
-  width: 34%;
+  width: 30%;
 }
 .comparison-table tr:last-child td {
   border-bottom: none;
 }
 .comparison-table .selected-col {
   background: var(--accent-bg);
-  box-shadow: inset 2px 0 0 var(--accent), inset -2px 0 0 var(--accent);
+  box-shadow: none;
 }
 .comparison-table th.selected-col {
   color: var(--accent);
 }
+.comparison-table .selected-col.good-col { background: var(--good-bg); }
+.comparison-table .selected-col.standard-col { background: var(--standard-bg); }
+.comparison-table .selected-col.better-col { background: var(--better-bg); }
+.comparison-table .selected-col.best-col { background: var(--best-bg); }
+.comparison-table .selected-col.skip-col { background: #F3F4F6; }
 .comparison-tier-card {
   display: grid;
   gap: 4px;
   width: 100%;
   min-width: 128px;
+  min-height: 104px;
+  align-content: center;
   padding: 10px 8px;
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
@@ -641,10 +649,82 @@ main {
   border-color: var(--accent);
   background: var(--accent-bg);
 }
+.comparison-tier-card.good {
+  border-color: var(--good);
+}
+.comparison-tier-card.good .comparison-tier-name,
+.comparison-tier-card.good .comparison-tier-price {
+  color: var(--good);
+}
+.comparison-tier-card.good.selected {
+  background: var(--good-bg);
+}
+.comparison-tier-card.standard {
+  border-color: var(--standard);
+}
+.comparison-tier-card.standard .comparison-tier-name,
+.comparison-tier-card.standard .comparison-tier-price {
+  color: var(--standard);
+}
+.comparison-tier-card.standard.selected {
+  background: var(--standard-bg);
+}
+.comparison-tier-card.better {
+  border-color: var(--better);
+}
+.comparison-tier-card.better .comparison-tier-name,
+.comparison-tier-card.better .comparison-tier-price {
+  color: var(--better);
+}
+.comparison-tier-card.better.selected {
+  background: var(--better-bg);
+}
+.comparison-tier-card.best {
+  border-color: var(--best);
+}
+.comparison-tier-card.best .comparison-tier-name,
+.comparison-tier-card.best .comparison-tier-price {
+  color: var(--best);
+}
+.comparison-tier-card.best.selected {
+  background: var(--best-bg);
+}
+.comparison-tier-card.skip {
+  border-color: #D1D5DB;
+  background: #F9FAFB;
+  color: var(--text-lighter);
+  filter: grayscale(0.45);
+}
+.comparison-tier-card.skip .comparison-tier-name,
+.comparison-tier-card.skip .comparison-tier-price,
+.comparison-tier-card.skip .comparison-tier-tag {
+  color: var(--text-lighter);
+}
+.comparison-tier-card.skip:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: #9CA3AF;
+}
 .comparison-tier-card.disabled {
   opacity: 0.42;
   cursor: not-allowed;
   pointer-events: none;
+}
+.comparison-tier-badge {
+  justify-self: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(14, 118, 168, 0.11);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.35;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.comparison-tier-card.best .comparison-tier-badge {
+  background: rgba(11, 74, 117, 0.12);
+  color: var(--best);
 }
 .comparison-tier-name {
   font-size: 13px;
@@ -726,7 +806,7 @@ main {
     text-align: left;
   }
   .comparison-table {
-    min-width: 680px;
+    min-width: 820px;
   }
   .comparison-table th,
   .comparison-table td {
@@ -736,7 +816,7 @@ main {
     position: sticky;
     right: 0;
     z-index: 2;
-    box-shadow: inset 2px 0 0 var(--accent), -10px 0 18px rgba(15,47,68,0.08);
+    box-shadow: -10px 0 18px rgba(15,47,68,0.08);
   }
   .comparison-table th.selected-col {
     z-index: 3;
@@ -1467,9 +1547,14 @@ function normalizeStoredSectionId(section) {
   return slugifySectionId(raw);
 }
 
-function orderedTierKeys(tiers) {
+function orderedTierKeys(tiers, tierOrder = []) {
   if (!tiers) return [];
-  const known = TIER_ORDER.filter(tierKey => tiers[tierKey]);
+  const rawOrder = Array.isArray(tierOrder) ? tierOrder : [];
+  const explicitOrder = rawOrder.filter(tierKey => TIER_ORDER.includes(tierKey) && tiers[tierKey]);
+  const known = [
+    ...explicitOrder,
+    ...TIER_ORDER.filter(tierKey => tiers[tierKey] && !explicitOrder.includes(tierKey))
+  ];
   const unknown = Object.keys(tiers).filter(tierKey => !TIER_ORDER.includes(tierKey));
   return [...known, ...unknown];
 }
@@ -1588,6 +1673,7 @@ function CATEGORIES() {
     if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
     if (override?.presentationMode) customCat.presentationMode = override.presentationMode;
     if (override?.featureMatrix) customCat.featureMatrix = override.featureMatrix;
+    if (override?.tierOrder) customCat.tierOrder = override.tierOrder;
     
     // Apply tier overrides
     if (override && override.tiers) {
@@ -1633,7 +1719,7 @@ function CATEGORIES() {
       // Build tiers object
       const tiers = {};
       if (cc.tiers) {
-        orderedTierKeys(cc.tiers).forEach(tierKey => {
+        orderedTierKeys(cc.tiers, cc.tierOrder).forEach(tierKey => {
           const t = cc.tiers[tierKey];
           if (t.enabled !== false) {
             tiers[tierKey] = {
@@ -1857,7 +1943,7 @@ function renderCategories() {
               <div class="tier-price">—</div>
               <div class="tier-tag">Not included</div>
             </div>
-            ${orderedTierKeys(cat.tiers).map(t => {
+            ${orderedTierKeys(cat.tiers, cat.tierOrder).map(t => {
               const tp = getCategoryPrice(cat, t);
               // Check if this tier should be disabled
               const tierDisabled = isTierUnavailable(cat, t);
@@ -1911,15 +1997,29 @@ function renderFeatureStatusCell(status) {
 }
 
 function renderComparisonTierCard(cat, tierKey, selectedTier) {
+  if (tierKey === 'skip') {
+    return `
+      <button type="button"
+        class="comparison-tier-card skip ${!selectedTier ? 'selected' : ''}"
+        onclick="selectTier('${cat.id}', null)"
+        aria-pressed="${!selectedTier ? 'true' : 'false'}">
+        <span class="comparison-tier-name">Skip</span>
+        <span class="comparison-tier-price">$0</span>
+        <span class="comparison-tier-tag">No system</span>
+      </button>
+    `;
+  }
   const tier = cat.tiers[tierKey] || {};
   const tierDisabled = isTierUnavailable(cat, tierKey);
   const price = tierDisabled ? 'N/A' : formatCurrency(getCategoryPrice(cat, tierKey));
   const tag = tierDisabled ? 'Not available' : (tier.tag || tierKey.charAt(0).toUpperCase() + tierKey.slice(1));
+  const badge = tierKey === 'best' ? 'Best experience' : (tierKey === 'better' ? 'Popular choice' : '');
   return `
     <button type="button"
-      class="comparison-tier-card ${selectedTier === tierKey ? 'selected' : ''} ${tierDisabled ? 'disabled' : ''}"
+      class="comparison-tier-card ${tierKey} ${selectedTier === tierKey ? 'selected' : ''} ${tierDisabled ? 'disabled' : ''}"
       ${tierDisabled ? 'disabled' : `onclick="selectTier('${cat.id}', '${tierKey}')"`}
       aria-pressed="${selectedTier === tierKey ? 'true' : 'false'}">
+      ${badge ? `<span class="comparison-tier-badge">${escapeHtml(badge)}</span>` : ''}
       <span class="comparison-tier-name">${escapeHtml(tier.label || tierKey)}</span>
       <span class="comparison-tier-price">${escapeHtml(price)}</span>
       <span class="comparison-tier-tag">${escapeHtml(tag)}</span>
@@ -1929,7 +2029,8 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
 
 function renderFeatureComparison(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
-  const tiers = orderedTierKeys(cat.tiers);
+  const tiers = orderedTierKeys(cat.tiers, cat.tierOrder);
+  const tableColumns = ['skip', ...tiers];
   const selectedLabel = selectedTier && cat.tiers[selectedTier]?.label
     ? `${cat.tiers[selectedTier].label} selected`
     : 'Choose an option';
@@ -1937,18 +2038,15 @@ function renderFeatureComparison(cat, selectedTier) {
     <div class="comparison-matrix">
       <div class="comparison-matrix-header">
         <div class="comparison-matrix-title">Compare what's included</div>
-        <div class="comparison-matrix-note">
-          ${escapeHtml(selectedLabel)}
-          <button type="button" class="comparison-skip-btn" onclick="selectTier('${cat.id}', null)">Skip</button>
-        </div>
+        <div class="comparison-matrix-note">${escapeHtml(selectedLabel)}</div>
       </div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
             <tr>
               <th>Feature</th>
-              ${tiers.map(tierKey => `
-                <th class="matrix-tier-heading ${selectedTier === tierKey ? 'selected-col' : ''}">
+              ${tableColumns.map(tierKey => `
+                <th class="matrix-tier-heading ${(!selectedTier && tierKey === 'skip') || selectedTier === tierKey ? `selected-col ${tierKey}-col` : ''}">
                   ${renderComparisonTierCard(cat, tierKey, selectedTier)}
                 </th>
               `).join('')}
@@ -1962,15 +2060,15 @@ function renderFeatureComparison(cat, selectedTier) {
                     ${escapeHtml(feature.label)}
                   </span>
                 </td>
-                ${tiers.map(tierKey => `
-                  <td class="${selectedTier === tierKey ? 'selected-col' : ''}">
-                    ${renderFeatureStatusCell(featureStatusForTier(feature, tierKey))}
+                ${tableColumns.map(tierKey => `
+                  <td class="${(!selectedTier && tierKey === 'skip') || selectedTier === tierKey ? `selected-col ${tierKey}-col` : ''}">
+                    ${tierKey === 'skip' ? renderFeatureStatusCell('not_included') : renderFeatureStatusCell(featureStatusForTier(feature, tierKey))}
                   </td>
                 `).join('')}
               </tr>
             `).join('') : `
               <tr>
-                <td colspan="${tiers.length + 1}" style="text-align:center;color:var(--text-lighter);padding:20px;">
+                <td colspan="${tableColumns.length + 1}" style="text-align:center;color:var(--text-lighter);padding:20px;">
                   No comparison features configured yet.
                 </td>
               </tr>
@@ -2147,7 +2245,7 @@ function applyPreset(level, el) {
       if (c.tiers[level]) {
         state.selections[c.id] = level;
       } else {
-        const tierKeys = orderedTierKeys(c.tiers);
+        const tierKeys = orderedTierKeys(c.tiers, c.tierOrder);
         const targetIdx = TIER_ORDER.indexOf(level);
         // Find the closest tier that exists in this category
         let closest = tierKeys[tierKeys.length - 1]; // default to highest
