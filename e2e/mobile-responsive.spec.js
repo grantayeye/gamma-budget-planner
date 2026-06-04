@@ -178,6 +178,7 @@ test.describe('Mobile responsive layout', () => {
       const mobile = matrix.querySelector('.comparison-mobile-focus');
       const table = matrix.querySelector('.comparison-table-scroll');
       const cards = [...matrix.querySelectorAll('.comparison-table .comparison-tier-card')];
+      const headerRect = document.querySelector('header').getBoundingClientRect();
       const cardRects = cards.map(card => {
         const rect = card.getBoundingClientRect();
         return {
@@ -193,7 +194,8 @@ test.describe('Mobile responsive layout', () => {
         maxCardHeight: Math.max(...cardRects.map(rect => rect.height)),
         minCardWidth: Math.min(...cardRects.map(rect => rect.width)),
         cardOverflows: cardRects.some(rect => rect.overflows),
-        badgeDisplay: getComputedStyle(matrix.querySelector('.comparison-tier-badge')).display
+        badgeDisplay: getComputedStyle(matrix.querySelector('.comparison-tier-badge')).display,
+        headerHeight: Math.round(headerRect.height)
       };
     });
 
@@ -204,6 +206,7 @@ test.describe('Mobile responsive layout', () => {
     expect(result.minCardWidth).toBeGreaterThanOrEqual(88);
     expect(result.cardOverflows).toBe(false);
     expect(result.badgeDisplay).toBe('none');
+    expect(result.headerHeight).toBeLessThanOrEqual(72);
   });
 
   test('admin budget list renders mobile cards while preserving the desktop table', async ({ page }) => {
