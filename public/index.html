@@ -354,6 +354,9 @@ main {
   transition: var(--transition);
   border: 2px solid transparent;
 }
+.category-card.open {
+  overflow: visible;
+}
 .category-card.has-selection {
   border-color: var(--border);
 }
@@ -532,7 +535,7 @@ main {
   background: white;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 12px 32px rgba(15,47,68,0.07);
 }
 .comparison-matrix-header {
@@ -588,6 +591,12 @@ main {
   padding: 14px;
   border-bottom: 1px solid var(--border);
   background: #FFFFFF;
+}
+.category-card.open .comparison-mobile-panel {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  box-shadow: 0 10px 22px rgba(15,47,68,0.08);
 }
 .comparison-mobile-selector {
   display: flex;
@@ -804,6 +813,15 @@ main {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.4px;
+}
+.category-card.open .comparison-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+  box-shadow: 0 8px 18px rgba(15,47,68,0.08);
+}
+.category-card.open .comparison-table thead th:first-child {
+  z-index: 25;
 }
 .comparison-table th:first-child,
 .comparison-table td:first-child {
@@ -1553,7 +1571,7 @@ main {
       <div><span class="stat-label">Tax Est: </span><span class="stat-value" id="statTax">$0</span></div>
     </div>
     <div class="summary-actions">
-      <button class="btn btn-outline" onclick="expandAll()">Expand All</button>
+      <button class="btn btn-outline" onclick="collapseAll()">Collapse All</button>
       <button class="btn btn-outline" onclick="shareLink()">🔗 Share Link</button>
       <button class="btn btn-outline" onclick="showEmailModal()">📧 Email</button>
       <button class="btn btn-primary" onclick="showSummary()">📄 View Summary</button>
@@ -2757,18 +2775,10 @@ function selectTier(catId, tier) {
     state.selections['invisible-speakers'] = null;
   }
   
-  // Remember which cards are open and scroll position
-  const openCards = new Set();
-  document.querySelectorAll('.category-card.open').forEach(c => openCards.add(c.id));
   const scrollY = window.scrollY;
   renderCategories();
   updateTotals();
-  // Restore all previously open cards + the one we just selected
-  openCards.add('cat-' + catId);
-  openCards.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('open');
-  });
+  document.getElementById('cat-' + catId)?.classList.add('open');
   // Restore scroll after browser layout
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
@@ -2788,23 +2798,32 @@ function toggleMatrixAddOn(event, catId, tierKey, featureId) {
   if (!Object.keys(state.addOns[catId][tierKey]).length) delete state.addOns[catId][tierKey];
   if (!Object.keys(state.addOns[catId]).length) delete state.addOns[catId];
 
-  const openCards = new Set();
-  document.querySelectorAll('.category-card.open').forEach(c => openCards.add(c.id));
   const scrollY = window.scrollY;
   renderCategories();
   updateTotals();
-  openCards.add('cat-' + catId);
-  openCards.forEach(id => document.getElementById(id)?.classList.add('open'));
+  document.getElementById('cat-' + catId)?.classList.add('open');
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 function toggleCategory(catId) {
   const card = document.getElementById('cat-' + catId);
-  card.classList.toggle('open');
+  const shouldOpen = !card.classList.contains('open');
+  document.querySelectorAll('.category-card.open').forEach(openCard => {
+    if (openCard !== card) openCard.classList.remove('open');
+  });
+  card.classList.toggle('open', shouldOpen);
+}
+
+function collapseAll() {
+  document.querySelectorAll('.category-card.open').forEach(c => c.classList.remove('open'));
 }
 
 function expandAll() {
-  document.querySelectorAll('.category-card').forEach(c => c.classList.add('open'));
+  const first = document.querySelector('.category-card');
+  if (first) {
+    document.querySelectorAll('.category-card.open').forEach(c => c.classList.remove('open'));
+    first.classList.add('open');
+  }
 }
 
 function applyPreset(level, el) {

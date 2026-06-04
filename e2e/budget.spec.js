@@ -39,10 +39,19 @@ test.describe('Budget Planner', () => {
     expect(newTotal).not.toBe(initialTotal);
   });
 
-  test('expand all button works', async ({ page }) => {
-    await page.click('text=Expand All');
-    const openCards = await page.locator('.category-card.open').count();
-    expect(openCards).toBeGreaterThan(0);
+  test('customer categories behave as a single-open accordion', async ({ page }) => {
+    const headers = page.locator('.category-header');
+    await headers.nth(0).click();
+    await expect(page.locator('.category-card.open')).toHaveCount(1);
+    const firstOpenId = await page.locator('.category-card.open').first().getAttribute('id');
+
+    await headers.nth(1).click();
+    await expect(page.locator('.category-card.open')).toHaveCount(1);
+    const secondOpenId = await page.locator('.category-card.open').first().getAttribute('id');
+    expect(secondOpenId).not.toBe(firstOpenId);
+
+    await page.click('text=Collapse All');
+    await expect(page.locator('.category-card.open')).toHaveCount(0);
   });
 
   test('renders comparison matrix categories with selected tier highlight', async ({ page }) => {
@@ -112,6 +121,8 @@ test.describe('Budget Planner', () => {
         mobileTooltipTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
+        desktopHeaderSticky: getComputedStyle(document.querySelector('.comparison-table thead th.matrix-tier-heading')).position,
+        mobilePanelSticky: getComputedStyle(document.querySelector('.comparison-mobile-panel')).position,
         legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
         tooltip: document.querySelector('.matrix-feature-label.has-description')?.getAttribute('title'),
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4
@@ -138,6 +149,8 @@ test.describe('Budget Planner', () => {
     expect(result.mobileTooltipTitle).toContain('Reliable wireless coverage');
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
+    expect(result.desktopHeaderSticky).toBe('sticky');
+    expect(result.mobilePanelSticky).toBe('sticky');
     expect(result.legacyTierSelectorVisible).toBe(false);
     expect(result.tooltip).toContain('Reliable wireless coverage');
     expect(result.overflow).toBe(false);

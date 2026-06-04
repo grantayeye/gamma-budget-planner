@@ -101,7 +101,8 @@ test.describe('Mobile responsive layout', () => {
         featureRows: matrix.querySelectorAll('.mobile-feature-compare-card').length,
         missingStatus: missingRow.querySelector('.mobile-feature-status .matrix-empty')?.textContent.trim(),
         selectedCells: matrix.querySelectorAll('.mobile-feature-status.selected.good-col').length,
-        hasDottedTooltip: !!matrix.querySelector('.mobile-feature-compare-title.has-description[title]')
+        hasDottedTooltip: !!matrix.querySelector('.mobile-feature-compare-title.has-description[title]'),
+        stickyMobilePanel: getComputedStyle(panel).position
       };
       startMobileComparisonSwipe({ changedTouches: [{ clientX: 320 }] }, panel);
       finishMobileComparisonSwipe({ changedTouches: [{ clientX: 220 }] }, panel);
@@ -122,6 +123,7 @@ test.describe('Mobile responsive layout', () => {
     expect(result.missingStatus).toBe('—');
     expect(result.selectedCells).toBeGreaterThan(0);
     expect(result.hasDottedTooltip).toBe(true);
+    expect(result.stickyMobilePanel).toBe('sticky');
     expect(result.activeKickerAfterSwipe).toBe('standard');
   });
 
