@@ -652,6 +652,19 @@ test.describe('Mobile responsive layout', () => {
         name: 'Whole-Home WiFi & Networking',
         icon: 'W',
         sizeScale: 0,
+        presentationMode: 'matrix',
+        featureMatrix: [
+          {
+            id: 'wifi-coverage',
+            label: 'WiFi coverage',
+            tierStatus: { good: 'included', better: 'included' }
+          },
+          {
+            id: 'ups-backup',
+            label: 'UPS backup',
+            tierStatus: { good: 'not_included', better: 'included' }
+          }
+        ],
         tiers: {
           good: { price: 1000, label: 'Good', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand A' },
           better: { price: 2000, label: 'Better', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand B' }
@@ -673,9 +686,6 @@ test.describe('Mobile responsive layout', () => {
       renderCustomizeEditor();
       const editor = document.querySelector('.category-editor[data-cat-id="networking"]');
       editor.classList.add('is-open');
-      const select = editor.querySelector('.presentation-mode-select');
-      select.value = 'matrix';
-      setMatrixMode(select, 'networking');
       const row = [...editor.querySelectorAll('.feature-matrix-row')]
         .find(item => item.querySelector('.fm-label')?.value === 'UPS backup');
       const status = row.querySelector('.fm-status[data-tier="good"]');

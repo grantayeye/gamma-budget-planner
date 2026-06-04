@@ -5616,7 +5616,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
             `;
           }).join('')}
         </div>
-        ${renderFeatureMatrixEditorPanel(cat, override, { sqft, scalePrices: true })}
+        ${renderFeatureMatrixEditorPanel(cat, override, { sqft, scalePrices: true, allowAddonPricing: true })}
       </div>
     </div>
   `;
