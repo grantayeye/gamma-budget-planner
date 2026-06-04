@@ -125,6 +125,87 @@ test.describe('Mobile responsive layout', () => {
     expect(result.activeKickerAfterSwipe).toBe('standard');
   });
 
+  test('customer comparison matrix uses compact table headers on landscape mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const result = await page.evaluate(() => {
+      const gate = document.getElementById('loginGate');
+      if (gate) gate.style.display = 'none';
+      document.querySelector('header').style.display = '';
+      document.querySelector('main').style.display = '';
+      CONFIGS.residential = {
+        categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: '📡',
+          desc: 'Enterprise-grade WiFi coverage',
+          sizeScale: 0,
+          presentationMode: 'matrix',
+          featureMatrix: [
+            {
+              id: 'wifi-coverage',
+              label: 'WiFi 7 access points for full interior coverage and lanai',
+              description: 'Reliable wireless coverage throughout the home.',
+              tierStatus: { good: 'included', standard: 'not_included', better: 'not_included', best: 'not_included' }
+            },
+            {
+              id: 'cloud-router',
+              label: 'Cloud managed pro router',
+              tierStatus: { good: 'included', standard: 'not_included', better: 'included', best: 'not_included' }
+            }
+          ],
+          tiers: {
+            good: { price: 6300, label: 'Reliable, Basic Coverage', tag: 'Good', features: [], brands: 'Brand A' },
+            standard: { price: 0, label: 'Standard', tag: 'Standard', features: [], brands: 'Brand B' },
+            better: { price: 10700, label: 'Full Coverage', tag: 'Better', features: [], brands: 'Brand C' },
+            best: { price: 16500, label: 'Enterprise Class', tag: 'Best', features: [], brands: 'Brand D' }
+          }
+        }],
+        sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.selections = { networking: 'good' };
+      state.catMods = { networking: { name: '', amount: 0 } };
+      renderCategories();
+      document.getElementById('cat-networking').classList.add('open');
+
+      const matrix = document.querySelector('.comparison-matrix');
+      const mobile = matrix.querySelector('.comparison-mobile-focus');
+      const table = matrix.querySelector('.comparison-table-scroll');
+      const cards = [...matrix.querySelectorAll('.comparison-table .comparison-tier-card')];
+      const cardRects = cards.map(card => {
+        const rect = card.getBoundingClientRect();
+        return {
+          height: rect.height,
+          width: rect.width,
+          overflows: card.scrollWidth > card.clientWidth + 4 || card.scrollHeight > card.clientHeight + 4
+        };
+      });
+      return {
+        bodyOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4,
+        mobileDisplay: getComputedStyle(mobile).display,
+        tableDisplay: getComputedStyle(table).display,
+        maxCardHeight: Math.max(...cardRects.map(rect => rect.height)),
+        minCardWidth: Math.min(...cardRects.map(rect => rect.width)),
+        cardOverflows: cardRects.some(rect => rect.overflows),
+        badgeDisplay: getComputedStyle(matrix.querySelector('.comparison-tier-badge')).display
+      };
+    });
+
+    expect(result.bodyOverflow).toBe(false);
+    expect(result.mobileDisplay).toBe('none');
+    expect(result.tableDisplay).not.toBe('none');
+    expect(result.maxCardHeight).toBeLessThanOrEqual(86);
+    expect(result.minCardWidth).toBeGreaterThanOrEqual(88);
+    expect(result.cardOverflows).toBe(false);
+    expect(result.badgeDisplay).toBe('none');
+  });
+
   test('admin budget list renders mobile cards while preserving the desktop table', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/admin');
