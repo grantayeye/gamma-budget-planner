@@ -1344,9 +1344,8 @@ app.get('/api/categories', async (req, res) => {
     res.set('Cache-Control', 'no-store, max-age=0');
     const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
     if (error || !data) {
-      // Fallback to static file data
-      const staticData = loadStaticCategoryData();
-      return res.json(staticData);
+      console.error('GET /api/categories missing category_defaults row:', error);
+      return res.status(503).json({ error: 'Live category pricing unavailable' });
     }
     res.json(normalizeCategoryDefaults({
       residential_categories: data.residential_categories,
@@ -1359,8 +1358,7 @@ app.get('/api/categories', async (req, res) => {
     }));
   } catch (err) {
     console.error('GET /api/categories error:', err);
-    const staticData = loadStaticCategoryData();
-    res.json(staticData);
+    res.status(503).json({ error: 'Live category pricing unavailable' });
   }
 });
 
@@ -1371,14 +1369,13 @@ app.get('/api/admin/categories', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
     if (error || !data) {
-      // Return static defaults
-      const staticData = loadStaticCategoryData();
-      return res.json({ ...staticData, updated_at: null, updated_by: null, source: 'static' });
+      console.error('GET /api/admin/categories missing category_defaults row:', error);
+      return res.status(503).json({ error: 'Live category pricing unavailable' });
     }
     res.json({ ...data, ...normalizeCategoryDefaults(data), source: 'database' });
   } catch (err) {
     console.error('GET /api/admin/categories error:', err);
-    res.status(500).json({ error: 'Failed to load categories' });
+    res.status(503).json({ error: 'Live category pricing unavailable' });
   }
 });
 

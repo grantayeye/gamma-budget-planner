@@ -76,6 +76,24 @@ test.describe('Budget Planner', () => {
     expect(result.prices).toEqual({ good: 5300, standard: 11400, better: 14800, best: 17900 });
   });
 
+  test('customer page fails closed instead of rendering stale static pricing', async ({ page }) => {
+    await page.route('**/api/categories**', async route => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Live category pricing unavailable' })
+      });
+    });
+
+    await page.reload();
+    const loaded = await page.evaluate(() => categoryDataReady);
+
+    await expect(page.locator('text=Pricing is temporarily unavailable')).toBeVisible();
+    await expect(page.locator('.category-card')).toHaveCount(0);
+    await expect(page.locator('.summary-bar')).toBeHidden();
+    expect(loaded).toBe(false);
+  });
+
   test('can expand category', async ({ page }) => {
     const firstCategory = page.locator('.category-header').first();
     await firstCategory.click();

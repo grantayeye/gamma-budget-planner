@@ -1702,9 +1702,12 @@ const categoryDataReady = (async function() {
       CONFIGS.condo.extras = CONDO_EXTRAS;
       CONFIGS.condo.sections = d.condo_sections || [];
       console.log('[Budget] Loaded live category data from API');
+      return true;
     }
+    throw new Error('Category API returned no residential categories');
   } catch (e) {
-    console.log('[Budget] Using static category data (API unavailable)');
+    console.error('[Budget] Live category data unavailable; refusing to render stale pricing');
+    return false;
   }
 })();
 
@@ -3979,7 +3982,34 @@ window.addEventListener('resize', updateCustomerStickyOffset);
 let _loadedFromURL = false;
 let budgetMatch = null;
 
-function initializeBudgetApp() {
+function showCategoryDataUnavailable() {
+  const gate = document.getElementById('loginGate');
+  if (gate) gate.style.display = 'none';
+  document.querySelector('header').style.display = '';
+  document.querySelector('main').style.display = '';
+  const categoriesContainer = document.getElementById('categoriesContainer');
+  if (categoriesContainer) {
+    categoriesContainer.innerHTML = `
+      <div class="expired-budget">
+        <h1>Pricing is temporarily unavailable</h1>
+        <p>We could not load current category pricing. Please refresh, or contact Gamma Tech for an updated estimate.</p>
+      </div>
+    `;
+  }
+  const extrasSection = document.getElementById('extrasSection');
+  if (extrasSection) extrasSection.style.display = 'none';
+  const summaryBar = document.querySelector('.summary-bar');
+  if (summaryBar) summaryBar.style.display = 'none';
+  const totalDisplay = document.querySelector('.total-display');
+  if (totalDisplay) totalDisplay.style.display = 'none';
+}
+
+function initializeBudgetApp(categoryDataLoaded) {
+  if (!categoryDataLoaded) {
+    showCategoryDataUnavailable();
+    return;
+  }
+
   // Check for live budget URL (/b/:id) - account for BASE_PATH prefix
   const budgetPathPattern = BASE_PATH ? new RegExp(`^${BASE_PATH}\\/b\\/([a-z0-9]+)$`, 'i') : /^\/b\/([a-z0-9]+)$/i;
   budgetMatch = window.location.pathname.match(budgetPathPattern);
@@ -4009,7 +4039,7 @@ function initializeBudgetApp() {
   }
 }
 
-categoryDataReady.finally(initializeBudgetApp);
+categoryDataReady.then(initializeBudgetApp);
 
 // Safety: re-sync state from DOM after browser form restoration (Safari restores form values)
 window.addEventListener('pageshow', function() {
