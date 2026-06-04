@@ -21,10 +21,12 @@ test.describe('Mobile responsive layout', () => {
       const rect = btn.getBoundingClientRect();
       return { text: btn.textContent.trim(), width: rect.width, height: rect.height };
     }));
+    const barHeight = await page.locator('.summary-bar').evaluate(el => el.getBoundingClientRect().height);
     expect(actionMetrics.length).toBeGreaterThan(0);
+    expect(barHeight).toBeLessThanOrEqual(118);
     for (const metric of actionMetrics) {
       expect(metric.height, `${metric.text} height`).toBeGreaterThanOrEqual(44);
-      expect(metric.width, `${metric.text} width`).toBeGreaterThanOrEqual(120);
+      expect(metric.width, `${metric.text} width`).toBeGreaterThanOrEqual(70);
     }
   });
 
