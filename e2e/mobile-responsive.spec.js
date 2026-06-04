@@ -67,10 +67,10 @@ test.describe('Mobile responsive layout', () => {
             }
           ],
           tiers: {
-            good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
+            good: { price: 1000, label: 'Reliable, Basic Coverage', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
             standard: { price: 1500, label: 'Standard', tag: 'Standard', features: ['Whole-home WiFi coverage'], brands: 'Brand B' },
-            better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage', 'UPS backup'], brands: 'Brand C' },
-            best: { price: 3000, label: 'Best', tag: 'Best', features: ['Whole-home WiFi coverage', 'UPS backup', 'Dedicated equipment rack'], brands: 'Brand D' }
+            better: { price: 2000, label: 'Full Coverage', tag: 'Better', features: ['Whole-home WiFi coverage', 'UPS backup'], brands: 'Brand C' },
+            best: { price: 3000, label: 'Enterprise Class', tag: 'Best', features: ['Whole-home WiFi coverage', 'UPS backup', 'Dedicated equipment rack'], brands: 'Brand D' }
           }
         }],
         sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
@@ -93,10 +93,11 @@ test.describe('Mobile responsive layout', () => {
         mobileDisplay: getComputedStyle(mobile).display,
         tableDisplay: getComputedStyle(table).display,
         tierNames: [...matrix.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-name')].map(el => el.textContent.trim()),
+        tierPackages: [...matrix.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-package')].map(el => el.textContent.trim()),
         featureRows: matrix.querySelectorAll('.mobile-feature-compare-card').length,
         missingStatuses: [...missingRow.querySelectorAll('.mobile-feature-status')].map(el => el.textContent.replace(/\s+/g, ' ').trim()),
         selectedCells: matrix.querySelectorAll('.mobile-feature-status.selected.good-col').length,
-        railCanScroll: tierRail.scrollWidth >= tierRail.clientWidth
+        railFits: tierRail.scrollWidth <= tierRail.clientWidth + 4
       };
     });
 
@@ -104,10 +105,11 @@ test.describe('Mobile responsive layout', () => {
     expect(result.mobileDisplay).toBe('block');
     expect(result.tableDisplay).toBe('none');
     expect(result.tierNames).toEqual(['Skip', 'Good', 'Standard', 'Better', 'Best']);
+    expect(result.tierPackages).toEqual(['No system', 'Reliable, Basic Coverage', 'Standard', 'Full Coverage', 'Enterprise Class']);
     expect(result.featureRows).toBe(3);
     expect(result.missingStatuses).toEqual(['Skip —', 'Good —', 'Standard —', 'Better —', 'Best ✓']);
     expect(result.selectedCells).toBeGreaterThan(0);
-    expect(result.railCanScroll).toBe(true);
+    expect(result.railFits).toBe(true);
   });
 
   test('admin budget list renders mobile cards while preserving the desktop table', async ({ page }) => {

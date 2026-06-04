@@ -104,6 +104,7 @@ test.describe('Budget Planner', () => {
         skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].map(el => el.textContent.trim()),
         bestBadge: document.querySelector('.comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
         mobileTierNames: [...document.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-name')].map(el => el.textContent.trim()),
+        mobileTierPackages: [...document.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-package')].map(el => el.textContent.trim()),
         mobileFeatureRows: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-title')].map(el => el.textContent.trim()),
         mobileStatusLabels: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-tier-label')]
           .map(el => el.textContent.trim()),
@@ -124,6 +125,7 @@ test.describe('Budget Planner', () => {
     expect(result.skipCells).toEqual(['—', '—', '—', '—']);
     expect(result.bestBadge).toBe('Best experience');
     expect(result.mobileTierNames).toEqual(['Skip', 'Good', 'Better', 'Best']);
+    expect(result.mobileTierPackages).toEqual(['No system', 'Good', 'Better', 'Best']);
     expect(result.mobileFeatureRows).toEqual([
       'Whole-home WiFi coverage',
       'UPS backup',

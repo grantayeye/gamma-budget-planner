@@ -867,6 +867,13 @@ main {
   text-transform: none;
   letter-spacing: 0;
 }
+.comparison-tier-package {
+  display: none;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.12;
+}
 .comparison-tier-price {
   color: var(--accent);
   font-size: 17px;
@@ -952,9 +959,9 @@ main {
   }
   .comparison-mobile-tier-grid .comparison-tier-card {
     min-width: 0;
-    min-height: 70px;
-    gap: 2px;
-    padding: 6px 3px;
+    min-height: 88px;
+    gap: 3px;
+    padding: 7px 3px;
     border-width: 1.5px;
   }
   .comparison-mobile-tier-grid .comparison-tier-badge,
@@ -962,10 +969,28 @@ main {
     display: none;
   }
   .comparison-mobile-tier-grid .comparison-tier-name {
-    font-size: 10px;
+    order: 1;
+    color: var(--text-light);
+    font-size: 8px;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.25px;
+  }
+  .comparison-mobile-tier-grid .comparison-tier-package {
+    order: 2;
+    display: -webkit-box;
+    min-height: 22px;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 9px;
+    line-height: 1.12;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
   .comparison-mobile-tier-grid .comparison-tier-price {
+    order: 3;
     font-size: 13px;
+    line-height: 1.1;
   }
   .comparison-mobile-guide {
     font-size: 11px;
@@ -2184,6 +2209,7 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
         onclick="selectTier('${cat.id}', null)"
         aria-pressed="${!selectedTier ? 'true' : 'false'}">
         <span class="comparison-tier-name">Skip</span>
+        <span class="comparison-tier-package">No system</span>
         <span class="comparison-tier-price">$0</span>
         <span class="comparison-tier-tag">No system</span>
       </button>
@@ -2203,6 +2229,7 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
       aria-pressed="${selectedTier === tierKey ? 'true' : 'false'}">
       ${badge ? `<span class="comparison-tier-badge">${escapeHtml(badge)}</span>` : ''}
       <span class="comparison-tier-name">${escapeHtml(fixedName)}</span>
+      <span class="comparison-tier-package">${escapeHtml(tier.label || fixedName)}</span>
       <span class="comparison-tier-price">${escapeHtml(price)}</span>
       <span class="comparison-tier-tag">${escapeHtml(tag)}</span>
     </button>
