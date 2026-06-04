@@ -3050,10 +3050,6 @@ function getVisibleMatrixTierKeys(scope) {
     .filter(Boolean);
 }
 
-function getMatrixTierOrderFromEditor(scope) {
-  return TIER_ORDER;
-}
-
 function refreshMatrixTierSwapButtons(panel) {
   const cards = Array.from(panel?.querySelectorAll('.feature-matrix-tier-card[data-tier]') || []);
   cards.forEach((card, index) => {
@@ -4703,7 +4699,6 @@ function buildCategoryOverrideFromBudget(budget, catId) {
     hidden: override.hidden === true,
     tiers,
     presentationMode,
-    tierOrder: getCategoryTierOrder(defaultCat || {}, override),
     ...(featureMatrix.length ? { featureMatrix } : {})
   };
 }
@@ -4753,6 +4748,101 @@ function writeTierRowData(row, data, selectors) {
   const disabled = !enabled && !isLocked;
   row.style.opacity = disabled ? '0.5' : '1';
   row.querySelectorAll(selectors.disable).forEach(el => { el.disabled = disabled; });
+}
+
+function getEditorPresentationMode(editor) {
+  return editor?.querySelector('.presentation-mode-select')?.value || editor?.dataset.presentationMode || 'list';
+}
+
+function readTierRowsFromEditor(editor, rowSelector, selectors, options = {}) {
+  const tiers = {};
+  editor?.querySelectorAll(rowSelector).forEach(row => {
+    const tierKey = row.dataset.tier;
+    if (!tierKey) return;
+    const data = readTierRowData(row, selectors);
+    if (options.onlyEnabled && !data.enabled) {
+      return;
+    }
+    if (options.onlyPopulated && !(data.enabled || data.label || data.price || data.features.length || data.brands)) {
+      return;
+    }
+    tiers[tierKey] = data;
+  });
+  return tiers;
+}
+
+function readMatrixForPresentationMode(editor, presentationMode) {
+  return presentationMode === 'matrix'
+    ? readFeatureMatrixFromContainer(editor?.querySelector('.feature-matrix-list'))
+    : [];
+}
+
+function applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode) {
+  if (presentationMode !== 'matrix') return tiers;
+  TIER_ORDER.forEach(tierKey => {
+    if (!tiers[tierKey]) return;
+    tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
+  });
+  return tiers;
+}
+
+function withPresentationPayload(payload, presentationMode, featureMatrix) {
+  const cleanPayload = { ...payload, presentationMode };
+  delete cleanPayload.tierOrder;
+  delete cleanPayload.tier_order;
+  if (presentationMode === 'matrix' && featureMatrix.length) {
+    cleanPayload.featureMatrix = featureMatrix;
+  } else {
+    delete cleanPayload.featureMatrix;
+  }
+  return cleanPayload;
+}
+
+function readStandardCategoryEditorPayload(editor, extra = {}) {
+  const presentationMode = getEditorPresentationMode(editor);
+  if (presentationMode === 'matrix') syncMatrixTierCardsToRows(editor);
+  const showCheckbox = editor?.querySelector('input[type="checkbox"]:not(.tier-enabled)');
+  const isHidden = showCheckbox && !showCheckbox.checked;
+  const tiers = readTierRowsFromEditor(editor, '.tier-row', {
+    enabled: '.tier-enabled',
+    label: '.tier-label',
+    price: '.tier-price'
+  });
+  const featureMatrix = readMatrixForPresentationMode(editor, presentationMode);
+  applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode);
+  return withPresentationPayload({
+    hidden: isHidden,
+    tiers,
+    ...extra
+  }, presentationMode, featureMatrix);
+}
+
+function readCustomCategoryEditorPayload(editor, options = {}) {
+  if (!editor) return null;
+  const presentationMode = getEditorPresentationMode(editor);
+  if (presentationMode === 'matrix') syncMatrixTierCardsToRows(editor);
+  const existingId = editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const customId = options.newId
+    ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    : existingId;
+  const tiers = readTierRowsFromEditor(editor, '.cc-tier-row', {
+    enabled: '.cc-tier-enabled',
+    label: '.cc-tier-label',
+    price: '.cc-tier-price'
+  }, { onlyEnabled: true, onlyPopulated: true });
+  const featureMatrix = readMatrixForPresentationMode(editor, presentationMode);
+  applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode);
+  const layout = document.getElementById('customizeLayoutSections')
+    ? (collectCustomizeLayoutData().customLayout[existingId] || {})
+    : {};
+  return withPresentationPayload({
+    id: customId,
+    name: editor.querySelector('.cc-name')?.value || '',
+    icon: editor.querySelector('.cc-icon')?.value || '📦',
+    desc: '',
+    ...layout,
+    tiers
+  }, presentationMode, featureMatrix);
 }
 
 function isTierRowActive(row, enabledSelector) {
@@ -4805,80 +4895,11 @@ function refreshCustomTierSwapButtons(editor) {
 function buildCategoryOverrideFromEditor(catId) {
   const editor = document.querySelector(`.category-editor[data-cat-id="${catId}"]`);
   if (!editor) return null;
-  const presentationMode = editor.querySelector('.presentation-mode-select')?.value || editor.dataset.presentationMode || 'list';
-  if (presentationMode === 'matrix') syncMatrixTierCardsToRows(editor);
-  const showCheckbox = editor.querySelector('input[type="checkbox"]:not(.tier-enabled)');
-  const isHidden = showCheckbox && !showCheckbox.checked;
-  const tiers = {};
-  TIER_ORDER.forEach(tierKey => {
-    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"]`);
-    if (row) {
-      tiers[tierKey] = readTierRowData(row, {
-        enabled: '.tier-enabled',
-        label: '.tier-label',
-        price: '.tier-price'
-      });
-    }
-  });
-  const featureMatrix = presentationMode === 'matrix'
-    ? readFeatureMatrixFromContainer(editor.querySelector('.feature-matrix-list'))
-    : [];
-  if (presentationMode === 'matrix') {
-    TIER_ORDER.forEach(tierKey => {
-      if (!tiers[tierKey]) return;
-      tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
-    });
-  }
-  return {
-    hidden: isHidden,
-    tiers,
-    presentationMode,
-    tierOrder: getMatrixTierOrderFromEditor(editor),
-    ...(featureMatrix.length ? { featureMatrix } : {})
-  };
+  return readStandardCategoryEditorPayload(editor);
 }
 
 function readCustomCategoryEditorData(editor, options = {}) {
-  if (!editor) return null;
-  const presentationMode = editor.querySelector('.presentation-mode-select')?.value || editor.dataset.presentationMode || 'list';
-  if (presentationMode === 'matrix') syncMatrixTierCardsToRows(editor);
-  const existingId = editor.dataset.ccId || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const customId = options.newId
-    ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    : existingId;
-  const name = editor.querySelector('.cc-name')?.value || '';
-  const tiers = {};
-  editor.querySelectorAll('.cc-tier-row').forEach(row => {
-    const tierKey = row.dataset.tier;
-    const data = readTierRowData(row, {
-      enabled: '.cc-tier-enabled',
-      label: '.cc-tier-label',
-      price: '.cc-tier-price'
-    });
-    if (data.enabled && (data.label || data.price || data.features.length || data.brands)) {
-      tiers[tierKey] = data;
-    }
-  });
-  const featureMatrix = presentationMode === 'matrix'
-    ? readFeatureMatrixFromContainer(editor.querySelector('.feature-matrix-list'))
-    : [];
-  if (presentationMode === 'matrix') {
-    TIER_ORDER.forEach(tierKey => {
-      if (!tiers[tierKey]) return;
-      tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
-    });
-  }
-  return {
-    id: customId,
-    name,
-    icon: editor.querySelector('.cc-icon')?.value || '📦',
-    desc: '',
-    presentationMode,
-    tierOrder: getMatrixTierOrderFromEditor(editor),
-    ...(featureMatrix.length ? { featureMatrix } : {}),
-    ...(document.getElementById('customizeLayoutSections') ? (collectCustomizeLayoutData().customLayout[existingId] || {}) : {}),
-    tiers
-  };
+  return readCustomCategoryEditorPayload(editor, options);
 }
 
 function applyCategoryOverrideToEditor(catId, override) {
@@ -5712,47 +5733,7 @@ function collectCustomizationData() {
 
   document.querySelectorAll('.category-editor').forEach(editor => {
     const catId = editor.dataset.catId;
-    const presentationMode = editor.querySelector('.presentation-mode-select')?.value || editor.dataset.presentationMode || 'list';
-    if (presentationMode === 'matrix') syncMatrixTierCardsToRows(editor);
-    const showCheckbox = editor.querySelector('input[type="checkbox"]:not(.tier-enabled)');
-    const isHidden = showCheckbox && !showCheckbox.checked;
-
-    const tiers = {};
-    editor.querySelectorAll('.tier-row').forEach(row => {
-      const tierKey = row.dataset.tier;
-      const enabled = row.querySelector('.tier-enabled')?.checked ?? true;
-      const label = row.querySelector('.tier-label')?.value || '';
-      const price = parseInt(row.querySelector('.tier-price')?.value) || 0;
-
-      let features = [];
-      try {
-        features = JSON.parse(row.dataset.features || '[]');
-      } catch (e) {
-        features = [];
-      }
-      const brands = row.dataset.brands || '';
-
-      tiers[tierKey] = { enabled, label, price, features, brands };
-    });
-
-    const featureMatrix = presentationMode === 'matrix'
-      ? readFeatureMatrixFromContainer(editor.querySelector('.feature-matrix-list'))
-      : [];
-    if (presentationMode === 'matrix') {
-      TIER_ORDER.forEach(tierKey => {
-        if (!tiers[tierKey]) return;
-        tiers[tierKey].features = legacyFeaturesFromMatrix(featureMatrix, tierKey);
-      });
-    }
-
-    categoryConfig[catId] = {
-      hidden: isHidden,
-      tiers,
-      presentationMode,
-      tierOrder: getMatrixTierOrderFromEditor(editor),
-      ...(featureMatrix.length ? { featureMatrix } : {}),
-      ...(layout.itemLayout[catId] || {})
-    };
+    categoryConfig[catId] = readStandardCategoryEditorPayload(editor, layout.itemLayout[catId] || {});
   });
 
   const extraConfig = {};
@@ -6679,10 +6660,16 @@ function collectCategoryEditorData() {
     const scaleEl = card.querySelector('[data-field="sizeScale"]');
     if (scaleEl) cat.sizeScale = parseFloat(scaleEl.value) || 0;
 
-    const presentationMode = card.querySelector('.presentation-mode-select')?.value || card.dataset.presentationMode || 'list';
+    const presentationMode = getEditorPresentationMode(card);
     if (presentationMode === 'matrix') {
-      card.querySelectorAll('.feature-matrix-tier-card[data-tier]').forEach(tierCard => {
-        const tk = tierCard.dataset.tier;
+      syncMatrixTierCardsToRows(card);
+      const tierPayload = readTierRowsFromEditor(card, '.tier-edit-card[data-tier]:not(.tier-not-configured)', {
+        enabled: null,
+        label: '[data-tf="label"]',
+        price: '[data-tf="price"]',
+        disable: 'input, button'
+      });
+      Object.entries(tierPayload).forEach(([tk, tier]) => {
         if (!cat.tiers[tk]) {
           cat.tiers[tk] = {
             price: 0,
@@ -6692,8 +6679,9 @@ function collectCategoryEditorData() {
             brands: ''
           };
         }
-        cat.tiers[tk].label = tierCard.querySelector('.matrix-tier-label')?.value || TIER_LABELS[tk];
-        cat.tiers[tk].price = parseInt(tierCard.querySelector('.matrix-tier-price')?.value) || 0;
+        cat.tiers[tk].label = tier.label || TIER_LABELS[tk];
+        cat.tiers[tk].price = tier.price || 0;
+        cat.tiers[tk].brands = tier.brands || '';
       });
     }
     
@@ -6718,7 +6706,8 @@ function collectCategoryEditorData() {
     }
 
     cat.presentationMode = presentationMode;
-    cat.tierOrder = getMatrixTierOrderFromEditor(card);
+    delete cat.tierOrder;
+    delete cat.tier_order;
     if (presentationMode === 'matrix') {
       cat.featureMatrix = readFeatureMatrixFromContainer(card.querySelector('.feature-matrix-list'));
       TIER_KEYS.forEach(tk => {

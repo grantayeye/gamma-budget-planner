@@ -706,12 +706,117 @@ function loadStaticCategoryData() {
 }
 
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
+const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
 const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
 
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function splitFeatureLines(features) {
+  const list = Array.isArray(features) ? features : (features ? [features] : []);
+  return list
+    .flatMap(feature => String(feature).split(/\r?\n/))
+    .map(feature => feature.trim())
+    .filter(Boolean);
+}
+
+function slugifyFeatureId(value) {
+  const slug = String(value || 'feature')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || 'feature';
+}
+
+function normalizeFeatureMatrixPayload(matrix = []) {
+  const usedIds = new Set();
+  return (Array.isArray(matrix) ? matrix : [])
+    .map((feature, index) => {
+      const label = String(feature?.label || feature?.name || '').trim();
+      if (!label) return null;
+      const id = uniqueSectionId(slugifyFeatureId(feature?.id || label), usedIds);
+      const tierStatus = {};
+      TIER_KEYS.forEach(tierKey => {
+        const status = feature?.tierStatus?.[tierKey] || feature?.tiers?.[tierKey] || feature?.[tierKey] || 'not_included';
+        tierStatus[tierKey] = FEATURE_MATRIX_STATUSES.includes(status) ? status : 'not_included';
+      });
+      return {
+        id,
+        label,
+        description: String(feature?.description || feature?.details || '').trim(),
+        group: String(feature?.group || '').trim(),
+        order: Number.isFinite(Number(feature?.order)) ? Number(feature.order) : index,
+        tierStatus
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+function legacyFeaturesFromMatrixPayload(matrix = [], tierKey) {
+  return normalizeFeatureMatrixPayload(matrix)
+    .filter(feature => feature.tierStatus?.[tierKey] === 'included')
+    .map(feature => feature.label);
+}
+
+function normalizeTierPayload(tier = {}) {
+  const payload = {};
+  if (tier.enabled !== undefined) payload.enabled = tier.enabled !== false;
+  if (tier.label !== undefined) payload.label = String(tier.label || '');
+  if (tier.price !== undefined) payload.price = Number(tier.price) || 0;
+  if (tier.features !== undefined) payload.features = splitFeatureLines(tier.features);
+  if (tier.brands !== undefined) payload.brands = String(tier.brands || '');
+  if (tier.sizeScale !== undefined && tier.sizeScale !== '') payload.sizeScale = Number(tier.sizeScale) || 0;
+  return payload;
+}
+
+function normalizePresentationPayload(payload = {}) {
+  const normalized = deepClone(payload || {}) || {};
+  const presentationMode = normalized.presentationMode === 'matrix' ? 'matrix' : 'list';
+  const featureMatrix = presentationMode === 'matrix'
+    ? normalizeFeatureMatrixPayload(normalized.featureMatrix || [])
+    : [];
+  const tiers = {};
+  TIER_KEYS.forEach(tierKey => {
+    if (!normalized.tiers?.[tierKey]) return;
+    tiers[tierKey] = normalizeTierPayload(normalized.tiers[tierKey]);
+    if (presentationMode === 'matrix') {
+      tiers[tierKey].features = legacyFeaturesFromMatrixPayload(featureMatrix, tierKey);
+    }
+  });
+  normalized.tiers = tiers;
+  normalized.presentationMode = presentationMode;
+  delete normalized.tierOrder;
+  delete normalized.tier_order;
+  if (presentationMode === 'matrix' && featureMatrix.length) {
+    normalized.featureMatrix = featureMatrix;
+  } else {
+    delete normalized.featureMatrix;
+  }
+  return normalized;
+}
+
+function normalizeCategoryConfigPayload(categoryConfig = {}) {
+  if (!categoryConfig || typeof categoryConfig !== 'object') return {};
+  const normalized = {};
+  Object.entries(categoryConfig).forEach(([key, value]) => {
+    if (key.startsWith('__') || !value || typeof value !== 'object' || !value.tiers) {
+      normalized[key] = deepClone(value);
+      return;
+    }
+    normalized[key] = normalizePresentationPayload(value);
+  });
+  return normalized;
+}
+
+function normalizeCustomCategoriesPayload(customCategories = []) {
+  return (Array.isArray(customCategories) ? customCategories : [])
+    .map(category => normalizePresentationPayload(category))
+    .filter(category => category.id && category.name && Object.keys(category.tiers || {}).length > 0);
 }
 
 function slugifySectionId(value) {
@@ -2057,8 +2162,8 @@ app.post('/api/admin/budgets/:id/clone', requireAuth, async (req, res) => {
       isCustomized: source.isCustomized,
       sqftLocked: source.sqftLocked || null,
       propertyTypeLocked: source.propertyTypeLocked || null,
-      categoryConfig: deepClone(source.categoryConfig || null),
-      customCategories: deepClone(source.customCategories || null),
+      categoryConfig: normalizeCategoryConfigPayload(deepClone(source.categoryConfig || null)),
+      customCategories: source.customCategories ? normalizeCustomCategoriesPayload(source.customCategories) : null,
       createdByEmail: req.user.email
     };
 
@@ -2087,17 +2192,18 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     const sqftLocked = budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize;
     const propertyTypeLocked = budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType;
     const defaults = await loadCategoryDefaultsData();
-    const categoryConfig = {
+    const categoryConfig = normalizeCategoryConfigPayload({
       ...buildBudgetDefaultSnapshot(defaults),
       ...(budget.categoryConfig || {}),
       ...(data.categoryConfig || {})
-    };
+    });
+    const customCategories = normalizeCustomCategoriesPayload(data.customCategories || []);
     currentState.total = calculateBudgetTotal(currentState, defaults, {
       sqft: sqftLocked,
       propertyType: propertyTypeLocked,
       isCustomized: true,
       categoryConfig,
-      customCategories: data.customCategories || []
+      customCategories
     });
     
     await supabase
@@ -2109,7 +2215,7 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
         property_type_locked: propertyTypeLocked,
         current_state: currentState,
         category_config: categoryConfig,
-        custom_categories: data.customCategories || null,
+        custom_categories: customCategories.length ? customCategories : null,
         modified_at: now
       })
       .eq('id', req.params.id);

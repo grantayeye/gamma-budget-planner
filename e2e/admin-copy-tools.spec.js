@@ -233,6 +233,7 @@ test.describe('Admin copy/customization tools', () => {
         goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
         betterUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.better,
         bestUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.best,
+        hasTierOrder: Object.prototype.hasOwnProperty.call(cat, 'tierOrder'),
         betterLabel: cat.tiers.better.label,
         betterPrice: cat.tiers.better.price,
         betterFeatures: cat.tiers.better.features,
@@ -248,6 +249,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodUpsStatus).toBe('addon');
     expect(result.betterUpsStatus).toBe('addon');
     expect(result.bestUpsStatus).toBe('addon');
+    expect(result.hasTierOrder).toBe(false);
     expect(result.betterLabel).toBe('Better Plus');
     expect(result.betterPrice).toBe(2400);
     expect(result.betterFeatures).toEqual(['WiFi coverage']);
@@ -318,18 +320,22 @@ test.describe('Admin copy/customization tools', () => {
       const collected = collectCustomizationData();
       return {
         defaultMode: collected.categoryConfig.networking.presentationMode,
+        defaultHasTierOrder: Object.prototype.hasOwnProperty.call(collected.categoryConfig.networking, 'tierOrder'),
         defaultGoodStatus: collected.categoryConfig.networking.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
         defaultGoodFeatures: collected.categoryConfig.networking.tiers.good.features,
         customMode: collected.customCategories[0].presentationMode,
+        customHasTierOrder: Object.prototype.hasOwnProperty.call(collected.customCategories[0], 'tierOrder'),
         customGoodStatus: collected.customCategories[0].featureMatrix.find(feature => feature.label === 'Custom upgrade')?.tierStatus.good,
         customBetterFeatures: collected.customCategories[0].tiers.better.features
       };
     });
 
     expect(result.defaultMode).toBe('matrix');
+    expect(result.defaultHasTierOrder).toBe(false);
     expect(result.defaultGoodStatus).toBe('addon');
     expect(result.defaultGoodFeatures).toEqual(['WiFi coverage']);
     expect(result.customMode).toBe('matrix');
+    expect(result.customHasTierOrder).toBe(false);
     expect(result.customGoodStatus).toBe('addon');
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
   });
