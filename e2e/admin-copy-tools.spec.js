@@ -290,6 +290,72 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
   });
 
+  test('template matrix add-on prices are locked unless tier scale is zero', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [{
+          id: 'surround',
+          section: 'Audio',
+          section_id: 'audio',
+          name: 'Surround Sound',
+          icon: 'S',
+          sizeScale: 0,
+          tiers: {
+            good: { price: 1000, label: 'Good', features: ['Soundbar'], brands: 'Brand A' },
+            better: { price: 2000, label: 'Better', sizeScale: 0, features: ['Soundbar', 'Subwoofer'], brands: 'Brand B' }
+          }
+        }],
+        residential_sections: [{ id: 'audio', name: 'Audio', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+      const card = document.querySelector('.cat-editor-card[data-cat-idx="0"]');
+      card.classList.add('open');
+      const select = card.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'surround');
+
+      const subwooferRow = [...card.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Subwoofer');
+      const goodStatus = subwooferRow.querySelector('.fm-status[data-tier="good"]');
+      const betterStatus = subwooferRow.querySelector('.fm-status[data-tier="better"]');
+      goodStatus.value = 'addon';
+      betterStatus.value = 'addon';
+      updateMatrixAddonPriceVisibility(goodStatus);
+      updateMatrixAddonPriceVisibility(betterStatus);
+      const goodPrice = subwooferRow.querySelector('.fm-addon-price-input[data-tier="good"]');
+      const betterPrice = subwooferRow.querySelector('.fm-addon-price-input[data-tier="better"]');
+      goodPrice.value = '500';
+      betterPrice.value = '450';
+
+      card.querySelector('[data-field="sizeScale"]').value = '0.5';
+      refreshMatrixAddonPricingLocks(card.querySelector('[data-field="sizeScale"]'));
+
+      collectCategoryEditorData();
+      const cat = catData.residential_categories[0];
+      const savedFeature = cat.featureMatrix.find(feature => feature.label === 'Subwoofer');
+      return {
+        goodDisabled: goodPrice.disabled,
+        goodValue: goodPrice.value,
+        betterDisabled: betterPrice.disabled,
+        betterValue: betterPrice.value,
+        goodSaved: savedFeature.tierStatus.good,
+        betterSaved: savedFeature.tierStatus.better
+      };
+    });
+
+    expect(result.goodDisabled).toBe(true);
+    expect(result.goodValue).toBe('');
+    expect(result.betterDisabled).toBe(false);
+    expect(result.betterValue).toBe('450');
+    expect(result.goodSaved).toBe('addon');
+    expect(result.betterSaved).toEqual({ status: 'addon', price: 450 });
+  });
+
   test('switching matrix back to feature list confirms and discards matrix-only metadata', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {

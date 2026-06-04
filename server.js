@@ -813,24 +813,46 @@ function normalizeTierPayload(tier = {}) {
   return payload;
 }
 
-function normalizePresentationPayload(payload = {}) {
+function stripScaledTemplateAddonPrices(matrix = [], category = {}) {
+  const categoryScale = Number(category.sizeScale ?? 0) || 0;
+  return normalizeFeatureMatrixPayload(matrix).map(feature => {
+    const tierStatus = { ...(feature.tierStatus || {}) };
+    TIER_KEYS.forEach(tierKey => {
+      const cell = tierStatus[tierKey];
+      if (matrixCellStatus(cell) !== 'addon' || matrixCellPrice(cell) <= 0) return;
+      const tierScale = category.tiers?.[tierKey]?.sizeScale !== undefined
+        ? Number(category.tiers[tierKey].sizeScale) || 0
+        : categoryScale;
+      if (tierScale !== 0) tierStatus[tierKey] = 'addon';
+    });
+    return { ...feature, tierStatus };
+  });
+}
+
+function normalizePresentationPayload(payload = {}, options = {}) {
   const normalized = deepClone(payload || {}) || {};
   const presentationMode = normalized.presentationMode === 'matrix' ? 'matrix' : 'list';
-  const featureMatrix = presentationMode === 'matrix'
+  let featureMatrix = presentationMode === 'matrix'
     ? normalizeFeatureMatrixPayload(normalized.featureMatrix || [])
     : [];
   const tiers = {};
   TIER_KEYS.forEach(tierKey => {
     if (!normalized.tiers?.[tierKey]) return;
     tiers[tierKey] = normalizeTierPayload(normalized.tiers[tierKey]);
-    if (presentationMode === 'matrix') {
-      tiers[tierKey].features = legacyFeaturesFromMatrixPayload(featureMatrix, tierKey);
-    }
   });
   normalized.tiers = tiers;
   normalized.presentationMode = presentationMode;
   delete normalized.tierOrder;
   delete normalized.tier_order;
+  if (presentationMode === 'matrix' && options.stripScaledTemplateAddonPrices) {
+    featureMatrix = stripScaledTemplateAddonPrices(featureMatrix, normalized);
+  }
+  if (presentationMode === 'matrix') {
+    TIER_KEYS.forEach(tierKey => {
+      if (!normalized.tiers?.[tierKey]) return;
+      normalized.tiers[tierKey].features = legacyFeaturesFromMatrixPayload(featureMatrix, tierKey);
+    });
+  }
   if (presentationMode === 'matrix' && featureMatrix.length) {
     normalized.featureMatrix = featureMatrix;
   } else {
@@ -960,7 +982,7 @@ function normalizeCategoryList(categories = [], sections = []) {
   const nextOrderBySection = new Map();
 
   const normalizedCategories = (categories || []).map((cat, index) => {
-    const copy = deepClone(cat) || {};
+    const copy = normalizePresentationPayload(deepClone(cat) || {}, { stripScaledTemplateAddonPrices: true });
     let section = byId.get(copy.section_id || copy.sectionId);
     if (!section) {
       const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';

@@ -713,6 +713,7 @@ test.describe('Mobile responsive layout', () => {
         width: Math.round(rect.width),
         gridColumn: getComputedStyle(priceWrap).gridColumnStart,
         hasInput: !!priceInput,
+        matrixTierScales: editor.querySelectorAll('.matrix-tier-scale').length,
         globalPricingInputs: document.querySelectorAll('.cat-editor-card .fm-addon-price-input').length
       };
     });
@@ -722,6 +723,7 @@ test.describe('Mobile responsive layout', () => {
     expect(result.width).toBeGreaterThan(180);
     expect(result.gridColumn).toBe('2');
     expect(result.hasInput).toBe(true);
+    expect(result.matrixTierScales).toBe(0);
     expect(result.globalPricingInputs).toBe(0);
   });
 });
