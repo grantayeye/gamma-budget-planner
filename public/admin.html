@@ -952,6 +952,20 @@
       align-items: center;
     }
 
+    .fm-addon-price {
+      margin-top: 6px;
+    }
+
+    .fm-addon-price[hidden] {
+      display: none;
+    }
+
+    .fm-addon-price input {
+      color: var(--accent);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
     .fm-apply-right {
       width: 28px;
       height: 32px;
@@ -2875,6 +2889,22 @@ function splitFeatureLines(features) {
     .filter(Boolean);
 }
 
+function normalizeMatrixTierCell(value) {
+  const rawStatus = value && typeof value === 'object' ? value.status : value;
+  const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
+  if (status !== 'addon') return status;
+  const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
+  return price > 0 ? { status, price } : status;
+}
+
+function matrixCellStatus(value) {
+  return value && typeof value === 'object' ? value.status : value;
+}
+
+function matrixCellPrice(value) {
+  return value && typeof value === 'object' ? Math.max(0, Number(value.price) || 0) : 0;
+}
+
 function normalizeFeatureMatrix(matrix = []) {
   const usedIds = new Set();
   return (Array.isArray(matrix) ? matrix : [])
@@ -2884,8 +2914,8 @@ function normalizeFeatureMatrix(matrix = []) {
       const id = uniqueSectionId(slugifyFeatureId(feature.id || label), usedIds);
       const tierStatus = {};
       TIER_ORDER.forEach(tierKey => {
-        const status = feature.tierStatus?.[tierKey] || feature.tiers?.[tierKey] || 'not_included';
-        tierStatus[tierKey] = FEATURE_MATRIX_STATUSES.includes(status) ? status : 'not_included';
+        const value = feature.tierStatus?.[tierKey] || feature.tiers?.[tierKey] || 'not_included';
+        tierStatus[tierKey] = normalizeMatrixTierCell(value);
       });
       return {
         id,
@@ -2940,15 +2970,20 @@ function buildFeatureMatrixFromTiers(tiers = {}) {
   return normalizeFeatureMatrix(Array.from(rowsByLabel.values()));
 }
 
+function matrixRenderOptionsForEditor(editor) {
+  return { allowAddonPricing: !!editor?.closest?.('#customizeModal') };
+}
+
 function legacyFeaturesFromMatrix(matrix = [], tierKey) {
   return normalizeFeatureMatrix(matrix)
-    .filter(feature => feature.tierStatus?.[tierKey] === 'included')
+    .filter(feature => matrixCellStatus(feature.tierStatus?.[tierKey]) === 'included')
     .map(feature => feature.label);
 }
 
 function featureMatrixStatusOptions(selected = 'not_included') {
+  const selectedStatus = matrixCellStatus(selected);
   return FEATURE_MATRIX_STATUSES
-    .map(status => `<option value="${status}" ${selected === status ? 'selected' : ''}>${FEATURE_MATRIX_STATUS_LABELS[status]}</option>`)
+    .map(status => `<option value="${status}" ${selectedStatus === status ? 'selected' : ''}>${FEATURE_MATRIX_STATUS_LABELS[status]}</option>`)
     .join('');
 }
 
@@ -2956,8 +2991,9 @@ function getCategoryTierOrder(cat = {}, override = {}) {
   return TIER_ORDER;
 }
 
-function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
+function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {}) {
   const rows = normalizeFeatureMatrix(matrix);
+  const allowAddonPricing = !!options.allowAddonPricing;
   if (!rows.length) {
     return `
       <tr class="feature-matrix-empty-row">
@@ -2979,11 +3015,17 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
       ${tierKeys.map((tierKey, tierIndex) => `
         <td data-tier-label="${TIER_NAMES[tierKey]}">
           <div class="fm-status-wrap">
-            <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}">
+            <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}" onchange="updateMatrixAddonPriceVisibility(this)">
               ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
             </select>
             <button type="button" class="btn btn-secondary btn-small fm-apply-right ${tierIndex < tierKeys.length - 1 ? '' : 'is-hidden'}" title="Apply this value to tiers on the right" onclick="applyMatrixStatusRight(this)">→</button>
           </div>
+          ${allowAddonPricing ? `
+            <label class="fm-addon-price" ${matrixCellStatus(feature.tierStatus?.[tierKey]) === 'addon' ? '' : 'hidden'}>
+              <span style="display:block;font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;margin:5px 0 3px;">Add-on price</span>
+              <input type="number" class="fm-addon-price-input" data-tier="${tierKey}" value="${matrixCellPrice(feature.tierStatus?.[tierKey]) || ''}" min="0" step="50" placeholder="Optional">
+            </label>
+          ` : ''}
         </td>
       `).join('')}
       <td>
@@ -3062,7 +3104,11 @@ function readFeatureMatrixFromContainer(container) {
     const label = row.querySelector('.fm-label')?.value || '';
     const tierStatus = {};
     row.querySelectorAll('.fm-status[data-tier]').forEach(select => {
-      tierStatus[select.dataset.tier] = select.value;
+      const priceInput = row.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
+      const price = Number(priceInput?.value || 0) || 0;
+      tierStatus[select.dataset.tier] = select.value === 'addon' && price > 0
+        ? { status: 'addon', price }
+        : select.value;
     });
     return {
       id: row.dataset.featureId || slugifyFeatureId(label),
@@ -3117,7 +3163,7 @@ function setMatrixMode(select, catId) {
     syncMatrixTierCardsToRows(editor);
     writeMatrixLegacyFeaturesToTierRows(editor, matrix);
     const list = editor.querySelector('.feature-matrix-list');
-    if (list) list.innerHTML = renderFeatureMatrixRows([], getVisibleMatrixTierKeys(editor));
+    if (list) list.innerHTML = renderFeatureMatrixRows([], getVisibleMatrixTierKeys(editor), matrixRenderOptionsForEditor(editor));
   }
   editor.dataset.presentationMode = select.value;
   const panel = editor.querySelector('.matrix-mode-panel');
@@ -3129,7 +3175,8 @@ function setMatrixMode(select, catId) {
     if (list && !list.querySelector('.feature-matrix-row')) {
       list.innerHTML = renderFeatureMatrixRows(
         buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor)),
-        getVisibleMatrixTierKeys(editor)
+        getVisibleMatrixTierKeys(editor),
+        matrixRenderOptionsForEditor(editor)
       );
     }
   }
@@ -3145,7 +3192,11 @@ function convertCategoryFeaturesToMatrix(button) {
   if (existingMatrix.length && !confirm('Rebuild the comparison table from the current feature lists? Existing comparison rows, add-on settings, and descriptions will be replaced.')) {
     return;
   }
-  list.innerHTML = renderFeatureMatrixRows(buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor)));
+  list.innerHTML = renderFeatureMatrixRows(
+    buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor)),
+    getVisibleMatrixTierKeys(editor),
+    matrixRenderOptionsForEditor(editor)
+  );
   const select = editor.querySelector('.presentation-mode-select');
   if (select) select.value = 'matrix';
   editor.dataset.presentationMode = 'matrix';
@@ -3173,7 +3224,7 @@ function addFeatureMatrixRow(button) {
     order: existing.length,
     tierStatus: Object.fromEntries(TIER_ORDER.map(tierKey => [tierKey, 'not_included']))
   });
-  list.innerHTML = renderFeatureMatrixRows(existing, tierKeys);
+  list.innerHTML = renderFeatureMatrixRows(existing, tierKeys, matrixRenderOptionsForEditor(panel));
   requestAnimationFrame(() => {
     if (scrollArea) scrollArea.scrollTop = previousScroll;
     list.querySelector('.feature-matrix-row:last-child .fm-label')?.focus();
@@ -3189,7 +3240,7 @@ function removeFeatureMatrixRow(button) {
   button.closest('.feature-matrix-row')?.remove();
   const list = panel?.querySelector('.feature-matrix-list');
   if (list && !list.querySelector('.feature-matrix-row')) {
-    list.innerHTML = renderFeatureMatrixRows([], getVisibleMatrixTierKeys(panel));
+    list.innerHTML = renderFeatureMatrixRows([], getVisibleMatrixTierKeys(panel), matrixRenderOptionsForEditor(panel));
   }
   requestAnimationFrame(() => {
     if (scrollArea) scrollArea.scrollTop = previousScroll;
@@ -3226,10 +3277,26 @@ function applyMatrixStatusRight(button) {
       shouldApply = true;
       return;
     }
-    if (shouldApply) select.value = sourceSelect.value;
+    if (shouldApply) {
+      select.value = sourceSelect.value;
+      const sourcePrice = row.querySelector(`.fm-addon-price-input[data-tier="${sourceSelect.dataset.tier}"]`)?.value || '';
+      const targetPrice = row.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
+      if (targetPrice) targetPrice.value = sourceSelect.value === 'addon' ? sourcePrice : '';
+      updateMatrixAddonPriceVisibility(select);
+    }
   });
   markCatDirty();
   queueCustomizeDraftSave();
+}
+
+function updateMatrixAddonPriceVisibility(select) {
+  const cell = select.closest('td');
+  const priceWrap = cell?.querySelector(`.fm-addon-price`);
+  const priceInput = cell?.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
+  if (!priceWrap) return;
+  const isAddon = select.value === 'addon';
+  priceWrap.hidden = !isAddon;
+  if (!isAddon && priceInput) priceInput.value = '';
 }
 
 function syncMatrixRowsToCards(editor) {
@@ -3277,8 +3344,17 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
     const nextSelect = row.querySelector(`.fm-status[data-tier="${nextTier}"]`);
     if (!currentSelect || !nextSelect) return;
     const currentValue = currentSelect.value;
+    const currentPrice = row.querySelector(`.fm-addon-price-input[data-tier="${tierKey}"]`);
+    const nextPrice = row.querySelector(`.fm-addon-price-input[data-tier="${nextTier}"]`);
+    const currentPriceValue = currentPrice?.value || '';
     currentSelect.value = nextSelect.value;
     nextSelect.value = currentValue;
+    if (currentPrice && nextPrice) {
+      currentPrice.value = nextPrice.value || '';
+      nextPrice.value = currentPriceValue;
+    }
+    updateMatrixAddonPriceVisibility(currentSelect);
+    updateMatrixAddonPriceVisibility(nextSelect);
   });
   syncMatrixRowsToCards(editor);
   refreshMatrixTierSwapButtons(panel);
@@ -3359,10 +3435,11 @@ function toggleMatrixTierEnabled(control, tierKey, enabled) {
   if (select) select.value = 'matrix';
   editor.dataset.presentationMode = 'matrix';
   const replacement = editor.classList.contains('custom-category-editor')
-    ? renderFeatureMatrixEditorPanel(readCustomCategoryEditorData(editor))
+    ? renderFeatureMatrixEditorPanel(readCustomCategoryEditorData(editor), {}, matrixRenderOptionsForEditor(editor))
     : renderFeatureMatrixEditorPanel(
         buildMatrixCategoryFromEditor(editor),
-        buildCategoryOverrideFromEditor(editor.dataset.catId)
+        buildCategoryOverrideFromEditor(editor.dataset.catId),
+        matrixRenderOptionsForEditor(editor)
       );
   const panel = editor.querySelector('.matrix-mode-panel');
   if (panel) panel.outerHTML = replacement;
@@ -3395,7 +3472,7 @@ function renderFeatureMatrixEditorPanel(cat, override = {}, options = {}) {
             ${renderMatrixTierHeader(tierModels)}
           </thead>
           <tbody class="feature-matrix-list">
-            ${renderFeatureMatrixRows(matrix, enabledTierKeys)}
+            ${renderFeatureMatrixRows(matrix, enabledTierKeys, options)}
           </tbody>
         </table>
       </div>
@@ -5105,7 +5182,7 @@ function applyCategoryOverrideToEditor(catId, override) {
   if (modeSelect) modeSelect.value = mode;
   const panel = editor.querySelector('.matrix-mode-panel');
   if (panel && mode === 'matrix') {
-    panel.outerHTML = renderFeatureMatrixEditorPanel(buildMatrixCategoryFromEditor(editor), override);
+    panel.outerHTML = renderFeatureMatrixEditorPanel(buildMatrixCategoryFromEditor(editor), override, matrixRenderOptionsForEditor(editor));
   } else if (panel) {
     panel.style.display = 'none';
   }
@@ -5593,7 +5670,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
             `;
           }).join('')}
         </div>
-        ${renderFeatureMatrixEditorPanel(cc)}
+        ${renderFeatureMatrixEditorPanel(cc, {}, { allowAddonPricing: true })}
       </div>
     </div>
   `;

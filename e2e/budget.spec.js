@@ -121,7 +121,7 @@ test.describe('Budget Planner', () => {
     expect(result.title).toBe("Compare what's included");
     expect(result.featureHeader).toBe('Feature');
     expect(result.tierNames).toEqual(['Skip', 'Good', 'Better', 'Best']);
-    expect(result.tierPrices).toEqual(['$0', '$1,000', '$2,000', '$3,000']);
+    expect(result.tierPrices).toEqual(['$1,000', '$2,000', '$3,000']);
     expect(result.skipCells).toEqual(['—', '—', '—', '—']);
     expect(result.bestBadge).toBe('Best experience');
     expect(result.mobileTabs).toEqual(['Skip', 'Good', 'Better', 'Best']);
@@ -141,5 +141,81 @@ test.describe('Budget Planner', () => {
     expect(result.legacyTierSelectorVisible).toBe(false);
     expect(result.tooltip).toContain('Reliable wireless coverage');
     expect(result.overflow).toBe(false);
+  });
+
+  test('priced comparison add-ons can be toggled and saved in state', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: '📡',
+          desc: 'Enterprise-grade WiFi coverage',
+          sizeScale: 0,
+          presentationMode: 'matrix',
+          featureMatrix: [
+            {
+              id: 'wifi-coverage',
+              label: 'Whole-home WiFi coverage',
+              tierStatus: { good: 'included', better: 'included' }
+            },
+            {
+              id: 'ups-backup',
+              label: 'UPS backup',
+              description: 'Keeps the network alive during short power outages.',
+              tierStatus: { good: { status: 'addon', price: 250 }, better: 'included' }
+            }
+          ],
+          tiers: {
+            good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
+            better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage', 'UPS backup'], brands: 'Brand B' }
+          }
+        }],
+        sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        extras: []
+      };
+      currentBudgetId = null;
+      state.propertyType = 'residential';
+      state.selections = { networking: 'good' };
+      state.catMods = { networking: { name: '', amount: 0 } };
+      state.extras = {};
+      state.modifiers = [];
+      state.addOns = {};
+      renderCategories();
+      updateTotals();
+      document.getElementById('cat-networking').classList.add('open');
+
+      const before = document.getElementById('headerTotal').textContent;
+      const buttonBefore = document.querySelector('.comparison-table td.selected-col .matrix-addon-toggle')?.textContent.replace(/\s+/g, ' ').trim();
+      toggleMatrixAddOn({ preventDefault() {}, stopPropagation() {} }, 'networking', 'good', 'ups-backup');
+      const after = document.getElementById('headerTotal').textContent;
+      const buttonAfter = document.querySelector('.comparison-table td.selected-col .matrix-addon-toggle')?.textContent.replace(/\s+/g, ' ').trim();
+      const categoryHeaderPrice = document.querySelector('#cat-networking .category-price')?.textContent.trim();
+      const apiState = getStateForAPI();
+      showSummary();
+      const summaryRows = [...document.querySelectorAll('#summaryBody tbody tr')].map(row => row.textContent.replace(/\s+/g, ' ').trim());
+
+      return {
+        before,
+        buttonBefore,
+        after,
+        buttonAfter,
+        categoryHeaderPrice,
+        savedAddOn: apiState.addOns?.networking?.good?.['ups-backup'],
+        savedTotal: apiState.total,
+        summaryHasAddOn: summaryRows.some(row => row.includes('UPS backup') && row.includes('Add-on') && row.includes('$250'))
+      };
+    });
+
+    expect(result.before).toBe('$1,060');
+    expect(result.buttonBefore).toBe('+ Add $250');
+    expect(result.after).toBe('$1,325');
+    expect(result.buttonAfter).toBe('✓ Added $250');
+    expect(result.categoryHeaderPrice).toBe('$1,250');
+    expect(result.savedAddOn).toBe(true);
+    expect(result.savedTotal).toBe(1325);
+    expect(result.summaryHasAddOn).toBe(true);
   });
 });

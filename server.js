@@ -744,6 +744,22 @@ function slugifyFeatureId(value) {
   return slug || 'feature';
 }
 
+function normalizeMatrixTierCell(value) {
+  const rawStatus = value && typeof value === 'object' ? value.status : value;
+  const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
+  if (status !== 'addon') return status;
+  const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
+  return price > 0 ? { status, price } : status;
+}
+
+function matrixCellStatus(value) {
+  return value && typeof value === 'object' ? value.status : value;
+}
+
+function matrixCellPrice(value) {
+  return value && typeof value === 'object' ? Math.max(0, Number(value.price) || 0) : 0;
+}
+
 function normalizeFeatureMatrixPayload(matrix = []) {
   const usedIds = new Set();
   return (Array.isArray(matrix) ? matrix : [])
@@ -753,8 +769,8 @@ function normalizeFeatureMatrixPayload(matrix = []) {
       const id = uniqueSectionId(slugifyFeatureId(feature?.id || label), usedIds);
       const tierStatus = {};
       TIER_KEYS.forEach(tierKey => {
-        const status = feature?.tierStatus?.[tierKey] || feature?.tiers?.[tierKey] || feature?.[tierKey] || 'not_included';
-        tierStatus[tierKey] = FEATURE_MATRIX_STATUSES.includes(status) ? status : 'not_included';
+        const value = feature?.tierStatus?.[tierKey] || feature?.tiers?.[tierKey] || feature?.[tierKey] || 'not_included';
+        tierStatus[tierKey] = normalizeMatrixTierCell(value);
       });
       return {
         id,
@@ -771,8 +787,19 @@ function normalizeFeatureMatrixPayload(matrix = []) {
 
 function legacyFeaturesFromMatrixPayload(matrix = [], tierKey) {
   return normalizeFeatureMatrixPayload(matrix)
-    .filter(feature => feature.tierStatus?.[tierKey] === 'included')
+    .filter(feature => matrixCellStatus(feature.tierStatus?.[tierKey]) === 'included')
     .map(feature => feature.label);
+}
+
+function selectedMatrixAddOnTotal(category = {}, tierKey, selectedForCategory = {}) {
+  if (!tierKey || !category?.featureMatrix) return 0;
+  const selectedForTier = selectedForCategory?.[tierKey] || {};
+  return normalizeFeatureMatrixPayload(category.featureMatrix)
+    .reduce((total, feature) => {
+      if (!selectedForTier[feature.id]) return total;
+      const cell = feature.tierStatus?.[tierKey];
+      return matrixCellStatus(cell) === 'addon' ? total + matrixCellPrice(cell) : total;
+    }, 0);
 }
 
 function normalizeTierPayload(tier = {}) {
@@ -1195,23 +1222,31 @@ function calculateBudgetTotal(state, defaults, options = {}) {
 
   Object.entries(state.selections || {}).forEach(([catId, tierKey]) => {
     if (!tierKey) return;
+    const selectedAddOns = state.addOns?.[catId] || {};
     const customCat = customById.get(catId);
     if (customCat?.tiers?.[tierKey]) {
       subtotal += Number(customCat.tiers[tierKey].price || 0);
-      return;
-    }
-
-    const override = categoryConfig[catId]?.tiers?.[tierKey];
-    if (isCustomized && override?.enabled === false) return;
-    if (isCustomized && override?.price !== undefined) {
-      subtotal += Number(override.price || 0);
+      subtotal += selectedMatrixAddOnTotal(customCat, tierKey, selectedAddOns);
       return;
     }
 
     const defaultCat = defaultById.get(catId);
+    const categoryForAddOns = {
+      ...(defaultCat || {}),
+      ...(categoryConfig[catId]?.featureMatrix ? { featureMatrix: categoryConfig[catId].featureMatrix } : {})
+    };
+    const override = categoryConfig[catId]?.tiers?.[tierKey];
+    if (isCustomized && override?.enabled === false) return;
+    if (isCustomized && override?.price !== undefined) {
+      subtotal += Number(override.price || 0);
+      subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns);
+      return;
+    }
+
     if (!defaultCat?.tiers?.[tierKey]) return;
     const price = getDefaultTierPrice(defaultCat, tierKey, sqft);
     subtotal += price || 0;
+    subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns);
   });
 
   Object.values(state.catMods || {}).forEach(mod => {

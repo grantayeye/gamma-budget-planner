@@ -999,6 +999,22 @@ main {
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
+.matrix-addon-toggle {
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+.matrix-addon-toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+.matrix-addon-toggle.is-added {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.matrix-addon-muted {
+  opacity: 0.75;
+}
 .matrix-empty {
   color: var(--text-lighter);
   font-size: 18px;
@@ -1886,14 +1902,30 @@ function splitFeatureLines(features) {
     .filter(Boolean);
 }
 
+function normalizeMatrixTierCell(value) {
+  const rawStatus = value && typeof value === 'object' ? value.status : value;
+  const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
+  if (status !== 'addon') return status;
+  const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
+  return price > 0 ? { status, price } : status;
+}
+
+function matrixCellStatus(value) {
+  return value && typeof value === 'object' ? value.status : value;
+}
+
+function matrixCellPrice(value) {
+  return value && typeof value === 'object' ? Math.max(0, Number(value.price) || 0) : 0;
+}
+
 function normalizeFeatureMatrix(matrix = []) {
   return (Array.isArray(matrix) ? matrix : []).map((feature, index) => {
     const label = String(feature?.label || feature?.name || '').trim();
     if (!label) return null;
     const tierStatus = {};
     TIER_ORDER.forEach(tierKey => {
-      const status = feature?.tierStatus?.[tierKey] || feature?.tiers?.[tierKey] || feature?.[tierKey] || 'not_included';
-      tierStatus[tierKey] = FEATURE_MATRIX_STATUSES.includes(status) ? status : 'not_included';
+      const value = feature?.tierStatus?.[tierKey] || feature?.tiers?.[tierKey] || feature?.[tierKey] || 'not_included';
+      tierStatus[tierKey] = normalizeMatrixTierCell(value);
     });
     return {
       id: String(feature?.id || `feature-${index + 1}`),
@@ -1914,7 +1946,45 @@ function getFeatureMatrix(cat) {
 }
 
 function featureStatusForTier(feature, tierKey) {
+  return matrixCellStatus(feature?.tierStatus?.[tierKey] || 'not_included');
+}
+
+function featureCellForTier(feature, tierKey) {
   return feature?.tierStatus?.[tierKey] || 'not_included';
+}
+
+function selectedAddOnsForCategory(catId, tierKey) {
+  return state.addOns?.[catId]?.[tierKey] || {};
+}
+
+function isMatrixAddOnSelected(catId, tierKey, featureId) {
+  return !!selectedAddOnsForCategory(catId, tierKey)[featureId];
+}
+
+function matrixAddOnTotalForCategory(cat, tierKey) {
+  if (!cat || !tierKey) return 0;
+  const selected = selectedAddOnsForCategory(cat.id, tierKey);
+  return getFeatureMatrix(cat).reduce((total, feature) => {
+    if (!selected[feature.id]) return total;
+    const cell = featureCellForTier(feature, tierKey);
+    return matrixCellStatus(cell) === 'addon' ? total + matrixCellPrice(cell) : total;
+  }, 0);
+}
+
+function matrixSelectedAddOnRows(cat, tierKey) {
+  if (!cat || !tierKey) return [];
+  const selected = selectedAddOnsForCategory(cat.id, tierKey);
+  return getFeatureMatrix(cat)
+    .map(feature => {
+      const cell = featureCellForTier(feature, tierKey);
+      return {
+        id: feature.id,
+        label: feature.label,
+        selected: !!selected[feature.id],
+        price: matrixCellStatus(cell) === 'addon' ? matrixCellPrice(cell) : 0
+      };
+    })
+    .filter(row => row.selected && row.price > 0);
 }
 
 function snapshotForPropertyType(snapshot, propertyType) {
@@ -2105,6 +2175,7 @@ let state = {
   extras: {},      // { extraId: true|false }
   modifiers: [],   // { id, name, amount } — positive or negative
   catMods: {},     // { categoryId: { name, amount } } — per-category adjustments
+  addOns: {},      // { categoryId: { tierKey: { featureId: true } } }
   homeSize: 4000,
   propertyType: 'residential'
 };
@@ -2198,8 +2269,9 @@ function renderCategories() {
     cats.forEach(cat => {
       const selected = state.selections[cat.id];
       const basePrice = getCategoryPrice(cat, selected);
+      const addOnTotal = matrixAddOnTotalForCategory(cat, selected);
       const catModAmount = state.catMods[cat.id]?.amount || 0;
-      const price = basePrice + catModAmount;
+      const price = basePrice + addOnTotal + catModAmount;
       const tierClass = selected ? 'tier-' + selected : '';
       const isMatrixMode = getCategoryPresentationMode(cat) === 'matrix';
       
@@ -2289,9 +2361,28 @@ function renderCategoryDetails(cat, selectedTier) {
     : '<div class="tier-details" style="text-align:center;color:var(--text-lighter);padding:20px;">Select a tier to see what\'s included</div>';
 }
 
-function renderFeatureStatusCell(status) {
+function renderFeatureStatusCell(cell, context = {}) {
+  const status = matrixCellStatus(cell);
   if (status === 'included') return '<span class="matrix-check" aria-label="Included">✓</span>';
-  if (status === 'addon') return '<span class="matrix-addon">Add-on</span>';
+  if (status === 'addon') {
+    const price = matrixCellPrice(cell);
+    if (price > 0) {
+      const label = `Add-on ${formatCurrency(price)}`;
+      if (context.selectable && context.catId && context.tierKey && context.featureId) {
+        const added = isMatrixAddOnSelected(context.catId, context.tierKey, context.featureId);
+        return `
+          <button type="button"
+            class="matrix-addon matrix-addon-toggle ${added ? 'is-added' : ''}"
+            onclick="toggleMatrixAddOn(event, '${escapeAttr(context.catId)}', '${escapeAttr(context.tierKey)}', '${escapeAttr(context.featureId)}')"
+            aria-pressed="${added ? 'true' : 'false'}">
+            ${added ? '✓ Added' : '+ Add'} ${escapeHtml(formatCurrency(price))}
+          </button>
+        `;
+      }
+      return `<span class="matrix-addon matrix-addon-muted">${escapeHtml(label)}</span>`;
+    }
+    return '<span class="matrix-addon">Add-on</span>';
+  }
   return '<span class="matrix-empty" aria-label="Not included">—</span>';
 }
 
@@ -2303,7 +2394,6 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
         onclick="selectTier('${cat.id}', null)"
         aria-pressed="${!selectedTier ? 'true' : 'false'}">
         <span class="comparison-tier-name">Skip</span>
-        <span class="comparison-tier-price">$0</span>
       </button>
     `;
   }
@@ -2343,7 +2433,7 @@ function comparisonTierDisplay(cat, tierKey) {
     return {
       kicker: 'Skip',
       name: 'Skip',
-      price: '$0'
+      price: ''
     };
   }
   const tier = cat.tiers[tierKey] || {};
@@ -2381,7 +2471,7 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
         <div class="comparison-mobile-active-tier ${selectedKey}">
           <div class="comparison-mobile-active-kicker">${escapeHtml(activeTier.kicker)}</div>
           <div class="comparison-mobile-active-name">${escapeHtml(activeTier.name)}</div>
-          <div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>
+          ${activeTier.price ? `<div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>` : ''}
         </div>
         <div class="comparison-mobile-actions">
           <span class="comparison-mobile-guide">Swipe to compare options</span>
@@ -2399,7 +2489,14 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
               </div>
               <div class="mobile-feature-status selected ${selectedKey}-col">
                 <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, selectedKey))}</span>
-                ${selectedKey === 'skip' ? renderFeatureStatusCell('not_included') : renderFeatureStatusCell(featureStatusForTier(feature, selectedKey))}
+                ${selectedKey === 'skip'
+                  ? renderFeatureStatusCell('not_included')
+                  : renderFeatureStatusCell(featureCellForTier(feature, selectedKey), {
+                      selectable: selectedTier === selectedKey,
+                      catId: cat.id,
+                      tierKey: selectedKey,
+                      featureId: feature.id
+                    })}
               </div>
             </div>
           `).join('') : `
@@ -2502,7 +2599,14 @@ function renderFeatureComparison(cat, selectedTier) {
                 </td>
                 ${tableColumns.map(tierKey => `
                   <td class="${(!selectedTier && tierKey === 'skip') || selectedTier === tierKey ? `selected-col ${tierKey}-col` : ''}">
-                    ${tierKey === 'skip' ? renderFeatureStatusCell('not_included') : renderFeatureStatusCell(featureStatusForTier(feature, tierKey))}
+                    ${tierKey === 'skip'
+                      ? renderFeatureStatusCell('not_included')
+                      : renderFeatureStatusCell(featureCellForTier(feature, tierKey), {
+                          selectable: selectedTier === tierKey,
+                          catId: cat.id,
+                          tierKey,
+                          featureId: feature.id
+                        })}
                   </td>
                 `).join('')}
               </tr>
@@ -2616,15 +2720,20 @@ function updateCatMod(catId, field, value) {
     if (tier && priceEl) {
       const cat = CATEGORIES().find(c => c.id === catId);
       const basePrice = getCategoryPrice(cat, tier);
+      const addOnTotal = matrixAddOnTotalForCategory(cat, tier);
       const modAmount = state.catMods[catId]?.amount || 0;
-      const total = basePrice + modAmount;
+      const total = basePrice + addOnTotal + modAmount;
       priceEl.textContent = formatCurrency(total);
     }
   }
 }
 
 function selectTier(catId, tier) {
+  const existingAddOnsForTier = tier ? (state.addOns?.[catId]?.[tier] || {}) : {};
   state.selections[catId] = tier;
+  if (!state.addOns) state.addOns = {};
+  if (tier) state.addOns[catId] = { [tier]: existingAddOnsForTier };
+  else delete state.addOns[catId];
   
   // Mutual exclusivity: Wireless Lighting <-> Centralized Lighting
   if (tier !== null) {
@@ -2661,6 +2770,31 @@ function selectTier(catId, tier) {
     if (el) el.classList.add('open');
   });
   // Restore scroll after browser layout
+  requestAnimationFrame(() => window.scrollTo(0, scrollY));
+}
+
+function toggleMatrixAddOn(event, catId, tierKey, featureId) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!state.addOns) state.addOns = {};
+  if (state.selections[catId] !== tierKey) {
+    state.selections[catId] = tierKey;
+    state.addOns[catId] = { [tierKey]: {} };
+  }
+  if (!state.addOns[catId]) state.addOns[catId] = {};
+  if (!state.addOns[catId][tierKey]) state.addOns[catId][tierKey] = {};
+  state.addOns[catId][tierKey][featureId] = !state.addOns[catId][tierKey][featureId];
+  if (!state.addOns[catId][tierKey][featureId]) delete state.addOns[catId][tierKey][featureId];
+  if (!Object.keys(state.addOns[catId][tierKey]).length) delete state.addOns[catId][tierKey];
+  if (!Object.keys(state.addOns[catId]).length) delete state.addOns[catId];
+
+  const openCards = new Set();
+  document.querySelectorAll('.category-card.open').forEach(c => openCards.add(c.id));
+  const scrollY = window.scrollY;
+  renderCategories();
+  updateTotals();
+  openCards.add('cat-' + catId);
+  openCards.forEach(id => document.getElementById(id)?.classList.add('open'));
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
@@ -2708,6 +2842,7 @@ function updateTotals() {
     const tier = state.selections[cat.id];
     if (tier) {
       subtotal += getCategoryPrice(cat, tier);
+      subtotal += matrixAddOnTotalForCategory(cat, tier);
       const catModAmount = state.catMods[cat.id]?.amount || 0;
       subtotal += catModAmount;
       selectedCount++;
@@ -2757,10 +2892,12 @@ function showSummary() {
     const tier = state.selections[cat.id];
     if (tier) {
       const price = getCategoryPrice(cat, tier);
+      const addOnRows = matrixSelectedAddOnRows(cat, tier);
+      const addOnTotal = addOnRows.reduce((total, row) => total + row.price, 0);
       const catMod = state.catMods[cat.id];
       const catModAmount = catMod?.amount || 0;
       const t = cat.tiers[tier];
-      subtotal += price + catModAmount;
+      subtotal += price + addOnTotal + catModAmount;
       rows += `
         <tr>
           <td>${cat.icon} ${cat.name}</td>
@@ -2776,6 +2913,15 @@ function showSummary() {
           </td>
         </tr>
       `;
+      addOnRows.forEach(addOn => {
+        rows += `
+          <tr>
+            <td style="padding-left:36px;">↳ ${escapeHtml(addOn.label)}</td>
+            <td style="font-size:12px;color:var(--text-lighter);">Add-on</td>
+            <td class="price-cell">${formatCurrency(addOn.price)}</td>
+          </tr>
+        `;
+      });
       if (catModAmount !== 0) {
         rows += `
           <tr>
@@ -3347,6 +3493,7 @@ function getStateForAPI() {
     extras: { ...state.extras },
     modifiers: [...state.modifiers],
     catMods: { ...state.catMods },
+    addOns: JSON.parse(JSON.stringify(state.addOns || {})),
     homeSize,
     propertyType,
     clientName,
@@ -3430,6 +3577,7 @@ async function loadBudget(budgetId) {
       state.extras = s.extras || {};
       state.modifiers = s.modifiers || [];
       state.catMods = s.catMods || {};
+      state.addOns = s.addOns || {};
       state.homeSize = s.homeSize || 4000;
       state.propertyType = s.propertyType || 'residential';
       
@@ -3510,6 +3658,7 @@ function startLiveSync(budgetId) {
             state.extras = s.extras || {};
             state.modifiers = s.modifiers || [];
             state.catMods = s.catMods || {};
+            state.addOns = s.addOns || {};
             state.homeSize = s.homeSize || 4000;
             state.propertyType = s.propertyType || 'residential';
             document.getElementById('homeSize').value = state.homeSize;
