@@ -103,13 +103,13 @@ test.describe('Budget Planner', () => {
         tierPrices: [...document.querySelectorAll('.comparison-table .comparison-tier-price')].map(el => el.textContent.trim()),
         skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].map(el => el.textContent.trim()),
         bestBadge: document.querySelector('.comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
-        mobileTierNames: [...document.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-name')].map(el => el.textContent.trim()),
-        mobileTierPackages: [...document.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-package')].map(el => el.textContent.trim()),
+        mobileTabs: [...document.querySelectorAll('.comparison-mobile-tab')].map(el => el.textContent.trim()),
+        mobileActiveKicker: document.querySelector('.comparison-mobile-active-kicker')?.textContent.trim(),
+        mobileActiveName: document.querySelector('.comparison-mobile-active-name')?.textContent.trim(),
+        mobileActivePrice: document.querySelector('.comparison-mobile-active-price')?.textContent.trim(),
         mobileFeatureRows: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-title')].map(el => el.textContent.trim()),
-        mobileStatusLabels: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-tier-label')]
-          .map(el => el.textContent.trim()),
-        mobileMissingStatuses: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-status')]
-          .map(el => el.textContent.replace(/\s+/g, ' ').trim()),
+        mobileMissingStatus: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-status .matrix-empty')?.textContent.trim(),
+        mobileTooltipTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
         legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
@@ -124,16 +124,18 @@ test.describe('Budget Planner', () => {
     expect(result.tierPrices).toEqual(['$0', '$1,000', '$2,000', '$3,000']);
     expect(result.skipCells).toEqual(['—', '—', '—', '—']);
     expect(result.bestBadge).toBe('Best experience');
-    expect(result.mobileTierNames).toEqual(['Skip', 'Good', 'Better', 'Best']);
-    expect(result.mobileTierPackages).toEqual(['No system', 'Good', 'Better', 'Best']);
+    expect(result.mobileTabs).toEqual(['Skip', 'Good', 'Better', 'Best']);
+    expect(result.mobileActiveKicker).toBe('Better');
+    expect(result.mobileActiveName).toBe('Better');
+    expect(result.mobileActivePrice).toBe('$2,000');
     expect(result.mobileFeatureRows).toEqual([
       'Whole-home WiFi coverage',
       'UPS backup',
       'Enterprise switching',
       'Dedicated equipment rack'
     ]);
-    expect(result.mobileStatusLabels).toEqual(['Skip', 'Good', 'Better', 'Best']);
-    expect(result.mobileMissingStatuses).toEqual(['Skip —', 'Good —', 'Better —', 'Best ✓']);
+    expect(result.mobileMissingStatus).toBe('—');
+    expect(result.mobileTooltipTitle).toContain('Reliable wireless coverage');
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
     expect(result.legacyTierSelectorVisible).toBe(false);

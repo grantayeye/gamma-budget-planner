@@ -87,31 +87,42 @@ test.describe('Mobile responsive layout', () => {
       const matrix = document.querySelector('.comparison-matrix');
       const mobile = matrix.querySelector('.comparison-mobile-focus');
       const table = matrix.querySelector('.comparison-table-scroll');
-      const tierRail = matrix.querySelector('.comparison-mobile-tier-scroll');
       const missingRow = [...matrix.querySelectorAll('.mobile-feature-compare-card')]
         .find(card => card.textContent.includes('Dedicated equipment rack'));
-      return {
+      const panel = matrix.querySelector('.comparison-mobile-panel');
+      const beforeSwipe = {
         bodyOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4,
         mobileDisplay: getComputedStyle(mobile).display,
         tableDisplay: getComputedStyle(table).display,
-        tierNames: [...matrix.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-name')].map(el => el.textContent.trim()),
-        tierPackages: [...matrix.querySelectorAll('.comparison-mobile-tier-grid .comparison-tier-package')].map(el => el.textContent.trim()),
+        tierTabs: [...matrix.querySelectorAll('.comparison-mobile-tab')].map(el => el.textContent.trim()),
+        activeKicker: matrix.querySelector('.comparison-mobile-active-kicker')?.textContent.trim(),
+        activeName: matrix.querySelector('.comparison-mobile-active-name')?.textContent.trim(),
+        activePrice: matrix.querySelector('.comparison-mobile-active-price')?.textContent.trim(),
         featureRows: matrix.querySelectorAll('.mobile-feature-compare-card').length,
-        missingStatuses: [...missingRow.querySelectorAll('.mobile-feature-status')].map(el => el.textContent.replace(/\s+/g, ' ').trim()),
+        missingStatus: missingRow.querySelector('.mobile-feature-status .matrix-empty')?.textContent.trim(),
         selectedCells: matrix.querySelectorAll('.mobile-feature-status.selected.good-col').length,
-        railFits: tierRail.scrollWidth <= tierRail.clientWidth + 4
+        hasDottedTooltip: !!matrix.querySelector('.mobile-feature-compare-title.has-description[title]')
+      };
+      startMobileComparisonSwipe({ changedTouches: [{ clientX: 320 }] }, panel);
+      finishMobileComparisonSwipe({ changedTouches: [{ clientX: 220 }] }, panel);
+      return {
+        ...beforeSwipe,
+        activeKickerAfterSwipe: state.selections.networking
       };
     });
 
     expect(result.bodyOverflow).toBe(false);
     expect(result.mobileDisplay).toBe('block');
     expect(result.tableDisplay).toBe('none');
-    expect(result.tierNames).toEqual(['Skip', 'Good', 'Standard', 'Better', 'Best']);
-    expect(result.tierPackages).toEqual(['No system', 'Reliable, Basic Coverage', 'Standard', 'Full Coverage', 'Enterprise Class']);
+    expect(result.tierTabs).toEqual(['Skip', 'Good', 'Standard', 'Better', 'Best']);
+    expect(result.activeKicker).toBe('Good');
+    expect(result.activeName).toBe('Reliable, Basic Coverage');
+    expect(result.activePrice).toBe('$1,000');
     expect(result.featureRows).toBe(3);
-    expect(result.missingStatuses).toEqual(['Skip —', 'Good —', 'Standard —', 'Better —', 'Best ✓']);
+    expect(result.missingStatus).toBe('—');
     expect(result.selectedCells).toBeGreaterThan(0);
-    expect(result.railFits).toBe(true);
+    expect(result.hasDottedTooltip).toBe(true);
+    expect(result.activeKickerAfterSwipe).toBe('standard');
   });
 
   test('admin budget list renders mobile cards while preserving the desktop table', async ({ page }) => {

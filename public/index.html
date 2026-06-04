@@ -589,26 +589,78 @@ main {
   border-bottom: 1px solid var(--border);
   background: #FFFFFF;
 }
-.comparison-mobile-tier-scroll {
+.comparison-mobile-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
+  padding: 1px 0 4px;
 }
-.comparison-mobile-tier-grid {
+.comparison-mobile-tab {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: white;
+  color: var(--text-light);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.comparison-mobile-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.comparison-mobile-tab.good.active { border-color: var(--good); background: var(--good-bg); color: var(--good); }
+.comparison-mobile-tab.standard.active { border-color: var(--standard); background: var(--standard-bg); color: var(--standard); }
+.comparison-mobile-tab.better.active { border-color: var(--better); background: var(--better-bg); color: var(--better); }
+.comparison-mobile-tab.best.active { border-color: var(--best); background: var(--best-bg); color: var(--best); }
+.comparison-mobile-tab.skip.active { border-color: #9CA3AF; background: #F3F4F6; color: var(--text-light); }
+.comparison-mobile-active-tier {
   display: grid;
-  grid-template-columns: repeat(var(--mobile-tier-count), minmax(116px, 1fr));
-  gap: 8px;
-  min-width: max-content;
+  gap: 5px;
+  padding: 13px 14px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  text-align: left;
 }
-.comparison-mobile-tier-grid .comparison-tier-card {
-  min-width: 116px;
-  min-height: 92px;
-  padding: 8px 7px;
+.comparison-mobile-active-tier.good { border-color: var(--good); background: var(--good-bg); }
+.comparison-mobile-active-tier.standard { border-color: var(--standard); background: var(--standard-bg); }
+.comparison-mobile-active-tier.better { border-color: var(--better); background: var(--better-bg); }
+.comparison-mobile-active-tier.best { border-color: var(--best); background: var(--best-bg); }
+.comparison-mobile-active-tier.skip { border-color: #D1D5DB; background: #F9FAFB; }
+.comparison-mobile-active-kicker {
+  color: var(--text-light);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
 }
+.comparison-mobile-active-name {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+.comparison-mobile-active-price {
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+}
+.comparison-mobile-active-tier.good .comparison-mobile-active-price { color: var(--good); }
+.comparison-mobile-active-tier.standard .comparison-mobile-active-price { color: var(--standard); }
+.comparison-mobile-active-tier.better .comparison-mobile-active-price { color: var(--better); }
+.comparison-mobile-active-tier.best .comparison-mobile-active-price { color: var(--best); }
 .comparison-mobile-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 10px;
 }
 .comparison-mobile-guide {
@@ -616,56 +668,68 @@ main {
   font-size: 12px;
   font-weight: 700;
 }
+.comparison-mobile-swipe-markers {
+  color: var(--text-lighter);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
 .mobile-feature-comparison-list {
   display: grid;
   gap: 8px;
 }
 .mobile-feature-compare-card {
-  font-size: 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
   background: #FFFFFF;
-  overflow: hidden;
+  padding: 12px;
 }
 .mobile-feature-compare-header {
   display: grid;
   gap: 3px;
-  padding: 10px 10px 8px;
+  min-width: 0;
 }
 .mobile-feature-compare-title {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
   color: var(--text);
-  font-size: 13px;
+  font: inherit;
+  font-size: 14px;
   font-weight: 800;
-  line-height: 1.25;
+  line-height: 1.3;
+  text-align: left;
 }
 .mobile-feature-compare-title.has-description {
   text-decoration: underline;
   text-decoration-style: dotted;
   text-underline-offset: 4px;
+  cursor: pointer;
 }
-.mobile-feature-compare-desc {
-  color: var(--text-light);
-  font-size: 11px;
-  line-height: 1.35;
-}
-.mobile-feature-status-grid {
-  display: grid;
-  grid-template-columns: repeat(var(--mobile-tier-count), minmax(0, 1fr));
-  border-top: 1px solid var(--border);
+.mobile-feature-compare-title:disabled {
+  opacity: 1;
+  color: var(--text);
+  cursor: default;
 }
 .mobile-feature-status {
-  display: grid;
-  align-content: center;
-  justify-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
-  min-height: 58px;
-  padding: 7px 4px;
-  border-right: 1px solid var(--border);
-  background: #FBFCFD;
+  min-width: 74px;
+  min-height: 40px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #F8FAFC;
   text-align: center;
-}
-.mobile-feature-status:last-child {
-  border-right: none;
+  font-weight: 900;
 }
 .mobile-feature-status.selected {
   background: var(--accent-bg);
@@ -676,6 +740,7 @@ main {
 .mobile-feature-status.selected.best-col { background: var(--best-bg); }
 .mobile-feature-status.selected.skip-col { background: #F3F4F6; }
 .mobile-feature-tier-label {
+  display: none;
   color: var(--text-light);
   font-size: 9px;
   text-transform: uppercase;
@@ -684,34 +749,38 @@ main {
   line-height: 1;
 }
 .mobile-feature-status .matrix-check {
-  width: 22px;
-  height: 22px;
-  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
 }
 .mobile-feature-status .matrix-addon {
-  min-height: 22px;
-  padding: 2px 6px;
-  font-size: 9px;
+  min-height: 26px;
+  padding: 3px 9px;
+  font-size: 10px;
   letter-spacing: 0.15px;
 }
-.comparison-toggle-all {
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: white;
-  color: var(--accent);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 800;
-  padding: 8px 12px;
-  cursor: pointer;
+.matrix-feature-popover {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(300px, calc(100vw - 32px));
+  padding: 12px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: white;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
 }
-.comparison-swipe-hint {
-  display: none;
-  padding: 8px 12px;
-  color: var(--text-light);
-  font-size: 12px;
-  border-bottom: 1px solid var(--border);
-  background: #FBFCFD;
+.matrix-feature-popover::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  background: var(--primary);
+  transform: rotate(45deg);
 }
 .comparison-table {
   width: 100%;
@@ -952,72 +1021,21 @@ main {
   .comparison-mobile-panel {
     padding: 12px;
   }
-  .comparison-mobile-tier-grid {
-    grid-template-columns: repeat(var(--mobile-tier-count), minmax(0, 1fr));
-    gap: 4px;
-    min-width: 0;
-  }
-  .comparison-mobile-tier-grid .comparison-tier-card {
-    min-width: 0;
-    min-height: 88px;
-    gap: 3px;
-    padding: 7px 3px;
-    border-width: 1.5px;
-  }
-  .comparison-mobile-tier-grid .comparison-tier-badge,
-  .comparison-mobile-tier-grid .comparison-tier-tag {
-    display: none;
-  }
-  .comparison-mobile-tier-grid .comparison-tier-name {
-    order: 1;
-    color: var(--text-light);
-    font-size: 8px;
-    line-height: 1;
-    text-transform: uppercase;
-    letter-spacing: 0.25px;
-  }
-  .comparison-mobile-tier-grid .comparison-tier-package {
-    order: 2;
-    display: -webkit-box;
-    min-height: 22px;
-    overflow: hidden;
-    color: var(--text);
-    font-size: 9px;
-    line-height: 1.12;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-  .comparison-mobile-tier-grid .comparison-tier-price {
-    order: 3;
-    font-size: 13px;
-    line-height: 1.1;
-  }
   .comparison-mobile-guide {
     font-size: 11px;
   }
   .mobile-feature-status {
-    min-height: 54px;
-    padding: 6px 2px;
+    min-width: 64px;
+    padding: 7px 8px;
   }
-  .mobile-feature-tier-label {
-    font-size: 8px;
-  }
-  .mobile-feature-status .matrix-addon {
-    padding: 2px 4px;
-    font-size: 8px;
+  .mobile-feature-compare-card {
+    padding: 11px;
   }
   .comparison-mobile-focus {
     display: block;
   }
   .comparison-table-scroll {
     display: none;
-  }
-  .comparison-matrix.show-compare-all .comparison-table-scroll,
-  .comparison-matrix.show-compare-all .comparison-swipe-hint {
-    display: block;
-  }
-  .comparison-matrix.show-compare-all .comparison-toggle-all {
-    background: var(--accent-bg);
   }
   .comparison-table th,
   .comparison-table td {
@@ -2210,9 +2228,7 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
         onclick="selectTier('${cat.id}', null)"
         aria-pressed="${!selectedTier ? 'true' : 'false'}">
         <span class="comparison-tier-name">Skip</span>
-        <span class="comparison-tier-package">No system</span>
         <span class="comparison-tier-price">$0</span>
-        <span class="comparison-tier-tag">No system</span>
       </button>
     `;
   }
@@ -2247,35 +2263,68 @@ function mobileTierLabel(cat, tierKey) {
   return tierFixedName(tierKey);
 }
 
+function comparisonTierDisplay(cat, tierKey) {
+  if (tierKey === 'skip') {
+    return {
+      kicker: 'Skip',
+      name: 'Skip',
+      price: '$0'
+    };
+  }
+  const tier = cat.tiers[tierKey] || {};
+  const fixedName = tierFixedName(tierKey);
+  return {
+    kicker: fixedName,
+    name: tier.label || fixedName,
+    price: isTierUnavailable(cat, tierKey) ? 'N/A' : formatCurrency(getCategoryPrice(cat, tierKey))
+  };
+}
+
 function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) {
   const selectedKey = selectedTier || 'skip';
+  const selectedIndex = Math.max(0, tableColumns.indexOf(selectedKey));
+  const activeTier = comparisonTierDisplay(cat, selectedKey);
+  const tierList = tableColumns.join(',');
   return `
-    <div class="comparison-mobile-focus" style="--mobile-tier-count:${tableColumns.length}">
-      <div class="comparison-mobile-panel">
-        <div class="comparison-mobile-tier-scroll">
-          <div class="comparison-mobile-tier-grid">
-            ${tableColumns.map(tierKey => renderComparisonTierCard(cat, tierKey, selectedTier)).join('')}
-          </div>
+    <div class="comparison-mobile-focus"
+      data-cat-id="${escapeAttr(cat.id)}"
+      data-tier-list="${escapeAttr(tierList)}"
+      data-active-tier="${escapeAttr(selectedKey)}">
+      <div class="comparison-mobile-panel"
+        ontouchstart="startMobileComparisonSwipe(event, this)"
+        ontouchend="finishMobileComparisonSwipe(event, this)">
+        <div class="comparison-mobile-selector" aria-label="Choose option">
+          ${tableColumns.map(tierKey => `
+            <button type="button"
+              class="comparison-mobile-tab ${tierKey} ${selectedKey === tierKey ? 'active' : ''}"
+              onclick="selectTier('${cat.id}', ${tierKey === 'skip' ? 'null' : `'${tierKey}'`})"
+              aria-pressed="${selectedKey === tierKey ? 'true' : 'false'}">
+              ${escapeHtml(mobileTierLabel(cat, tierKey))}
+            </button>
+          `).join('')}
+        </div>
+        <div class="comparison-mobile-active-tier ${selectedKey}">
+          <div class="comparison-mobile-active-kicker">${escapeHtml(activeTier.kicker)}</div>
+          <div class="comparison-mobile-active-name">${escapeHtml(activeTier.name)}</div>
+          <div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>
         </div>
         <div class="comparison-mobile-actions">
-          <span class="comparison-mobile-guide">Scroll features to compare every option</span>
+          <span class="comparison-mobile-guide">Swipe to compare options</span>
+          <span class="comparison-mobile-swipe-markers">${tableColumns.map((_, index) => index === selectedIndex ? '●' : '○').join('')}</span>
         </div>
         <div class="mobile-feature-comparison-list">
           ${matrix.length ? matrix.map(feature => `
             <div class="mobile-feature-compare-card">
               <div class="mobile-feature-compare-header">
-                <div class="mobile-feature-compare-title ${feature.description ? 'has-description' : ''}" ${feature.description ? `title="${escapeAttr(feature.description)}"` : ''}>
+                <button type="button"
+                  class="mobile-feature-compare-title ${feature.description ? 'has-description' : ''}"
+                  ${feature.description ? `title="${escapeAttr(feature.description)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)"` : 'disabled'}>
                   ${escapeHtml(feature.label)}
-                </div>
-                ${feature.description ? `<div class="mobile-feature-compare-desc">${escapeHtml(feature.description)}</div>` : ''}
+                </button>
               </div>
-              <div class="mobile-feature-status-grid">
-                ${tableColumns.map(tierKey => `
-                  <div class="mobile-feature-status ${selectedKey === tierKey ? `selected ${tierKey}-col` : ''}">
-                    <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, tierKey))}</span>
-                    ${tierKey === 'skip' ? renderFeatureStatusCell('not_included') : renderFeatureStatusCell(featureStatusForTier(feature, tierKey))}
-                  </div>
-                `).join('')}
+              <div class="mobile-feature-status selected ${selectedKey}-col">
+                <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, selectedKey))}</span>
+                ${selectedKey === 'skip' ? renderFeatureStatusCell('not_included') : renderFeatureStatusCell(featureStatusForTier(feature, selectedKey))}
               </div>
             </div>
           `).join('') : `
@@ -2291,11 +2340,55 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
   `;
 }
 
-function toggleCompareAll(button) {
-  const matrix = button.closest('.comparison-matrix');
-  if (!matrix) return;
-  const showing = matrix.classList.toggle('show-compare-all');
-  button.textContent = showing ? 'Hide comparison' : 'Compare all tiers';
+function selectMobileComparisonTier(root, direction) {
+  const mobile = root?.closest?.('.comparison-mobile-focus') || root;
+  if (!mobile) return;
+  const tiers = String(mobile.dataset.tierList || '').split(',').filter(Boolean);
+  const active = mobile.dataset.activeTier || 'skip';
+  const currentIndex = Math.max(0, tiers.indexOf(active));
+  const nextIndex = Math.min(tiers.length - 1, Math.max(0, currentIndex + direction));
+  if (nextIndex === currentIndex) return;
+  const nextTier = tiers[nextIndex];
+  selectTier(mobile.dataset.catId, nextTier === 'skip' ? null : nextTier);
+}
+
+function startMobileComparisonSwipe(event, panel) {
+  panel.dataset.swipeStartX = String(event.changedTouches?.[0]?.clientX || 0);
+}
+
+function finishMobileComparisonSwipe(event, panel) {
+  const startX = Number(panel.dataset.swipeStartX || 0);
+  const endX = Number(event.changedTouches?.[0]?.clientX || 0);
+  const delta = endX - startX;
+  if (Math.abs(delta) < 42) return;
+  selectMobileComparisonTier(panel, delta < 0 ? 1 : -1);
+}
+
+function showMatrixFeatureDescription(event, trigger) {
+  event.preventDefault();
+  event.stopPropagation();
+  document.querySelectorAll('.matrix-feature-popover').forEach(el => el.remove());
+  const description = trigger?.dataset?.description || '';
+  if (!description) return;
+  const rect = trigger.getBoundingClientRect();
+  const popover = document.createElement('div');
+  popover.className = 'matrix-feature-popover';
+  popover.textContent = description;
+  document.body.appendChild(popover);
+  const popoverRect = popover.getBoundingClientRect();
+  const left = Math.max(16, Math.min(window.innerWidth - popoverRect.width - 16, rect.left));
+  const top = Math.max(16, rect.top - popoverRect.height - 12);
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+  setTimeout(() => {
+    const close = (closeEvent) => {
+      if (!popover.contains(closeEvent.target) && closeEvent.target !== trigger) {
+        popover.remove();
+        document.removeEventListener('click', close);
+      }
+    };
+    document.addEventListener('click', close);
+  }, 0);
 }
 
 function renderFeatureComparison(cat, selectedTier) {
@@ -2312,7 +2405,6 @@ function renderFeatureComparison(cat, selectedTier) {
         <div class="comparison-matrix-note">${escapeHtml(selectedLabel)}</div>
       </div>
       ${renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns)}
-      <div class="comparison-swipe-hint">Full comparison</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
