@@ -290,7 +290,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
   });
 
-  test('switching matrix back to feature list preserves matrix descriptions and tier scale overrides', async ({ page }) => {
+  test('switching matrix back to feature list confirms and discards matrix-only metadata', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {
         residential_categories: [{
@@ -322,23 +322,37 @@ test.describe('Admin copy/customization tools', () => {
       const upsRow = [...card.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
+      upsRow.querySelector('.fm-status[data-tier="good"]').value = 'addon';
       card.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-scale').value = '0.4';
 
+      window.confirm = () => false;
+      select.value = 'list';
+      setMatrixMode(select, 'networking');
+      const cancelledMode = card.dataset.presentationMode;
+      const cancelledSelectValue = select.value;
+
+      window.confirm = () => true;
       select.value = 'list';
       setMatrixMode(select, 'networking');
       collectCategoryEditorData();
       const cat = catData.residential_categories[0];
       return {
+        cancelledMode,
+        cancelledSelectValue,
         mode: cat.presentationMode,
-        description: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.description,
+        hasFeatureMatrix: Object.prototype.hasOwnProperty.call(cat, 'featureMatrix'),
         betterScale: cat.tiers.better.sizeScale,
+        goodFeatures: cat.tiers.good.features,
         betterFeatures: cat.tiers.better.features
       };
     });
 
+    expect(result.cancelledMode).toBe('matrix');
+    expect(result.cancelledSelectValue).toBe('matrix');
     expect(result.mode).toBe('list');
-    expect(result.description).toBe('Keeps the network alive during short power outages.');
+    expect(result.hasFeatureMatrix).toBe(false);
     expect(result.betterScale).toBe(0.4);
+    expect(result.goodFeatures).toEqual(['WiFi coverage']);
     expect(result.betterFeatures).toEqual(['WiFi coverage', 'UPS backup']);
   });
 

@@ -377,6 +377,82 @@ test.describe('Mobile responsive layout', () => {
     expect(result.moveButtonsVisible).toBe(true);
   });
 
+  test('customize modal avoids horizontal scrolling on desktop', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/admin');
+    await page.waitForFunction(() => typeof renderCustomizeEditor === 'function');
+
+    const result = await page.evaluate(() => {
+      const categories = [
+        {
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          sectionId: 'infrastructure',
+          sortOrder: 0,
+          name: 'Whole-Home WiFi & Networking',
+          icon: 'N',
+          desc: 'Network infrastructure',
+          sizeScale: 0.8,
+          tiers: {
+            good: { price: 1000, label: 'Reliable Basic Coverage', features: ['WiFi'], brands: 'Brand A' },
+            standard: { price: 1500, label: 'Standard Full Coverage', features: ['WiFi'], brands: 'Brand B' },
+            better: { price: 2000, label: 'Enhanced Full Coverage', features: ['WiFi'], brands: 'Brand C' },
+            best: { price: 2500, label: 'Enterprise Class Coverage', features: ['WiFi'], brands: 'Brand D' }
+          }
+        }
+      ];
+      catData = {
+        residential_categories: categories,
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: [],
+        base_sqft: 4000
+      };
+      customizeBudgetData = {
+        id: 'desktop-customize',
+        clientName: 'Desktop Customize QA',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: categories, condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] }
+        },
+        customCategories: [{
+          id: 'custom-wide',
+          name: 'Custom Wide Category',
+          icon: 'C',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          sectionId: 'infrastructure',
+          tiers: {
+            good: { enabled: true, label: 'Good Custom Package', price: 100, features: ['Base'], brands: 'Brand A' },
+            standard: { enabled: true, label: 'Standard Custom Package', price: 200, features: ['Base'], brands: 'Brand B' },
+            better: { enabled: true, label: 'Better Custom Package', price: 300, features: ['Base'], brands: 'Brand C' },
+            best: { enabled: true, label: 'Best Custom Package', price: 400, features: ['Base'], brands: 'Brand D' }
+          }
+        }]
+      };
+      document.getElementById('customizeModal').classList.add('active');
+      renderCustomizeEditor();
+      const modal = document.querySelector('#customizeModal .modal');
+      const body = document.getElementById('customizeBody');
+      const scrollArea = document.querySelector('#customizeBody .customize-scroll-area');
+      return {
+        modalWidth: Math.round(modal.getBoundingClientRect().width),
+        modalOverflow: modal.scrollWidth > modal.clientWidth + 4,
+        bodyOverflow: body.scrollWidth > body.clientWidth + 4,
+        scrollAreaOverflow: scrollArea.scrollWidth > scrollArea.clientWidth + 4
+      };
+    });
+
+    expect(result.modalWidth).toBeGreaterThan(1000);
+    expect(result.modalOverflow).toBe(false);
+    expect(result.bodyOverflow).toBe(false);
+    expect(result.scrollAreaOverflow).toBe(false);
+  });
+
   test('budget details modal keeps close button visible while scrolling on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/admin');

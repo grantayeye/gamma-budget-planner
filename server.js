@@ -789,7 +789,9 @@ function normalizeTierPayload(tier = {}) {
 function normalizePresentationPayload(payload = {}) {
   const normalized = deepClone(payload || {}) || {};
   const presentationMode = normalized.presentationMode === 'matrix' ? 'matrix' : 'list';
-  const featureMatrix = normalizeFeatureMatrixPayload(normalized.featureMatrix || []);
+  const featureMatrix = presentationMode === 'matrix'
+    ? normalizeFeatureMatrixPayload(normalized.featureMatrix || [])
+    : [];
   const tiers = {};
   TIER_KEYS.forEach(tierKey => {
     if (!normalized.tiers?.[tierKey]) return;
@@ -802,7 +804,7 @@ function normalizePresentationPayload(payload = {}) {
   normalized.presentationMode = presentationMode;
   delete normalized.tierOrder;
   delete normalized.tier_order;
-  if (featureMatrix.length) {
+  if (presentationMode === 'matrix' && featureMatrix.length) {
     normalized.featureMatrix = featureMatrix;
   } else {
     delete normalized.featureMatrix;
@@ -841,9 +843,6 @@ function mergeCategoryConfigPayload(baseConfig = {}, incomingConfig = {}) {
         ...(value.tiers || {})
       };
     }
-    if (current.featureMatrix && !value.featureMatrix) {
-      merged[key].featureMatrix = current.featureMatrix;
-    }
   });
   return normalizeCategoryConfigPayload(merged);
 }
@@ -867,9 +866,6 @@ function mergeCustomCategoriesPayload(existingCategories = [], incomingCategorie
         ...(existing.tiers || {}),
         ...(category?.tiers || {})
       };
-    }
-    if (existing.featureMatrix && !category?.featureMatrix) {
-      merged.featureMatrix = existing.featureMatrix;
     }
     return merged;
   }));
