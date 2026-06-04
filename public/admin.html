@@ -6352,7 +6352,9 @@ async function loadCategoryData() {
   try {
     const res = await fetch(api('/api/admin/categories'), { credentials: 'include' });
     if (res.status === 401) return;
-    catData = normalizeCategoryDefaults(await res.json());
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to load category data');
+    catData = normalizeCategoryDefaults(data);
     document.getElementById('catEditorInfo').style.display = 'block';
     document.getElementById('catBaseSqft').textContent = (catData.base_sqft || 4000).toLocaleString();
     if (catData.updated_at) {

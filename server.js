@@ -995,7 +995,11 @@ function normalizeCategoryDefaults(defaults = {}) {
 
 async function loadCategoryDefaultsData() {
   const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
-  if (error || !data) return loadStaticCategoryData();
+  if (error || !data) {
+    const err = new Error('Live category pricing unavailable');
+    err.cause = error;
+    throw err;
+  }
   return normalizeCategoryDefaults({
     residential_categories: data.residential_categories || [],
     residential_sections: data.residential_sections || [],

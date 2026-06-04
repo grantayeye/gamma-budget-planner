@@ -1679,7 +1679,7 @@ main {
 
 <script src="/categories-data.js"></script>
 <script>
-// Fetch live category data from API (overrides static file if available)
+// Fetch live category data from API. Do not render stale static pricing if this fails.
 const categoryDataReady = (async function() {
   try {
     const response = await fetch(`/api/categories?ts=${Date.now()}`, { cache: 'no-store' });

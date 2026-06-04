@@ -67,4 +67,36 @@ test.describe('Admin Dashboard', () => {
     await expect(page.locator('#dashboard')).toHaveClass(/active/);
     await expect(page.locator('#userInfo')).toContainText('Test Admin');
   });
+
+  test('categories editor fails closed when live pricing cannot load', async ({ page }) => {
+    await page.route('**/api/auth/me', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          authenticated: true,
+          user: { id: 'test-admin', name: 'Test Admin', email: 'admin@example.com' }
+        })
+      });
+    });
+    await page.route('**/api/admin/budgets', route => {
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    });
+    await page.route('**/api/admin/users', route => {
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    });
+    await page.route('**/api/admin/categories', route => {
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Live category pricing unavailable' })
+      });
+    });
+
+    await page.goto('/admin');
+
+    await expect(page.locator('#dashboard')).toHaveClass(/active/);
+    await expect(page.locator('#catEditorContainer')).toContainText('Failed to load category data');
+    await expect(page.locator('#catEditorContainer')).not.toContainText('No categories found');
+  });
 });
