@@ -973,6 +973,12 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      font-size: 0;
+      line-height: 1;
+    }
+
+    .fm-apply-right::before {
+      content: '→';
       font-size: 13px;
       line-height: 1;
     }
@@ -1257,6 +1263,10 @@
       .matrix-tier-swap-btn {
         width: 34px;
         height: 34px;
+      }
+
+      .fm-apply-right::before {
+        content: '↓';
       }
 
       .feature-matrix-table td {
@@ -3018,7 +3028,7 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
             <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}" onchange="updateMatrixAddonPriceVisibility(this)">
               ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
             </select>
-            <button type="button" class="btn btn-secondary btn-small fm-apply-right ${tierIndex < tierKeys.length - 1 ? '' : 'is-hidden'}" title="Apply this value to tiers on the right" onclick="applyMatrixStatusRight(this)">→</button>
+            <button type="button" class="btn btn-secondary btn-small fm-apply-right ${tierIndex < tierKeys.length - 1 ? '' : 'is-hidden'}" title="Apply this value to the following tiers" onclick="applyMatrixStatusRight(this)">→</button>
           </div>
           ${allowAddonPricing ? `
             <label class="fm-addon-price" ${matrixCellStatus(feature.tierStatus?.[tierKey]) === 'addon' ? '' : 'hidden'}>
