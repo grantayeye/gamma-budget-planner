@@ -218,20 +218,33 @@ test.describe('Admin copy/customization tools', () => {
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
       upsRow.querySelector('.fm-status[data-tier="good"]').value = 'addon';
+      card.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-label').value = 'Better Plus';
+      card.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-price').value = '2400';
       collectCategoryEditorData();
       const cat = catData.residential_categories[0];
       return {
         mode: cat.presentationMode,
+        visibleTierLabels: [...card.querySelectorAll('.feature-matrix-tier-card label')]
+          .map(label => label.textContent.trim()),
+        hasStandardStatusCells: !!card.querySelector('.fm-status[data-tier="standard"]'),
+        bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim(),
         matrixLabels: cat.featureMatrix.map(feature => feature.label),
         goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
+        betterLabel: cat.tiers.better.label,
+        betterPrice: cat.tiers.better.price,
         betterFeatures: cat.tiers.better.features,
         goodFeatures: cat.tiers.good.features
       };
     });
 
     expect(result.mode).toBe('matrix');
+    expect(result.visibleTierLabels).toEqual(['Good', 'Better', 'Best']);
+    expect(result.hasStandardStatusCells).toBe(false);
+    expect(result.bottomAddButton).toBe('+ Feature');
     expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);
     expect(result.goodUpsStatus).toBe('addon');
+    expect(result.betterLabel).toBe('Better Plus');
+    expect(result.betterPrice).toBe(2400);
     expect(result.betterFeatures).toEqual(['WiFi coverage', 'UPS backup']);
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
   });

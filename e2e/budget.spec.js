@@ -92,18 +92,24 @@ test.describe('Budget Planner', () => {
       document.getElementById('cat-networking').classList.add('open');
       return {
         title: document.querySelector('.comparison-matrix-title')?.textContent,
-        headers: [...document.querySelectorAll('.comparison-table th')].map(el => el.textContent.trim()),
+        featureHeader: document.querySelector('.comparison-table th:first-child')?.textContent.trim(),
+        tierNames: [...document.querySelectorAll('.comparison-tier-name')].map(el => el.textContent.trim()),
+        tierPrices: [...document.querySelectorAll('.comparison-tier-price')].map(el => el.textContent.trim()),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
-        selectedHeader: document.querySelector('.comparison-table th.selected-col')?.textContent.trim(),
+        selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
+        legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
         tooltip: document.querySelector('.matrix-feature-label.has-description')?.getAttribute('title'),
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4
       };
     });
 
     expect(result.title).toBe("Compare what's included");
-    expect(result.headers).toEqual(['Feature', 'Good', 'Better', 'Best']);
+    expect(result.featureHeader).toBe('Feature');
+    expect(result.tierNames).toEqual(['Good', 'Better', 'Best']);
+    expect(result.tierPrices).toEqual(['$1,000', '$2,000', '$3,000']);
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
+    expect(result.legacyTierSelectorVisible).toBe(false);
     expect(result.tooltip).toContain('Reliable wireless coverage');
     expect(result.overflow).toBe(false);
   });

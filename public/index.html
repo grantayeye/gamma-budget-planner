@@ -551,9 +551,29 @@ main {
   letter-spacing: -0.2px;
 }
 .comparison-matrix-note {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
   font-size: 12px;
   color: var(--text-light);
   text-align: right;
+}
+.comparison-skip-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: white;
+  color: var(--text-light);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.comparison-skip-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .comparison-table-scroll {
   overflow-x: auto;
@@ -595,6 +615,60 @@ main {
 }
 .comparison-table th.selected-col {
   color: var(--accent);
+}
+.comparison-tier-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 128px;
+  padding: 10px 8px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+  transition: var(--transition);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.comparison-tier-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+.comparison-tier-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.comparison-tier-card.disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.comparison-tier-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.comparison-tier-price {
+  color: var(--accent);
+  font-size: 17px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.comparison-tier-tag {
+  color: var(--text-light);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.comparison-table th.matrix-tier-heading {
+  padding: 10px 8px;
+  background: #FBFCFD;
 }
 .matrix-feature-label {
   color: var(--text);
@@ -647,10 +721,12 @@ main {
     gap: 4px;
   }
   .comparison-matrix-note {
+    justify-content: flex-start;
+    flex-wrap: wrap;
     text-align: left;
   }
   .comparison-table {
-    min-width: 600px;
+    min-width: 680px;
   }
   .comparison-table th,
   .comparison-table td {
@@ -1697,6 +1773,10 @@ function getCategoryPrice(cat, tier) {
 // ============================================================
 // RENDERING
 // ============================================================
+function isTierUnavailable(cat, tierKey) {
+  return cat?.id === 'lighting-designer' && tierKey === 'best' && state.selections['lighting'];
+}
+
 function renderCategories() {
   const categories = CATEGORIES();
   if (categories.length > 0) {
@@ -1736,6 +1816,7 @@ function renderCategories() {
       const catModAmount = state.catMods[cat.id]?.amount || 0;
       const price = basePrice + catModAmount;
       const tierClass = selected ? 'tier-' + selected : '';
+      const isMatrixMode = getCategoryPresentationMode(cat) === 'matrix';
       
       // Check mutual exclusivity for lighting
       let isDisabled = false;
@@ -1769,6 +1850,7 @@ function renderCategories() {
           </div>
         </div>
         <div class="category-body">
+          ${isMatrixMode ? '' : `
           <div class="tier-selector">
             <div class="tier-btn none-btn ${!selected ? 'selected' : ''}" onclick="selectTier('${cat.id}', null)">
               <div class="tier-label">Skip</div>
@@ -1778,10 +1860,7 @@ function renderCategories() {
             ${orderedTierKeys(cat.tiers).map(t => {
               const tp = getCategoryPrice(cat, t);
               // Check if this tier should be disabled
-              let tierDisabled = false;
-              if (cat.id === 'lighting-designer' && t === 'best' && state.selections['lighting']) {
-                tierDisabled = true; // Bespoke not available with Wireless Lighting
-              }
+              const tierDisabled = isTierUnavailable(cat, t);
               return `
                 <div class="tier-btn ${t}-btn ${selected === t ? 'selected' : ''} ${tierDisabled ? 'tier-disabled' : ''}" ${tierDisabled ? '' : `onclick="selectTier('${cat.id}', '${t}')"`}>
                   <div class="tier-label">${escapeHtml(cat.tiers[t].label)}</div>
@@ -1791,6 +1870,7 @@ function renderCategories() {
               `;
             }).join('')}
           </div>
+          `}
           ${renderCategoryDetails(cat, selected)}
           <div class="cat-modifier" style="padding:8px 16px 12px;border-top:1px dashed var(--border);display:flex;gap:8px;align-items:center;">
             <span style="font-size:12px;color:var(--text-lighter);white-space:nowrap;">± Adjust:</span>
@@ -1816,7 +1896,7 @@ function featureLines(features) {
 
 function renderCategoryDetails(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
-  if (getCategoryPresentationMode(cat) === 'matrix' && matrix.length) {
+  if (getCategoryPresentationMode(cat) === 'matrix') {
     return renderFeatureComparison(cat, selectedTier);
   }
   return selectedTier
@@ -1830,17 +1910,37 @@ function renderFeatureStatusCell(status) {
   return '<span class="matrix-empty" aria-label="Not included">—</span>';
 }
 
+function renderComparisonTierCard(cat, tierKey, selectedTier) {
+  const tier = cat.tiers[tierKey] || {};
+  const tierDisabled = isTierUnavailable(cat, tierKey);
+  const price = tierDisabled ? 'N/A' : formatCurrency(getCategoryPrice(cat, tierKey));
+  const tag = tierDisabled ? 'Not available' : (tier.tag || tierKey.charAt(0).toUpperCase() + tierKey.slice(1));
+  return `
+    <button type="button"
+      class="comparison-tier-card ${selectedTier === tierKey ? 'selected' : ''} ${tierDisabled ? 'disabled' : ''}"
+      ${tierDisabled ? 'disabled' : `onclick="selectTier('${cat.id}', '${tierKey}')"`}
+      aria-pressed="${selectedTier === tierKey ? 'true' : 'false'}">
+      <span class="comparison-tier-name">${escapeHtml(tier.label || tierKey)}</span>
+      <span class="comparison-tier-price">${escapeHtml(price)}</span>
+      <span class="comparison-tier-tag">${escapeHtml(tag)}</span>
+    </button>
+  `;
+}
+
 function renderFeatureComparison(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
   const tiers = orderedTierKeys(cat.tiers);
   const selectedLabel = selectedTier && cat.tiers[selectedTier]?.label
     ? `${cat.tiers[selectedTier].label} selected`
-    : 'Choose an option above';
+    : 'Choose an option';
   return `
     <div class="comparison-matrix">
       <div class="comparison-matrix-header">
         <div class="comparison-matrix-title">Compare what's included</div>
-        <div class="comparison-matrix-note">${escapeHtml(selectedLabel)}</div>
+        <div class="comparison-matrix-note">
+          ${escapeHtml(selectedLabel)}
+          <button type="button" class="comparison-skip-btn" onclick="selectTier('${cat.id}', null)">Skip</button>
+        </div>
       </div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
@@ -1848,14 +1948,14 @@ function renderFeatureComparison(cat, selectedTier) {
             <tr>
               <th>Feature</th>
               ${tiers.map(tierKey => `
-                <th class="${selectedTier === tierKey ? 'selected-col' : ''}">
-                  ${escapeHtml(cat.tiers[tierKey]?.label || tierKey)}
+                <th class="matrix-tier-heading ${selectedTier === tierKey ? 'selected-col' : ''}">
+                  ${renderComparisonTierCard(cat, tierKey, selectedTier)}
                 </th>
               `).join('')}
             </tr>
           </thead>
           <tbody>
-            ${matrix.map(feature => `
+            ${matrix.length ? matrix.map(feature => `
               <tr>
                 <td>
                   <span class="matrix-feature-label ${feature.description ? 'has-description' : ''}" ${feature.description ? `title="${escapeAttr(feature.description)}"` : ''}>
@@ -1868,7 +1968,13 @@ function renderFeatureComparison(cat, selectedTier) {
                   </td>
                 `).join('')}
               </tr>
-            `).join('')}
+            `).join('') : `
+              <tr>
+                <td colspan="${tiers.length + 1}" style="text-align:center;color:var(--text-lighter);padding:20px;">
+                  No comparison features configured yet.
+                </td>
+              </tr>
+            `}
           </tbody>
         </table>
       </div>
