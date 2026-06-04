@@ -67,7 +67,11 @@ test.describe('Mobile responsive layout', () => {
               label: 'Dedicated equipment rack',
               tierStatus: { good: 'not_included', standard: 'not_included', better: 'not_included', best: 'included' }
             }
-          ],
+          ].concat(Array.from({ length: 36 }, (_, index) => ({
+            id: `mobile-qa-feature-${index}`,
+            label: `Mobile QA scroll feature ${index + 1}`,
+            tierStatus: { good: 'not_included', standard: 'addon', better: 'included', best: 'included' }
+          }))),
           tiers: {
             good: { price: 1000, label: 'Reliable, Basic Coverage', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
             standard: { price: 1500, label: 'Standard', tag: 'Standard', features: ['Whole-home WiFi coverage'], brands: 'Brand B' },
@@ -90,6 +94,10 @@ test.describe('Mobile responsive layout', () => {
       const missingRow = [...matrix.querySelectorAll('.mobile-feature-compare-card')]
         .find(card => card.textContent.includes('Dedicated equipment rack'));
       const panel = matrix.querySelector('.comparison-mobile-panel');
+      const stickyOffset = Math.ceil(document.querySelector('header').getBoundingClientRect().height);
+      const panelDocumentTop = panel.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo(0, panelDocumentTop - stickyOffset + 420);
+      const panelTopAfterScroll = panel.getBoundingClientRect().top;
       const beforeSwipe = {
         bodyOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4,
         mobileDisplay: getComputedStyle(mobile).display,
@@ -102,7 +110,9 @@ test.describe('Mobile responsive layout', () => {
         missingStatus: missingRow.querySelector('.mobile-feature-status .matrix-empty')?.textContent.trim(),
         selectedCells: matrix.querySelectorAll('.mobile-feature-status.selected.good-col').length,
         hasDottedTooltip: !!matrix.querySelector('.mobile-feature-compare-title.has-description[title]'),
-        stickyMobilePanel: getComputedStyle(panel).position
+        stickyMobilePanel: getComputedStyle(panel).position,
+        panelTopAfterScroll,
+        stickyOffset
       };
       startMobileComparisonSwipe({ changedTouches: [{ clientX: 320 }] }, panel);
       finishMobileComparisonSwipe({ changedTouches: [{ clientX: 220 }] }, panel);
@@ -119,11 +129,12 @@ test.describe('Mobile responsive layout', () => {
     expect(result.activeKicker).toBe('Good');
     expect(result.activeName).toBe('Reliable, Basic Coverage');
     expect(result.activePrice).toBe('$1,000');
-    expect(result.featureRows).toBe(3);
+    expect(result.featureRows).toBeGreaterThan(3);
     expect(result.missingStatus).toBe('—');
     expect(result.selectedCells).toBeGreaterThan(0);
     expect(result.hasDottedTooltip).toBe(true);
     expect(result.stickyMobilePanel).toBe('sticky');
+    expect(Math.abs(result.panelTopAfterScroll - result.stickyOffset)).toBeLessThanOrEqual(2);
     expect(result.activeKickerAfterSwipe).toBe('standard');
   });
 
@@ -179,7 +190,7 @@ test.describe('Mobile responsive layout', () => {
       const matrix = document.querySelector('.comparison-matrix');
       const mobile = matrix.querySelector('.comparison-mobile-focus');
       const table = matrix.querySelector('.comparison-table-scroll');
-      const cards = [...matrix.querySelectorAll('.comparison-table .comparison-tier-card')];
+      const cards = [...matrix.querySelectorAll('.comparison-desktop-panel .comparison-tier-card')];
       const headerRect = document.querySelector('header').getBoundingClientRect();
       const cardRects = cards.map(card => {
         const rect = card.getBoundingClientRect();

@@ -90,7 +90,11 @@ test.describe('Budget Planner', () => {
               label: 'Dedicated equipment rack',
               tierStatus: { good: 'not_included', standard: 'not_included', better: 'not_included', best: 'included' }
             }
-          ],
+          ].concat(Array.from({ length: 36 }, (_, index) => ({
+            id: `qa-feature-${index}`,
+            label: `QA scroll feature ${index + 1}`,
+            tierStatus: { good: 'not_included', standard: 'addon', better: 'included', best: 'included' }
+          }))),
           tiers: {
             good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
             better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage', 'UPS backup'], brands: 'Brand B' },
@@ -105,23 +109,33 @@ test.describe('Budget Planner', () => {
       state.catMods = { networking: { name: '', amount: 0 } };
       renderCategories();
       document.getElementById('cat-networking').classList.add('open');
+      const stickyHeading = document.querySelector('.comparison-desktop-panel');
+      const stickyOffset = Math.ceil(document.querySelector('header').getBoundingClientRect().height);
+      const headingDocumentTop = stickyHeading.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo(0, headingDocumentTop - stickyOffset + 420);
+      const stickyHeadingTopAfterScroll = stickyHeading.getBoundingClientRect().top;
       return {
         title: document.querySelector('.comparison-matrix-title')?.textContent,
-        featureHeader: document.querySelector('.comparison-table th:first-child')?.textContent.trim(),
-        tierNames: [...document.querySelectorAll('.comparison-table .comparison-tier-name')].map(el => el.textContent.trim()),
-        tierPrices: [...document.querySelectorAll('.comparison-table .comparison-tier-price')].map(el => el.textContent.trim()),
-        skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].map(el => el.textContent.trim()),
-        bestBadge: document.querySelector('.comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
+        featureHeader: document.querySelector('.comparison-desktop-feature-heading')?.textContent.trim(),
+        tierNames: [...document.querySelectorAll('.comparison-desktop-panel .comparison-tier-name')].map(el => el.textContent.trim()),
+        tierPrices: [...document.querySelectorAll('.comparison-desktop-panel .comparison-tier-price')].map(el => el.textContent.trim()),
+        skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].slice(0, 4).map(el => el.textContent.trim()),
+        bestBadge: document.querySelector('.comparison-desktop-panel .comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
         mobileTabs: [...document.querySelectorAll('.comparison-mobile-tab')].map(el => el.textContent.trim()),
         mobileActiveKicker: document.querySelector('.comparison-mobile-active-kicker')?.textContent.trim(),
         mobileActiveName: document.querySelector('.comparison-mobile-active-name')?.textContent.trim(),
         mobileActivePrice: document.querySelector('.comparison-mobile-active-price')?.textContent.trim(),
-        mobileFeatureRows: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-title')].map(el => el.textContent.trim()),
-        mobileMissingStatus: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-card:last-child .mobile-feature-status .matrix-empty')?.textContent.trim(),
+        mobileFeatureRows: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-title')].slice(0, 4).map(el => el.textContent.trim()),
+        mobileMissingStatus: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card')]
+          .find(card => card.textContent.includes('Dedicated equipment rack'))
+          ?.querySelector('.mobile-feature-status .matrix-empty')?.textContent.trim(),
         mobileTooltipTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
-        selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
-        desktopHeaderSticky: getComputedStyle(document.querySelector('.comparison-table thead th.matrix-tier-heading')).position,
+        selectedHeader: document.querySelector('.comparison-desktop-panel .selected-col .comparison-tier-name')?.textContent.trim(),
+        desktopHeaderSticky: getComputedStyle(stickyHeading).position,
+        desktopPanelDisplay: getComputedStyle(stickyHeading).display,
+        desktopHeaderTopAfterScroll: stickyHeadingTopAfterScroll,
+        stickyOffset,
         mobilePanelSticky: getComputedStyle(document.querySelector('.comparison-mobile-panel')).position,
         legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
         tooltip: document.querySelector('.matrix-feature-label.has-description')?.getAttribute('title'),
@@ -149,7 +163,10 @@ test.describe('Budget Planner', () => {
     expect(result.mobileTooltipTitle).toContain('Reliable wireless coverage');
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
-    expect(result.desktopHeaderSticky).toBe('sticky');
+    if (result.desktopPanelDisplay !== 'none') {
+      expect(result.desktopHeaderSticky).toBe('sticky');
+      expect(Math.abs(result.desktopHeaderTopAfterScroll - result.stickyOffset)).toBeLessThanOrEqual(2);
+    }
     expect(result.mobilePanelSticky).toBe('sticky');
     expect(result.legacyTierSelectorVisible).toBe(false);
     expect(result.tooltip).toContain('Reliable wireless coverage');

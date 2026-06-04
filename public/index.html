@@ -38,6 +38,7 @@
   --radius: 16px;
   --radius-sm: 10px;
   --transition: all 0.25s ease;
+  --customer-sticky-top: 104px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -579,14 +580,10 @@ main {
   color: var(--accent);
 }
 .comparison-table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.comparison-mobile-focus {
-  display: none;
+  overflow: visible;
 }
 .comparison-mobile-panel {
-  display: grid;
+  display: none;
   gap: 12px;
   padding: 14px;
   border-bottom: 1px solid var(--border);
@@ -594,9 +591,12 @@ main {
 }
 .category-card.open .comparison-mobile-panel {
   position: sticky;
-  top: 0;
+  top: var(--customer-sticky-top);
   z-index: 30;
   box-shadow: 0 10px 22px rgba(15,47,68,0.08);
+}
+.comparison-mobile-focus {
+  display: none;
 }
 .comparison-mobile-selector {
   display: flex;
@@ -798,6 +798,43 @@ main {
   border-collapse: separate;
   border-spacing: 0;
 }
+.comparison-desktop-panel {
+  display: grid;
+  align-items: stretch;
+  background: #FBFCFD;
+  border-bottom: 1px solid var(--border);
+}
+.category-card.open .comparison-desktop-panel {
+  position: sticky;
+  top: var(--customer-sticky-top);
+  z-index: 30;
+  box-shadow: 0 8px 18px rgba(15,47,68,0.08);
+}
+.comparison-desktop-feature-heading,
+.comparison-desktop-tier-heading {
+  padding: 13px 14px;
+  border-right: 1px solid var(--border);
+  text-align: center;
+}
+.comparison-desktop-feature-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.comparison-desktop-tier-heading {
+  min-width: 0;
+}
+.comparison-desktop-tier-heading:last-child {
+  border-right: none;
+}
+.comparison-table thead {
+  display: none;
+}
 .comparison-table th,
 .comparison-table td {
   padding: 13px 14px;
@@ -816,7 +853,7 @@ main {
 }
 .category-card.open .comparison-table thead th {
   position: sticky;
-  top: 0;
+  top: var(--customer-sticky-top);
   z-index: 24;
   box-shadow: 0 8px 18px rgba(15,47,68,0.08);
 }
@@ -834,6 +871,9 @@ main {
 .comparison-table .selected-col {
   background: var(--accent-bg);
   box-shadow: none;
+}
+.comparison-desktop-panel .selected-col {
+  background: var(--accent-bg);
 }
 .comparison-table th.selected-col {
   color: var(--accent);
@@ -1041,7 +1081,7 @@ main {
 @media (min-width: 641px) and (max-width: 900px),
   (min-width: 641px) and (max-width: 1100px) and (max-height: 700px) {
   .comparison-table {
-    min-width: 720px;
+    min-width: 100%;
   }
   .comparison-table th,
   .comparison-table td {
@@ -1053,6 +1093,10 @@ main {
     width: 28%;
   }
   .comparison-table th.matrix-tier-heading {
+    padding: 7px 5px;
+  }
+  .comparison-desktop-feature-heading,
+  .comparison-desktop-tier-heading {
     padding: 7px 5px;
   }
   .comparison-tier-card {
@@ -1108,6 +1152,7 @@ main {
     min-width: 820px;
   }
   .comparison-mobile-panel {
+    display: grid;
     padding: 12px;
   }
   .comparison-mobile-guide {
@@ -1122,6 +1167,9 @@ main {
   }
   .comparison-mobile-focus {
     display: block;
+  }
+  .comparison-desktop-panel {
+    display: none;
   }
   .comparison-table-scroll {
     display: none;
@@ -2252,6 +2300,7 @@ function isTierUnavailable(cat, tierKey) {
 }
 
 function renderCategories() {
+  updateCustomerStickyOffset();
   const categories = CATEGORIES();
   if (categories.length > 0) {
   }
@@ -2468,63 +2517,65 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
   const selectedIndex = Math.max(0, tableColumns.indexOf(selectedKey));
   const activeTier = comparisonTierDisplay(cat, selectedKey);
   const tierList = tableColumns.join(',');
+  const mobileCompareAttrs = `data-cat-id="${escapeAttr(cat.id)}" data-tier-list="${escapeAttr(tierList)}" data-active-tier="${escapeAttr(selectedKey)}"`;
   return `
+    <div class="comparison-mobile-panel"
+      ${mobileCompareAttrs}
+      ontouchstart="startMobileComparisonSwipe(event, this)"
+      ontouchend="finishMobileComparisonSwipe(event, this)">
+      <div class="comparison-mobile-selector" aria-label="Choose option">
+        ${tableColumns.map(tierKey => `
+          <button type="button"
+            class="comparison-mobile-tab ${tierKey} ${selectedKey === tierKey ? 'active' : ''}"
+            onclick="selectTier('${cat.id}', ${tierKey === 'skip' ? 'null' : `'${tierKey}'`})"
+            aria-pressed="${selectedKey === tierKey ? 'true' : 'false'}">
+            ${escapeHtml(mobileTierLabel(cat, tierKey))}
+          </button>
+        `).join('')}
+      </div>
+      <div class="comparison-mobile-active-tier ${selectedKey}">
+        <div class="comparison-mobile-active-kicker">${escapeHtml(activeTier.kicker)}</div>
+        <div class="comparison-mobile-active-name">${escapeHtml(activeTier.name)}</div>
+        ${activeTier.price ? `<div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>` : ''}
+      </div>
+      <div class="comparison-mobile-actions">
+        <span class="comparison-mobile-guide">Swipe to compare options</span>
+        <span class="comparison-mobile-swipe-markers">${tableColumns.map((_, index) => index === selectedIndex ? '●' : '○').join('')}</span>
+      </div>
+    </div>
     <div class="comparison-mobile-focus"
-      data-cat-id="${escapeAttr(cat.id)}"
-      data-tier-list="${escapeAttr(tierList)}"
-      data-active-tier="${escapeAttr(selectedKey)}">
-      <div class="comparison-mobile-panel"
-        ontouchstart="startMobileComparisonSwipe(event, this)"
-        ontouchend="finishMobileComparisonSwipe(event, this)">
-        <div class="comparison-mobile-selector" aria-label="Choose option">
-          ${tableColumns.map(tierKey => `
-            <button type="button"
-              class="comparison-mobile-tab ${tierKey} ${selectedKey === tierKey ? 'active' : ''}"
-              onclick="selectTier('${cat.id}', ${tierKey === 'skip' ? 'null' : `'${tierKey}'`})"
-              aria-pressed="${selectedKey === tierKey ? 'true' : 'false'}">
-              ${escapeHtml(mobileTierLabel(cat, tierKey))}
-            </button>
-          `).join('')}
-        </div>
-        <div class="comparison-mobile-active-tier ${selectedKey}">
-          <div class="comparison-mobile-active-kicker">${escapeHtml(activeTier.kicker)}</div>
-          <div class="comparison-mobile-active-name">${escapeHtml(activeTier.name)}</div>
-          ${activeTier.price ? `<div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>` : ''}
-        </div>
-        <div class="comparison-mobile-actions">
-          <span class="comparison-mobile-guide">Swipe to compare options</span>
-          <span class="comparison-mobile-swipe-markers">${tableColumns.map((_, index) => index === selectedIndex ? '●' : '○').join('')}</span>
-        </div>
-        <div class="mobile-feature-comparison-list">
-          ${matrix.length ? matrix.map(feature => `
-            <div class="mobile-feature-compare-card">
-              <div class="mobile-feature-compare-header">
-                <button type="button"
-                  class="mobile-feature-compare-title ${feature.description ? 'has-description' : ''}"
-                  ${feature.description ? `title="${escapeAttr(feature.description)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)"` : 'disabled'}>
-                  ${escapeHtml(feature.label)}
-                </button>
-              </div>
-              <div class="mobile-feature-status selected ${selectedKey}-col">
-                <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, selectedKey))}</span>
-                ${selectedKey === 'skip'
-                  ? renderFeatureStatusCell('not_included')
-                  : renderFeatureStatusCell(featureCellForTier(feature, selectedKey), {
-                      selectable: selectedTier === selectedKey,
-                      catId: cat.id,
-                      tierKey: selectedKey,
-                      featureId: feature.id
-                    })}
-              </div>
+      ${mobileCompareAttrs}
+      ontouchstart="startMobileComparisonSwipe(event, this)"
+      ontouchend="finishMobileComparisonSwipe(event, this)">
+      <div class="mobile-feature-comparison-list">
+        ${matrix.length ? matrix.map(feature => `
+          <div class="mobile-feature-compare-card">
+            <div class="mobile-feature-compare-header">
+              <button type="button"
+                class="mobile-feature-compare-title ${feature.description ? 'has-description' : ''}"
+                ${feature.description ? `title="${escapeAttr(feature.description)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)"` : 'disabled'}>
+                ${escapeHtml(feature.label)}
+              </button>
             </div>
-          `).join('') : `
-            <div class="mobile-feature-compare-card">
-              <div class="mobile-feature-compare-header">
-                <div class="mobile-feature-compare-title">No comparison features configured yet.</div>
-              </div>
+            <div class="mobile-feature-status selected ${selectedKey}-col">
+              <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, selectedKey))}</span>
+              ${selectedKey === 'skip'
+                ? renderFeatureStatusCell('not_included')
+                : renderFeatureStatusCell(featureCellForTier(feature, selectedKey), {
+                    selectable: selectedTier === selectedKey,
+                    catId: cat.id,
+                    tierKey: selectedKey,
+                    featureId: feature.id
+                  })}
             </div>
-          `}
-        </div>
+          </div>
+        `).join('') : `
+          <div class="mobile-feature-compare-card">
+            <div class="mobile-feature-compare-header">
+              <div class="mobile-feature-compare-title">No comparison features configured yet.</div>
+            </div>
+          </div>
+        `}
       </div>
     </div>
   `;
@@ -2595,6 +2646,14 @@ function renderFeatureComparison(cat, selectedTier) {
         <div class="comparison-matrix-note">${escapeHtml(selectedLabel)}</div>
       </div>
       ${renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns)}
+      <div class="comparison-desktop-panel" style="grid-template-columns: 30% repeat(${tableColumns.length}, minmax(0, 1fr));">
+        <div class="comparison-desktop-feature-heading">Feature</div>
+        ${tableColumns.map(tierKey => `
+          <div class="comparison-desktop-tier-heading ${(!selectedTier && tierKey === 'skip') || selectedTier === tierKey ? `selected-col ${tierKey}-col` : ''}">
+            ${renderComparisonTierCard(cat, tierKey, selectedTier)}
+          </div>
+        `).join('')}
+      </div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
@@ -2806,6 +2865,7 @@ function toggleMatrixAddOn(event, catId, tierKey, featureId) {
 }
 
 function toggleCategory(catId) {
+  updateCustomerStickyOffset();
   const card = document.getElementById('cat-' + catId);
   const shouldOpen = !card.classList.contains('open');
   document.querySelectorAll('.category-card.open').forEach(openCard => {
@@ -3903,6 +3963,15 @@ function bookmarkConfig() {
 // ============================================================
 // INIT
 // ============================================================
+
+function updateCustomerStickyOffset() {
+  const header = document.querySelector('header');
+  const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--customer-sticky-top', `${headerHeight}px`);
+}
+
+updateCustomerStickyOffset();
+window.addEventListener('resize', updateCustomerStickyOffset);
 
 // Check for live budget URL (/b/:id) - account for BASE_PATH prefix
 const budgetPathPattern = BASE_PATH ? new RegExp(`^${BASE_PATH}\\/b\\/([a-z0-9]+)$`, 'i') : /^\/b\/([a-z0-9]+)$/i;
