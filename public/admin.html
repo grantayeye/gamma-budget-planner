@@ -929,6 +929,29 @@
       font-weight: 600;
     }
 
+    .fm-status-wrap {
+      display: grid;
+      grid-template-columns: minmax(96px, 1fr) 28px;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .fm-apply-right {
+      width: 28px;
+      height: 32px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    .fm-apply-right.is-hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
     .feature-matrix-remove {
       width: 32px;
       height: 32px;
@@ -1025,9 +1048,6 @@
         grid-template-columns: 82px minmax(140px, 1fr) 104px 86px 76px;
       }
 
-      .feature-matrix-row {
-        grid-template-columns: 1fr;
-      }
     }
 
     @media (max-width: 700px) {
@@ -1050,6 +1070,111 @@
       #customizeModal .modal-header h2 {
         font-size: 16px;
         line-height: 1.25;
+      }
+
+      #budgetModal.modal-overlay {
+        padding: 0;
+        align-items: stretch;
+      }
+
+      #budgetModal .modal {
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+        max-width: none;
+      }
+
+      #budgetModal .modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        padding: 14px 14px 14px 18px;
+        align-items: center;
+        gap: 12px;
+      }
+
+      #budgetModal .modal-header h2 {
+        min-width: 0;
+        font-size: 16px;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      #budgetModal .modal-close {
+        flex: 0 0 44px;
+        width: 44px;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #budgetModal .modal-body {
+        min-height: 0;
+        padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+      }
+
+      #budgetModal .detail-grid {
+        grid-template-columns: 1fr;
+      }
+
+      #budgetModal .detail-editor-card > div[style*="grid"],
+      #budgetModal .modal-body > div[style*="grid"] {
+        grid-template-columns: 1fr !important;
+      }
+
+      #budgetModal input,
+      #budgetModal select,
+      #budgetModal textarea {
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      .feature-matrix-table tr.feature-matrix-row {
+        display: grid;
+        gap: 10px;
+        margin: 12px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #FFFFFF;
+      }
+
+      .feature-matrix-table,
+      .feature-matrix-table thead,
+      .feature-matrix-table tbody,
+      .feature-matrix-table tr,
+      .feature-matrix-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .feature-matrix-table {
+        min-width: 0;
+      }
+
+      .feature-matrix-table thead {
+        display: none;
+      }
+
+      .feature-matrix-table td {
+        border-bottom: none;
+        padding: 0;
+      }
+
+      .feature-matrix-table td[data-tier-label] {
+        display: grid;
+        grid-template-columns: 82px 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .feature-matrix-table td[data-tier-label]::before {
+        content: attr(data-tier-label);
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--text-light);
+        text-transform: uppercase;
       }
 
       .customize-scroll-area {
@@ -1218,6 +1343,7 @@
       font-weight: 700;
       font-size: 15px;
       color: var(--primary);
+      overflow-wrap: anywhere;
     }
 
     .detail-form-label {
@@ -2699,10 +2825,7 @@ function featureMatrixStatusOptions(selected = 'not_included') {
 }
 
 function getCategoryTierOrder(cat = {}, override = {}) {
-  const rawOrder = override.tierOrder || override.tier_order || cat.tierOrder || cat.tier_order || [];
-  const ordered = (Array.isArray(rawOrder) ? rawOrder : [])
-    .filter(tierKey => TIER_ORDER.includes(tierKey));
-  return [...ordered, ...TIER_ORDER.filter(tierKey => !ordered.includes(tierKey))];
+  return TIER_ORDER;
 }
 
 function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
@@ -2725,11 +2848,14 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
           <input class="fm-group" type="hidden" value="${escapeAttr(feature.group || '')}">
         </div>
       </td>
-      ${tierKeys.map(tierKey => `
-        <td>
-          <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}">
-            ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
-          </select>
+      ${tierKeys.map((tierKey, tierIndex) => `
+        <td data-tier-label="${TIER_NAMES[tierKey]}">
+          <div class="fm-status-wrap">
+            <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}">
+              ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
+            </select>
+            <button type="button" class="btn btn-secondary btn-small fm-apply-right ${tierIndex < tierKeys.length - 1 ? '' : 'is-hidden'}" title="Apply this value to tiers on the right" onclick="applyMatrixStatusRight(this)">→</button>
+          </div>
         </td>
       `).join('')}
       <td>
@@ -2925,20 +3051,7 @@ function getVisibleMatrixTierKeys(scope) {
 }
 
 function getMatrixTierOrderFromEditor(scope) {
-  const visible = getVisibleMatrixTierKeys(scope);
-  const disabled = Array.from(scope?.querySelectorAll('.matrix-disabled-tiers [data-tier]') || [])
-    .map(button => button.dataset.tier)
-    .filter(tierKey => tierKey && !visible.includes(tierKey));
-  return [...visible, ...disabled, ...TIER_ORDER.filter(tierKey => !visible.includes(tierKey) && !disabled.includes(tierKey))];
-}
-
-function swapSiblingElements(a, b) {
-  if (!a || !b || !a.parentNode || a.parentNode !== b.parentNode) return;
-  const marker = document.createTextNode('');
-  a.parentNode.insertBefore(marker, a);
-  b.parentNode.insertBefore(a, b);
-  marker.parentNode.insertBefore(b, marker);
-  marker.remove();
+  return TIER_ORDER;
 }
 
 function refreshMatrixTierSwapButtons(panel) {
@@ -2953,24 +3066,66 @@ function refreshMatrixTierSwapButtons(panel) {
   });
 }
 
+function applyMatrixStatusRight(button) {
+  const row = button.closest('.feature-matrix-row');
+  const sourceSelect = button.closest('.fm-status-wrap')?.querySelector('.fm-status[data-tier]');
+  if (!row || !sourceSelect) return;
+  let shouldApply = false;
+  row.querySelectorAll('.fm-status[data-tier]').forEach(select => {
+    if (select === sourceSelect) {
+      shouldApply = true;
+      return;
+    }
+    if (shouldApply) select.value = sourceSelect.value;
+  });
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function syncMatrixRowsToCards(editor) {
+  editor?.querySelectorAll('.feature-matrix-tier-card[data-tier]').forEach(card => {
+    const tierKey = card.dataset.tier;
+    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
+    const priceInput = card.querySelector('.matrix-tier-price');
+    if (priceInput && row) {
+      const rowPrice = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value;
+      if (rowPrice !== undefined) priceInput.value = rowPrice;
+    }
+  });
+}
+
 function swapMatrixTierWithNeighbor(button, tierKey, direction) {
   const panel = button.closest('.matrix-mode-panel');
   if (!panel) return;
+  const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor');
   const scrollArea = button.closest('.customize-scroll-area') || document.scrollingElement;
   const previousScroll = scrollArea?.scrollTop || 0;
-  const cards = Array.from(panel.querySelectorAll('.feature-matrix-tier-card[data-tier]'));
-  const currentIndex = cards.findIndex(card => card.dataset.tier === tierKey);
-  const nextCard = cards[currentIndex + direction];
-  if (currentIndex < 0 || !nextCard) return;
-  const nextTier = nextCard.dataset.tier;
-  const currentHeader = cards[currentIndex].closest('th');
-  const nextHeader = nextCard.closest('th');
-  swapSiblingElements(currentHeader, nextHeader);
+  syncMatrixTierCardsToRows(editor);
+  const activeTiers = getVisibleMatrixTierKeys(panel);
+  const currentIndex = activeTiers.indexOf(tierKey);
+  const nextTier = activeTiers[currentIndex + direction];
+  if (currentIndex < 0 || !nextTier) return;
+  const rowSelector = editor?.classList.contains('custom-category-editor') ? '.cc-tier-row' : (editor?.classList.contains('cat-editor-card') ? '.tier-edit-card' : '.tier-row');
+  const selectors = editor?.classList.contains('custom-category-editor')
+    ? { enabled: '.cc-tier-enabled', label: '.cc-tier-label', price: '.cc-tier-price', disable: 'input:not(.cc-tier-enabled), button:not(.tier-swap-btn)' }
+    : (editor?.classList.contains('cat-editor-card')
+      ? { enabled: null, label: '[data-tf="label"]', price: '[data-tf="price"]', disable: 'input, button' }
+      : { enabled: '.tier-enabled', label: '.tier-label', price: '.tier-price', disable: 'input:not(.tier-enabled), button:not(.tier-swap-btn)' });
+  swapTierRows(
+    editor?.querySelector(`${rowSelector}[data-tier="${tierKey}"]`),
+    editor?.querySelector(`${rowSelector}[data-tier="${nextTier}"]`),
+    selectors,
+    { preserveLabel: true }
+  );
   panel.querySelectorAll('.feature-matrix-row').forEach(row => {
-    const currentCell = row.querySelector(`.fm-status[data-tier="${tierKey}"]`)?.closest('td');
-    const nextCell = row.querySelector(`.fm-status[data-tier="${nextTier}"]`)?.closest('td');
-    swapSiblingElements(currentCell, nextCell);
+    const currentSelect = row.querySelector(`.fm-status[data-tier="${tierKey}"]`);
+    const nextSelect = row.querySelector(`.fm-status[data-tier="${nextTier}"]`);
+    if (!currentSelect || !nextSelect) return;
+    const currentValue = currentSelect.value;
+    currentSelect.value = nextSelect.value;
+    nextSelect.value = currentValue;
   });
+  syncMatrixRowsToCards(editor);
   refreshMatrixTierSwapButtons(panel);
   requestAnimationFrame(() => {
     if (scrollArea) scrollArea.scrollTop = previousScroll;
@@ -4565,17 +4720,25 @@ function readTierRowData(row, selectors) {
   } catch (_) {
     features = [];
   }
+  if (!features.length && row.classList.contains('tier-edit-card')) {
+    const editor = row.closest('.cat-editor-card');
+    const idx = parseInt(editor?.dataset.catIdx || '-1');
+    const propType = document.getElementById('catPropertyType')?.value || 'residential';
+    const categories = propType === 'condo' ? catData?.condo_categories : catData?.residential_categories;
+    features = categories?.[idx]?.tiers?.[row.dataset.tier]?.features || [];
+  }
+  const brandsInput = row.querySelector('[data-tf="brands"]');
   return {
-    enabled: row.querySelector(selectors.enabled)?.checked ?? true,
+    enabled: selectors.enabled ? (row.querySelector(selectors.enabled)?.checked ?? true) : true,
     label: row.querySelector(selectors.label)?.value || '',
     price: parseInt(row.querySelector(selectors.price)?.value) || 0,
     features,
-    brands: row.dataset.brands || ''
+    brands: row.dataset.brands || brandsInput?.value || ''
   };
 }
 
 function writeTierRowData(row, data, selectors) {
-  const enabledEl = row.querySelector(selectors.enabled);
+  const enabledEl = selectors.enabled ? row.querySelector(selectors.enabled) : null;
   const isLocked = !!enabledEl?.disabled;
   const enabled = !!data.enabled || isLocked;
   if (enabledEl) enabledEl.checked = enabled;
@@ -4585,6 +4748,8 @@ function writeTierRowData(row, data, selectors) {
   if (priceEl) priceEl.value = data.price || '';
   row.dataset.features = JSON.stringify(data.features || []);
   row.dataset.brands = data.brands || '';
+  const brandsEl = row.querySelector('[data-tf="brands"]');
+  if (brandsEl) brandsEl.value = data.brands || '';
   const disabled = !enabled && !isLocked;
   row.style.opacity = disabled ? '0.5' : '1';
   row.querySelectorAll(selectors.disable).forEach(el => { el.disabled = disabled; });
@@ -4993,10 +5158,16 @@ function copySelectedSectionIntoCustomize() {
   showToast(`✓ Copied ${sectionName}`);
 }
 
-function swapTierRows(rowA, rowB, selectors) {
+function swapTierRows(rowA, rowB, selectors, options = {}) {
   if (!rowA || !rowB) return;
   const a = readTierRowData(rowA, selectors);
   const b = readTierRowData(rowB, selectors);
+  if (options.preserveLabel) {
+    const aLabel = a.label;
+    const bLabel = b.label;
+    b.label = aLabel;
+    a.label = bLabel;
+  }
   writeTierRowData(rowA, b, selectors);
   writeTierRowData(rowB, a, selectors);
   markCatDirty();
@@ -5015,7 +5186,8 @@ function swapTierWithNeighbor(catId, tierKey, direction) {
       label: '.tier-label',
       price: '.tier-price',
       disable: 'input:not(.tier-enabled), button:not(.tier-swap-btn)'
-    }
+    },
+    { preserveLabel: true }
   );
   refreshCategoryTierSwapButtons(editor);
   showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);
@@ -5033,7 +5205,8 @@ function swapCustomTierWithNeighbor(index, tierKey, direction) {
       label: '.cc-tier-label',
       price: '.cc-tier-price',
       disable: 'input:not(.cc-tier-enabled), button:not(.tier-swap-btn)'
-    }
+    },
+    { preserveLabel: true }
   );
   refreshCustomTierSwapButtons(editor);
   showToast(`✓ Swapped ${TIER_NAMES[tierKey]} and ${TIER_NAMES[otherTier]}`);

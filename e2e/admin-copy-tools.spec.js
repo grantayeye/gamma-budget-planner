@@ -218,6 +218,7 @@ test.describe('Admin copy/customization tools', () => {
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
       upsRow.querySelector('.fm-status[data-tier="good"]').value = 'addon';
+      applyMatrixStatusRight(upsRow.querySelector('.fm-status[data-tier="good"] + .fm-apply-right'));
       card.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-label').value = 'Better Plus';
       card.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-price').value = '2400';
       collectCategoryEditorData();
@@ -230,6 +231,8 @@ test.describe('Admin copy/customization tools', () => {
         bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim(),
         matrixLabels: cat.featureMatrix.map(feature => feature.label),
         goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
+        betterUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.better,
+        bestUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.best,
         betterLabel: cat.tiers.better.label,
         betterPrice: cat.tiers.better.price,
         betterFeatures: cat.tiers.better.features,
@@ -243,9 +246,11 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.bottomAddButton).toBe('+ Feature');
     expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);
     expect(result.goodUpsStatus).toBe('addon');
+    expect(result.betterUpsStatus).toBe('addon');
+    expect(result.bestUpsStatus).toBe('addon');
     expect(result.betterLabel).toBe('Better Plus');
     expect(result.betterPrice).toBe(2400);
-    expect(result.betterFeatures).toEqual(['WiFi coverage', 'UPS backup']);
+    expect(result.betterFeatures).toEqual(['WiFi coverage']);
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
   });
 
@@ -329,7 +334,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
   });
 
-  test('customize matrix hides unchecked tiers and preserves swapped column order', async ({ page }) => {
+  test('customize matrix hides unchecked tiers and swaps package data within fixed tier slots', async ({ page }) => {
     const result = await page.evaluate(() => {
       const targetCat = {
         id: 'networking',
@@ -368,31 +373,36 @@ test.describe('Admin copy/customization tools', () => {
         'better',
         -1
       );
-      swapMatrixTierWithNeighbor(
-        editor.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-swap-btn[data-direction="-1"]'),
-        'better',
-        -1
-      );
-      const standardToggle = editor.querySelector('.feature-matrix-tier-card[data-tier="standard"] .matrix-tier-enabled');
-      standardToggle.checked = false;
-      toggleMatrixTierEnabled(standardToggle, 'standard', false);
+      const goodToggle = editor.querySelector('.feature-matrix-tier-card[data-tier="good"] .matrix-tier-enabled');
+      goodToggle.checked = false;
+      toggleMatrixTierEnabled(goodToggle, 'good', false);
 
       const collected = collectCustomizationData();
       const override = collected.categoryConfig.networking;
       return {
         visibleOrder: [...editor.querySelectorAll('.feature-matrix-tier-card[data-tier]')].map(card => card.dataset.tier),
         disabledButtons: [...editor.querySelectorAll('.matrix-disabled-tiers [data-tier]')].map(button => button.dataset.tier),
-        collectedOrder: override.tierOrder,
-        standardEnabled: override.tiers.standard.enabled,
-        standardStatusCellsVisible: !!editor.querySelector('.fm-status[data-tier="standard"]')
+        standardPrice: override.tiers.standard.price,
+        betterPrice: override.tiers.better.price,
+        standardFeatures: override.tiers.standard.features,
+        betterFeatures: override.tiers.better.features,
+        standardLabel: override.tiers.standard.label,
+        betterLabel: override.tiers.better.label,
+        goodEnabled: override.tiers.good.enabled,
+        goodStatusCellsVisible: !!editor.querySelector('.fm-status[data-tier="good"]')
       };
     });
 
-    expect(result.visibleOrder).toEqual(['better', 'good', 'best']);
-    expect(result.disabledButtons).toContain('standard');
-    expect(result.collectedOrder.slice(0, 4)).toEqual(['better', 'good', 'best', 'standard']);
-    expect(result.standardEnabled).toBe(false);
-    expect(result.standardStatusCellsVisible).toBe(false);
+    expect(result.visibleOrder).toEqual(['standard', 'better', 'best']);
+    expect(result.disabledButtons).toContain('good');
+    expect(result.standardLabel).toBe('Standard');
+    expect(result.betterLabel).toBe('Better');
+    expect(result.standardPrice).toBe(2000);
+    expect(result.betterPrice).toBe(1500);
+    expect(result.standardFeatures).toEqual(['WiFi coverage', 'UPS backup']);
+    expect(result.betterFeatures).toEqual(['WiFi coverage', 'Standard support']);
+    expect(result.goodEnabled).toBe(false);
+    expect(result.goodStatusCellsVisible).toBe(false);
   });
 
   test('customize open ignores stale local drafts and keeps search menus closed', async ({ page }) => {
@@ -718,7 +728,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.delta).toBeLessThanOrEqual(2);
   });
 
-  test('swaps adjacent standard category tiers including labels, price, features, brands, and enabled state', async ({ page }) => {
+  test('swaps adjacent standard category tier packages while preserving tier labels', async ({ page }) => {
     const result = await page.evaluate(() => {
       const cat = {
         id: 'swap-cat',
@@ -750,12 +760,12 @@ test.describe('Admin copy/customization tools', () => {
     });
 
     expect(result.goodEnabled).toBe(true);
-    expect(result.goodLabel).toBe('Standard Original');
+    expect(result.goodLabel).toBe('Good Original');
     expect(result.goodPrice).toBe('1500');
     expect(result.goodFeatures).toEqual(['standard feature']);
     expect(result.goodBrands).toBe('Standard Brand');
     expect(result.standardEnabled).toBe(true);
-    expect(result.standardLabel).toBe('Good Original');
+    expect(result.standardLabel).toBe('Standard Original');
     expect(result.standardPrice).toBe('1000');
     expect(result.standardFeatures).toEqual(['good feature']);
     expect(result.standardBrands).toBe('Good Brand');
@@ -808,10 +818,10 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.visibilityBefore['better:-1']).toBe('visible');
     expect(result.visibilityBefore['better:1']).toBe('visible');
     expect(result.visibilityBefore['best:-1']).toBe('visible');
-    expect(result.goodLabel).toBe('Better Original');
+    expect(result.goodLabel).toBe('Good Original');
     expect(result.goodPrice).toBe('2000');
     expect(result.standardEnabled).toBe(false);
-    expect(result.betterLabel).toBe('Good Original');
+    expect(result.betterLabel).toBe('Better Original');
     expect(result.betterPrice).toBe('1000');
     expect(result.betterFeatures).toEqual(['good feature']);
     expect(result.betterBrands).toBe('Good Brand');
@@ -844,11 +854,11 @@ test.describe('Admin copy/customization tools', () => {
       };
     });
 
-    expect(result.goodLabel).toBe('Custom Standard');
+    expect(result.goodLabel).toBe('Custom Good');
     expect(result.goodPrice).toBe('222');
     expect(result.goodFeatures).toEqual(['cs']);
     expect(result.goodBrands).toBe('CB2');
-    expect(result.standardLabel).toBe('Custom Good');
+    expect(result.standardLabel).toBe('Custom Standard');
     expect(result.standardPrice).toBe('111');
     expect(result.standardFeatures).toEqual(['cg']);
     expect(result.standardBrands).toBe('CB1');

@@ -57,6 +57,7 @@ test.describe('Budget Planner', () => {
           desc: 'Enterprise-grade WiFi coverage',
           sizeScale: 0,
           presentationMode: 'matrix',
+          tierOrder: ['best', 'good', 'better'],
           featureMatrix: [
             {
               id: 'wifi-coverage',
@@ -74,6 +75,11 @@ test.describe('Budget Planner', () => {
               id: 'enterprise-switching',
               label: 'Enterprise switching',
               tierStatus: { good: 'not_included', standard: 'not_included', better: 'addon', best: 'included' }
+            },
+            {
+              id: 'dedicated-rack',
+              label: 'Dedicated equipment rack',
+              tierStatus: { good: 'not_included', standard: 'not_included', better: 'not_included', best: 'included' }
             }
           ],
           tiers: {
@@ -93,10 +99,13 @@ test.describe('Budget Planner', () => {
       return {
         title: document.querySelector('.comparison-matrix-title')?.textContent,
         featureHeader: document.querySelector('.comparison-table th:first-child')?.textContent.trim(),
-        tierNames: [...document.querySelectorAll('.comparison-tier-name')].map(el => el.textContent.trim()),
-        tierPrices: [...document.querySelectorAll('.comparison-tier-price')].map(el => el.textContent.trim()),
+        tierNames: [...document.querySelectorAll('.comparison-table .comparison-tier-name')].map(el => el.textContent.trim()),
+        tierPrices: [...document.querySelectorAll('.comparison-table .comparison-tier-price')].map(el => el.textContent.trim()),
         skipCells: [...document.querySelectorAll('.comparison-table tbody tr td:nth-child(2)')].map(el => el.textContent.trim()),
         bestBadge: document.querySelector('.comparison-tier-card.best .comparison-tier-badge')?.textContent.trim(),
+        mobileGroups: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-group-title')].map(el => el.textContent.trim()),
+        mobileMissing: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-group:last-child .mobile-feature-item')]
+          .map(el => el.textContent.replace(/\s+/g, ' ').trim()),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-table th.selected-col .comparison-tier-name')?.textContent.trim(),
         legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
@@ -109,8 +118,10 @@ test.describe('Budget Planner', () => {
     expect(result.featureHeader).toBe('Feature');
     expect(result.tierNames).toEqual(['Skip', 'Good', 'Better', 'Best']);
     expect(result.tierPrices).toEqual(['$0', '$1,000', '$2,000', '$3,000']);
-    expect(result.skipCells).toEqual(['—', '—', '—']);
+    expect(result.skipCells).toEqual(['—', '—', '—', '—']);
     expect(result.bestBadge).toBe('Best experience');
+    expect(result.mobileGroups).toEqual(['Included', 'Available as add-on', 'Not included']);
+    expect(result.mobileMissing).toEqual(['— Dedicated equipment rack']);
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
     expect(result.legacyTierSelectorVisible).toBe(false);

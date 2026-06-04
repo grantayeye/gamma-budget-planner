@@ -579,6 +579,85 @@ main {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+.comparison-mobile-focus {
+  display: none;
+}
+.comparison-mobile-tier {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  background: #FFFFFF;
+}
+.comparison-mobile-tier .comparison-tier-card {
+  max-width: none;
+}
+.mobile-feature-group {
+  display: grid;
+  gap: 8px;
+}
+.mobile-feature-group-title {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+}
+.mobile-feature-list {
+  display: grid;
+  gap: 6px;
+}
+.mobile-feature-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: #FFFFFF;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.mobile-feature-item.not-included {
+  background: #F7F8FA;
+  color: var(--text-lighter);
+}
+.mobile-feature-item.addon {
+  background: #FFF9EC;
+  color: #7B5200;
+}
+.mobile-feature-icon {
+  width: 18px;
+  flex: 0 0 18px;
+  text-align: center;
+  font-weight: 900;
+}
+.comparison-mobile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.comparison-toggle-all {
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: white;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.comparison-swipe-hint {
+  display: none;
+  padding: 8px 12px;
+  color: var(--text-light);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  background: #FBFCFD;
+}
 .comparison-table {
   width: 100%;
   min-width: 760px;
@@ -807,6 +886,19 @@ main {
   }
   .comparison-table {
     min-width: 820px;
+  }
+  .comparison-mobile-focus {
+    display: block;
+  }
+  .comparison-table-scroll {
+    display: none;
+  }
+  .comparison-matrix.show-compare-all .comparison-table-scroll,
+  .comparison-matrix.show-compare-all .comparison-swipe-hint {
+    display: block;
+  }
+  .comparison-matrix.show-compare-all .comparison-toggle-all {
+    background: var(--accent-bg);
   }
   .comparison-table th,
   .comparison-table td {
@@ -1549,12 +1641,7 @@ function normalizeStoredSectionId(section) {
 
 function orderedTierKeys(tiers, tierOrder = []) {
   if (!tiers) return [];
-  const rawOrder = Array.isArray(tierOrder) ? tierOrder : [];
-  const explicitOrder = rawOrder.filter(tierKey => TIER_ORDER.includes(tierKey) && tiers[tierKey]);
-  const known = [
-    ...explicitOrder,
-    ...TIER_ORDER.filter(tierKey => tiers[tierKey] && !explicitOrder.includes(tierKey))
-  ];
+  const known = TIER_ORDER.filter(tierKey => tiers[tierKey]);
   const unknown = Object.keys(tiers).filter(tierKey => !TIER_ORDER.includes(tierKey));
   return [...known, ...unknown];
 }
@@ -2027,6 +2114,62 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
   `;
 }
 
+function renderMobileFeatureItems(features, status) {
+  if (!features.length) {
+    return '<div class="mobile-feature-item not-included"><span class="mobile-feature-icon">—</span><span>None</span></div>';
+  }
+  const icon = status === 'included' ? '✓' : (status === 'addon' ? '+' : '—');
+  const className = status === 'addon' ? 'addon' : (status === 'not_included' ? 'not-included' : '');
+  return features.map(feature => `
+    <div class="mobile-feature-item ${className}">
+      <span class="mobile-feature-icon">${icon}</span>
+      <span>
+        <strong>${escapeHtml(feature.label)}</strong>
+        ${feature.description ? `<span style="display:block;font-size:12px;color:inherit;opacity:0.78;margin-top:2px;">${escapeHtml(feature.description)}</span>` : ''}
+      </span>
+    </div>
+  `).join('');
+}
+
+function renderMobileFeatureFocus(cat, selectedTier, matrix) {
+  const tierKey = selectedTier || 'skip';
+  const included = selectedTier ? matrix.filter(feature => featureStatusForTier(feature, selectedTier) === 'included') : [];
+  const addons = selectedTier ? matrix.filter(feature => featureStatusForTier(feature, selectedTier) === 'addon') : [];
+  const missing = selectedTier
+    ? matrix.filter(feature => featureStatusForTier(feature, selectedTier) === 'not_included')
+    : matrix;
+  return `
+    <div class="comparison-mobile-focus">
+      <div class="comparison-mobile-tier">
+        ${renderComparisonTierCard(cat, tierKey, selectedTier)}
+        <div class="comparison-mobile-actions">
+          <span style="font-size:12px;color:var(--text-light);font-weight:700;">Selected option</span>
+          <button type="button" class="comparison-toggle-all" onclick="toggleCompareAll(this)">Compare all tiers</button>
+        </div>
+        <div class="mobile-feature-group">
+          <div class="mobile-feature-group-title">Included</div>
+          <div class="mobile-feature-list">${renderMobileFeatureItems(included, 'included')}</div>
+        </div>
+        <div class="mobile-feature-group">
+          <div class="mobile-feature-group-title">Available as add-on</div>
+          <div class="mobile-feature-list">${renderMobileFeatureItems(addons, 'addon')}</div>
+        </div>
+        <div class="mobile-feature-group">
+          <div class="mobile-feature-group-title">Not included</div>
+          <div class="mobile-feature-list">${renderMobileFeatureItems(missing, 'not_included')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleCompareAll(button) {
+  const matrix = button.closest('.comparison-matrix');
+  if (!matrix) return;
+  const showing = matrix.classList.toggle('show-compare-all');
+  button.textContent = showing ? 'Hide comparison' : 'Compare all tiers';
+}
+
 function renderFeatureComparison(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
   const tiers = orderedTierKeys(cat.tiers, cat.tierOrder);
@@ -2040,6 +2183,8 @@ function renderFeatureComparison(cat, selectedTier) {
         <div class="comparison-matrix-title">Compare what's included</div>
         <div class="comparison-matrix-note">${escapeHtml(selectedLabel)}</div>
       </div>
+      ${renderMobileFeatureFocus(cat, selectedTier, matrix)}
+      <div class="comparison-swipe-hint">Full comparison</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
