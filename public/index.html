@@ -2868,10 +2868,17 @@ function toggleCategory(catId) {
   updateCustomerStickyOffset();
   const card = document.getElementById('cat-' + catId);
   const shouldOpen = !card.classList.contains('open');
+  const headerTopBefore = card.getBoundingClientRect().top;
   document.querySelectorAll('.category-card.open').forEach(openCard => {
     if (openCard !== card) openCard.classList.remove('open');
   });
   card.classList.toggle('open', shouldOpen);
+  if (shouldOpen) {
+    requestAnimationFrame(() => {
+      const headerTopAfter = card.getBoundingClientRect().top;
+      window.scrollBy(0, headerTopAfter - headerTopBefore);
+    });
+  }
 }
 
 function collapseAll() {

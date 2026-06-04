@@ -54,6 +54,81 @@ test.describe('Budget Planner', () => {
     await expect(page.locator('.category-card.open')).toHaveCount(0);
   });
 
+  test('accordion keeps clicked category anchored when a long category collapses', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      CONFIGS.residential = {
+        categories: [
+          {
+            id: 'networking',
+            section: 'Infrastructure',
+            section_id: 'infrastructure',
+            name: 'Whole-Home WiFi & Networking',
+            icon: '📡',
+            desc: 'Enterprise-grade WiFi coverage',
+            sizeScale: 0,
+            presentationMode: 'matrix',
+            featureMatrix: Array.from({ length: 42 }, (_, index) => ({
+              id: `networking-scroll-${index}`,
+              label: `Network feature ${index + 1}`,
+              tierStatus: { good: 'included', standard: 'addon', better: 'included', best: 'included' }
+            })),
+            tiers: {
+              good: { price: 1000, label: 'Good', tag: 'Good', features: [], brands: '' },
+              standard: { price: 1500, label: 'Standard', tag: 'Standard', features: [], brands: '' },
+              better: { price: 2000, label: 'Better', tag: 'Better', features: [], brands: '' },
+              best: { price: 3000, label: 'Best', tag: 'Best', features: [], brands: '' }
+            }
+          },
+          {
+            id: 'surveillance',
+            section: 'Infrastructure',
+            section_id: 'infrastructure',
+            name: 'Surveillance & Security Cameras',
+            icon: '📹',
+            desc: 'Camera coverage',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 800, label: 'Good', tag: 'Good', features: ['Entry cameras'], brands: '' },
+              better: { price: 1600, label: 'Better', tag: 'Better', features: ['More cameras'], brands: '' }
+            }
+          }
+        ],
+        sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.selections = { networking: 'better', surveillance: null };
+      state.catMods = { networking: { name: '', amount: 0 }, surveillance: { name: '', amount: 0 } };
+      renderCategories();
+      document.getElementById('cat-networking').classList.add('open');
+
+      const targetCard = document.getElementById('cat-surveillance');
+      const targetHeader = targetCard.querySelector('.category-header');
+      targetHeader.scrollIntoView({ block: 'center' });
+      await new Promise(requestAnimationFrame);
+      const beforeTop = targetHeader.getBoundingClientRect().top;
+      targetHeader.click();
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const afterTop = targetHeader.getBoundingClientRect().top;
+
+      return {
+        beforeTop,
+        afterTop,
+        openCount: document.querySelectorAll('.category-card.open').length,
+        surveillanceOpen: targetCard.classList.contains('open'),
+        networkingOpen: document.getElementById('cat-networking').classList.contains('open'),
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4
+      };
+    });
+
+    expect(result.openCount).toBe(1);
+    expect(result.surveillanceOpen).toBe(true);
+    expect(result.networkingOpen).toBe(false);
+    expect(Math.abs(result.afterTop - result.beforeTop)).toBeLessThanOrEqual(2);
+    expect(result.overflow).toBe(false);
+  });
+
   test('renders comparison matrix categories with selected tier highlight', async ({ page }) => {
     const result = await page.evaluate(() => {
       CONFIGS.residential = {
