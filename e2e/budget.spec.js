@@ -323,6 +323,48 @@ test.describe('Budget Planner', () => {
     expect(result.overflow).toBe(false);
   });
 
+  test('comparison matrix feature descriptions open popovers on desktop and mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: '📡',
+          desc: 'Enterprise-grade WiFi coverage',
+          sizeScale: 0,
+          presentationMode: 'matrix',
+          featureMatrix: [{
+            id: 'wifi-coverage',
+            label: 'Whole-home WiFi coverage',
+            description: 'Reliable wireless coverage throughout the home.',
+            tierStatus: { good: 'included', standard: 'included', better: 'included', best: 'included' }
+          }],
+          tiers: {
+            good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
+            better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage'], brands: 'Brand B' }
+          }
+        }],
+        sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.selections = { networking: 'better' };
+      renderCategories();
+      document.getElementById('cat-networking').classList.add('open');
+    });
+
+    await page.locator('.matrix-feature-label.has-description').click();
+    await expect(page.locator('.matrix-feature-popover')).toContainText('Reliable wireless coverage');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('body').click({ position: { x: 5, y: 5 } });
+    await page.locator('.comparison-mobile-focus .mobile-feature-compare-title.has-description').click();
+    await expect(page.locator('.matrix-feature-popover')).toContainText('Reliable wireless coverage');
+  });
+
   test('priced comparison add-ons can be toggled and saved in state', async ({ page }) => {
     const result = await page.evaluate(() => {
       CONFIGS.residential = {

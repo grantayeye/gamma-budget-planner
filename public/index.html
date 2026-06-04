@@ -1030,6 +1030,12 @@ main {
   text-underline-offset: 4px;
   cursor: help;
 }
+.matrix-feature-label.has-description:focus-visible,
+.mobile-feature-compare-title.has-description:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
 .matrix-check {
   display: inline-flex;
   align-items: center;
@@ -2631,6 +2637,10 @@ function showMatrixFeatureDescription(event, trigger) {
   }, 0);
 }
 
+function hideMatrixFeatureDescription() {
+  document.querySelectorAll('.matrix-feature-popover').forEach(el => el.remove());
+}
+
 function renderFeatureComparison(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
   const tiers = orderedTierKeys(cat.tiers);
@@ -2669,7 +2679,7 @@ function renderFeatureComparison(cat, selectedTier) {
             ${matrix.length ? matrix.map(feature => `
               <tr>
                 <td>
-                  <span class="matrix-feature-label ${feature.description ? 'has-description' : ''}" ${feature.description ? `title="${escapeAttr(feature.description)}"` : ''}>
+                  <span class="matrix-feature-label ${feature.description ? 'has-description' : ''}" ${feature.description ? `tabindex="0" role="button" aria-label="${escapeAttr(`${feature.label}: ${feature.description}`)}" title="${escapeAttr(feature.description)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)" onmouseenter="showMatrixFeatureDescription(event, this)" onmouseleave="hideMatrixFeatureDescription()" onfocus="showMatrixFeatureDescription(event, this)" onblur="hideMatrixFeatureDescription()"` : ''}>
                     ${escapeHtml(feature.label)}
                   </span>
                 </td>
