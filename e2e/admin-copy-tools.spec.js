@@ -35,6 +35,40 @@ test.describe('Admin copy/customization tools', () => {
     ]);
   });
 
+  test('budget list actions stay aligned and ordered on desktop', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const result = await page.evaluate(() => {
+      budgets = [{
+        id: 'act123',
+        clientName: 'Action QA',
+        builder: 'Gamma',
+        status: 'active',
+        currentTotal: 12000,
+        created: new Date().toISOString(),
+        clientViews: 0,
+        internalViews: 0,
+        activeBrowserCount: 0,
+        versionCount: 1,
+        lastClientActivity: null
+      }];
+      renderBudgets();
+      const row = document.querySelector('#budgetTableBody tr');
+      const cell = row.querySelector('.actions-cell');
+      const rowRect = row.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const style = getComputedStyle(cell);
+      return {
+        texts: [...cell.querySelectorAll('button')].map(button => button.textContent.trim()),
+        alignItems: style.alignItems,
+        sameVerticalBand: cellRect.top >= rowRect.top && cellRect.bottom <= rowRect.bottom + 1
+      };
+    });
+
+    expect(result.texts).toEqual(['Details', 'Edit', 'Clone', 'Delete']);
+    expect(result.alignItems).toBe('center');
+    expect(result.sameVerticalBand).toBe(true);
+  });
+
   test('category editor creates stable section ids for typed new headers', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {
@@ -254,6 +288,58 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.betterPrice).toBe(2400);
     expect(result.betterFeatures).toEqual(['WiFi coverage']);
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
+  });
+
+  test('switching matrix back to feature list preserves matrix descriptions and tier scale overrides', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: 'W',
+          sizeScale: 0.8,
+          tiers: {
+            good: { price: 1000, label: 'Good', features: ['WiFi coverage'], brands: 'Brand A' },
+            better: { price: 2000, label: 'Better', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand B' }
+          }
+        }],
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+      const card = document.querySelector('.cat-editor-card[data-cat-idx="0"]');
+      card.classList.add('open');
+      const select = card.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'networking');
+
+      const upsRow = [...card.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
+      upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
+      card.querySelector('.feature-matrix-tier-card[data-tier="better"] .matrix-tier-scale').value = '0.4';
+
+      select.value = 'list';
+      setMatrixMode(select, 'networking');
+      collectCategoryEditorData();
+      const cat = catData.residential_categories[0];
+      return {
+        mode: cat.presentationMode,
+        description: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.description,
+        betterScale: cat.tiers.better.sizeScale,
+        betterFeatures: cat.tiers.better.features
+      };
+    });
+
+    expect(result.mode).toBe('list');
+    expect(result.description).toBe('Keeps the network alive during short power outages.');
+    expect(result.betterScale).toBe(0.4);
+    expect(result.betterFeatures).toEqual(['WiFi coverage', 'UPS backup']);
   });
 
   test('customize category comparison matrix is collected with generated legacy features', async ({ page }) => {

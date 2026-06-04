@@ -529,6 +529,10 @@
     .actions-cell {
       display: flex;
       gap: 6px;
+      align-items: center;
+      justify-content: flex-start;
+      flex-wrap: nowrap;
+      white-space: nowrap;
     }
     
     .btn-small {
@@ -1045,6 +1049,19 @@
       min-width: 150px;
     }
 
+    .customize-editor-mode-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 12px;
+    }
+
+    .customize-editor-mode-row .customize-view-control {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
     .customize-item-move-buttons {
       display: inline-grid;
       grid-template-columns: 34px 34px;
@@ -1319,6 +1336,10 @@
         width: 100%;
         min-width: 0;
         max-width: none !important;
+      }
+
+      .customize-editor-mode-row {
+        display: block;
       }
 
       .customize-item-move-buttons {
@@ -2705,9 +2726,9 @@ function renderBudgets() {
       <td>${b.lastClientActivity ? formatRelative(b.lastClientActivity) : '<span style="color:var(--text-light);">Never</span>'}</td>
       <td class="actions-cell">
         <button class="btn btn-secondary btn-small" onclick="viewBudget('${b.id}')">Details</button>
+        <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">Edit</button>
         <button class="btn btn-secondary btn-small" onclick="cloneBudget('${b.id}')">Clone</button>
-        <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">⚙️</button>
-        <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">🗑️</button>
+        <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">Delete</button>
       </td>
     </tr>
   `;}).join('');
@@ -2753,8 +2774,8 @@ function renderBudgets() {
           </div>
           <div class="budget-mobile-actions">
             <button class="btn btn-secondary btn-small" onclick="viewBudget('${b.id}')">Details</button>
+            <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">Edit</button>
             <button class="btn btn-secondary btn-small" onclick="cloneBudget('${b.id}')">Clone</button>
-            <button class="btn btn-small" style="background:#E3F2FD;color:#1565C0;" onclick="openCustomizeModal('${b.id}')">Customize</button>
             <button class="btn btn-small" style="background:#FFF3E0;color:#E65100;" onclick="deleteBudget('${b.id}')">Delete</button>
           </div>
         </div>
@@ -2875,6 +2896,18 @@ function getCategoryPresentationMode(cat = {}, override = {}) {
   return (override.presentationMode || cat.presentationMode) === 'matrix' ? 'matrix' : 'list';
 }
 
+function renderPresentationModeControl(presentationMode, catId, selectStyle = 'padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:white;') {
+  return `
+    <label class="customize-view-control">
+      View
+      <select class="presentation-mode-select" onchange="setMatrixMode(this, '${escapeAttr(catId)}')" style="${selectStyle}">
+        <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
+        <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
+      </select>
+    </label>
+  `;
+}
+
 function buildFeatureMatrixFromTiers(tiers = {}) {
   const rowsByLabel = new Map();
   TIER_ORDER.forEach(tierKey => {
@@ -2917,7 +2950,7 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER) {
     return `
       <tr class="feature-matrix-empty-row">
         <td colspan="${tierKeys.length + 2}" class="feature-matrix-empty">
-          No comparison rows yet. Convert current features or add a feature.
+          No comparison rows yet. Build from the feature list or add a feature.
         </td>
       </tr>
     `;
@@ -2957,7 +2990,7 @@ function getMatrixTierModels(cat = {}, override = {}, options = {}) {
     const existsInBase = !!defaultTier;
     const enabled = existsInBase ? tierOverride.enabled !== false : tierOverride.enabled === true;
     const basePrice = defaultTier?.price || 0;
-    const tierSizeScale = defaultTier?.sizeScale ?? categoryScale;
+    const tierSizeScale = tierOverride.sizeScale ?? defaultTier?.sizeScale ?? categoryScale;
     const scaledPrice = options.scalePrices && basePrice ? getScaledPrice(basePrice, sqft, tierSizeScale) : basePrice;
     return {
       tierKey,
@@ -2965,6 +2998,7 @@ function getMatrixTierModels(cat = {}, override = {}, options = {}) {
       existsInBase,
       label: tierOverride.label ?? (defaultTier?.label || TIER_NAMES[tierKey]),
       price: tierOverride.price ?? scaledPrice,
+      sizeScale: tierOverride.sizeScale ?? defaultTier?.sizeScale ?? '',
       brands: tierOverride.brands ?? (defaultTier?.brands || '')
     };
   });
@@ -2988,6 +3022,7 @@ function renderMatrixTierHeader(tierModels = []) {
             </div>
             <input type="text" class="matrix-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${TIER_NAMES[tier.tierKey]} label">
             <input type="number" class="matrix-tier-price" value="${Number(tier.price) || 0}" min="0" step="100" placeholder="Price">
+            <input type="number" class="matrix-tier-scale" value="${tier.sizeScale ?? ''}" min="0" max="2" step="0.1" placeholder="Scale">
           </div>
         </th>
       `).join('')}
@@ -3074,6 +3109,10 @@ function convertCategoryFeaturesToMatrix(button) {
   const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor');
   const list = editor?.querySelector('.feature-matrix-list');
   if (!editor || !list) return;
+  const existingMatrix = readFeatureMatrixFromContainer(list);
+  if (existingMatrix.length && !confirm('Rebuild the comparison table from the current feature lists? Existing comparison rows, add-on settings, and descriptions will be replaced.')) {
+    return;
+  }
   list.innerHTML = renderFeatureMatrixRows(buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor)));
   const select = editor.querySelector('.presentation-mode-select');
   if (select) select.value = 'matrix';
@@ -3167,11 +3206,14 @@ function syncMatrixRowsToCards(editor) {
     const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
     const labelInput = card.querySelector('.matrix-tier-label');
     const priceInput = card.querySelector('.matrix-tier-price');
+    const scaleInput = card.querySelector('.matrix-tier-scale');
     if (!row) return;
     const rowLabel = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value;
     const rowPrice = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value;
+    const rowScale = row.querySelector('[data-tf="sizeScale"]')?.value;
     if (labelInput && rowLabel !== undefined) labelInput.value = rowLabel;
     if (priceInput && rowPrice !== undefined) priceInput.value = rowPrice;
+    if (scaleInput && rowScale !== undefined) scaleInput.value = rowScale;
   });
 }
 
@@ -3190,7 +3232,7 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
   const selectors = editor?.classList.contains('custom-category-editor')
     ? { enabled: '.cc-tier-enabled', label: '.cc-tier-label', price: '.cc-tier-price', disable: 'input:not(.cc-tier-enabled), button:not(.tier-swap-btn)' }
     : (editor?.classList.contains('cat-editor-card')
-      ? { enabled: null, label: '[data-tf="label"]', price: '[data-tf="price"]', disable: 'input, button' }
+      ? { enabled: null, label: '[data-tf="label"]', price: '[data-tf="price"]', sizeScale: '[data-tf="sizeScale"]', disable: 'input, button' }
       : { enabled: '.tier-enabled', label: '.tier-label', price: '.tier-price', disable: 'input:not(.tier-enabled), button:not(.tier-swap-btn)' });
   swapTierRows(
     editor?.querySelector(`${rowSelector}[data-tier="${tierKey}"]`),
@@ -3226,10 +3268,13 @@ function syncMatrixTierCardsToRows(editor) {
     if (enabled) enabled.checked = matrixEnabled;
     const labelInput = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]');
     const priceInput = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]');
+    const scaleInput = row.querySelector('[data-tf="sizeScale"]');
     const matrixLabel = card.querySelector('.matrix-tier-label')?.value;
     const matrixPrice = card.querySelector('.matrix-tier-price')?.value;
+    const matrixScale = card.querySelector('.matrix-tier-scale')?.value;
     if (labelInput && matrixLabel !== undefined) labelInput.value = matrixLabel;
     if (priceInput && matrixPrice !== undefined) priceInput.value = matrixPrice;
+    if (scaleInput && matrixScale !== undefined) scaleInput.value = matrixScale;
   });
 }
 
@@ -3239,7 +3284,15 @@ function buildMatrixCategoryFromEditor(editor) {
     const tierKey = row.dataset.tier;
     const label = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value || TIER_NAMES[tierKey];
     const price = parseInt(row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value) || 0;
-    tiers[tierKey] = { label, price, features: [], brands: row.dataset.brands || '' };
+    const scaleInput = row.querySelector('[data-tf="sizeScale"]');
+    const sizeScale = scaleInput?.value?.trim();
+    tiers[tierKey] = {
+      label,
+      price,
+      ...(sizeScale ? { sizeScale: parseFloat(sizeScale) || 0 } : {}),
+      features: [],
+      brands: row.dataset.brands || ''
+    };
   });
   return { id: editor?.dataset.catId || editor?.dataset.ccId || '', tiers };
 }
@@ -3301,7 +3354,7 @@ function renderFeatureMatrixEditorPanel(cat, override = {}, options = {}) {
           <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Feature rows become the customer comparison table. Included rows are also saved back to legacy tier feature lists.</div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-          <button type="button" class="btn btn-secondary btn-small" onclick="convertCategoryFeaturesToMatrix(this)">Convert current features</button>
+          <button type="button" class="btn btn-secondary btn-small" onclick="convertCategoryFeaturesToMatrix(this)">Build comparison from feature list</button>
         </div>
       </div>
       <div class="feature-matrix-table-wrap">
@@ -4808,10 +4861,13 @@ function readTierRowData(row, selectors) {
     features = categories?.[idx]?.tiers?.[row.dataset.tier]?.features || [];
   }
   const brandsInput = row.querySelector('[data-tf="brands"]');
+  const scaleInput = selectors.sizeScale ? row.querySelector(selectors.sizeScale) : null;
+  const sizeScaleValue = scaleInput?.value?.trim();
   return {
     enabled: selectors.enabled ? (row.querySelector(selectors.enabled)?.checked ?? true) : true,
     label: row.querySelector(selectors.label)?.value || '',
     price: parseInt(row.querySelector(selectors.price)?.value) || 0,
+    ...(sizeScaleValue ? { sizeScale: parseFloat(sizeScaleValue) || 0 } : {}),
     features,
     brands: row.dataset.brands || brandsInput?.value || ''
   };
@@ -4826,6 +4882,8 @@ function writeTierRowData(row, data, selectors) {
   if (labelEl) labelEl.value = data.label || '';
   const priceEl = row.querySelector(selectors.price);
   if (priceEl) priceEl.value = data.price || '';
+  const scaleEl = selectors.sizeScale ? row.querySelector(selectors.sizeScale) : null;
+  if (scaleEl) scaleEl.value = data.sizeScale ?? '';
   row.dataset.features = JSON.stringify(data.features || []);
   row.dataset.brands = data.brands || '';
   const brandsEl = row.querySelector('[data-tf="brands"]');
@@ -4857,9 +4915,7 @@ function readTierRowsFromEditor(editor, rowSelector, selectors, options = {}) {
 }
 
 function readMatrixForPresentationMode(editor, presentationMode) {
-  return presentationMode === 'matrix'
-    ? readFeatureMatrixFromContainer(editor?.querySelector('.feature-matrix-list'))
-    : [];
+  return readFeatureMatrixFromContainer(editor?.querySelector('.feature-matrix-list'));
 }
 
 function applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode) {
@@ -4875,7 +4931,7 @@ function withPresentationPayload(payload, presentationMode, featureMatrix) {
   const cleanPayload = { ...payload, presentationMode };
   delete cleanPayload.tierOrder;
   delete cleanPayload.tier_order;
-  if (presentationMode === 'matrix' && featureMatrix.length) {
+  if (featureMatrix.length) {
     cleanPayload.featureMatrix = featureMatrix;
   } else {
     delete cleanPayload.featureMatrix;
@@ -5360,13 +5416,6 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
         </div>
         <div class="category-editor-actions">
           ${layoutControlsHtml}
-          <label class="customize-view-control">
-            View
-            <select class="presentation-mode-select" onchange="setMatrixMode(this, '${cat.id}')" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;">
-              <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
-              <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
-            </select>
-          </label>
           <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
           <label class="customize-show-control" style="${isLocked ? 'opacity:0.5;' : ''}">
             <input type="checkbox"
@@ -5379,6 +5428,9 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
         </div>
       </div>
       <div class="customize-editor-body">
+        <div class="customize-editor-mode-row">
+          ${renderPresentationModeControl(presentationMode, cat.id, 'padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;')}
+        </div>
         <div class="tier-editors" style="display:${isHidden || presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
           ${allTiers.map(tierKey => {
             const defaultTier = cat.tiers[tierKey];
@@ -5464,19 +5516,15 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
         <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
         <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
         ${layoutControlsHtml}
-        <label class="customize-view-control">
-          View
-          <select class="presentation-mode-select" onchange="setMatrixMode(this, '${escapeAttr(cc.id || `custom-${index}`)}')" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:white;">
-            <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
-            <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
-          </select>
-        </label>
         <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
         <button type="button" class="btn btn-secondary btn-small customize-clone-btn" onclick="cloneCustomCategory(${index})">Clone</button>
         <button type="button" class="btn btn-secondary btn-small customize-collapse-btn" onclick="toggleCustomizeEditorCollapsed(this)" aria-expanded="false">Edit</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
       </div>
       <div class="customize-editor-body">
+        <div class="customize-editor-mode-row">
+          ${renderPresentationModeControl(presentationMode, cc.id || `custom-${index}`)}
+        </div>
         <div class="cc-tiers" style="display:${presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
           ${allTiers.map(tierKey => {
             const tier = cc.tiers?.[tierKey] || {};
@@ -6769,6 +6817,7 @@ function collectCategoryEditorData() {
         enabled: null,
         label: '[data-tf="label"]',
         price: '[data-tf="price"]',
+        sizeScale: '[data-tf="sizeScale"]',
         disable: 'input, button'
       });
       Object.entries(tierPayload).forEach(([tk, tier]) => {
@@ -6784,6 +6833,8 @@ function collectCategoryEditorData() {
         cat.tiers[tk].label = tier.label || TIER_LABELS[tk];
         cat.tiers[tk].price = tier.price || 0;
         cat.tiers[tk].brands = tier.brands || '';
+        if (tier.sizeScale !== undefined) cat.tiers[tk].sizeScale = tier.sizeScale;
+        else delete cat.tiers[tk].sizeScale;
       });
     }
     
@@ -6817,7 +6868,9 @@ function collectCategoryEditorData() {
         cat.tiers[tk].features = legacyFeaturesFromMatrix(cat.featureMatrix, tk);
       });
     } else {
-      delete cat.featureMatrix;
+      const preservedMatrix = readFeatureMatrixFromContainer(card.querySelector('.feature-matrix-list'));
+      if (preservedMatrix.length) cat.featureMatrix = preservedMatrix;
+      else delete cat.featureMatrix;
     }
   });
   

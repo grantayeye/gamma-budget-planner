@@ -427,7 +427,7 @@ async function saveBudget(budget) {
     row.created_by_email = budget.createdByEmail;
   }
   const { error } = await supabase.from('budgets').upsert(row);
-  if (error) console.error('saveBudget error:', error);
+  throwSupabaseError(error, 'saveBudget');
 }
 
 async function listBudgets() {
@@ -563,7 +563,7 @@ async function addVersion(budgetId, versionNum, state, note, isPinned, meta = nu
       is_pinned: !!isPinned
     });
 
-  if (error) console.error('addVersion error:', error);
+  throwSupabaseError(error, 'addVersion');
 }
 
 // ============================================================
@@ -668,6 +668,11 @@ const schemas = {
     clientName: z.string().max(200).optional().nullable()
   }),
 
+  customizeBudget: z.object({
+    categoryConfig: z.record(z.string(), z.any()),
+    customCategories: z.array(z.any())
+  }).strict(),
+
   createLink: z.object({
     config: z.string().min(1).max(5000),
     clientName: z.string().max(200).optional().nullable(),
@@ -713,6 +718,13 @@ const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
 
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function throwSupabaseError(error, context) {
+  if (!error) return;
+  const err = new Error(`${context}: ${error.message || 'Supabase write failed'}`);
+  err.cause = error;
+  throw err;
 }
 
 function splitFeatureLines(features) {
@@ -777,9 +789,7 @@ function normalizeTierPayload(tier = {}) {
 function normalizePresentationPayload(payload = {}) {
   const normalized = deepClone(payload || {}) || {};
   const presentationMode = normalized.presentationMode === 'matrix' ? 'matrix' : 'list';
-  const featureMatrix = presentationMode === 'matrix'
-    ? normalizeFeatureMatrixPayload(normalized.featureMatrix || [])
-    : [];
+  const featureMatrix = normalizeFeatureMatrixPayload(normalized.featureMatrix || []);
   const tiers = {};
   TIER_KEYS.forEach(tierKey => {
     if (!normalized.tiers?.[tierKey]) return;
@@ -792,7 +802,7 @@ function normalizePresentationPayload(payload = {}) {
   normalized.presentationMode = presentationMode;
   delete normalized.tierOrder;
   delete normalized.tier_order;
-  if (presentationMode === 'matrix' && featureMatrix.length) {
+  if (featureMatrix.length) {
     normalized.featureMatrix = featureMatrix;
   } else {
     delete normalized.featureMatrix;
@@ -813,10 +823,56 @@ function normalizeCategoryConfigPayload(categoryConfig = {}) {
   return normalized;
 }
 
+function mergeCategoryConfigPayload(baseConfig = {}, incomingConfig = {}) {
+  const merged = deepClone(baseConfig || {}) || {};
+  Object.entries(incomingConfig || {}).forEach(([key, value]) => {
+    if (key.startsWith('__') || !value || typeof value !== 'object') {
+      merged[key] = deepClone(value);
+      return;
+    }
+    const current = merged[key] && typeof merged[key] === 'object' ? merged[key] : {};
+    merged[key] = {
+      ...deepClone(current),
+      ...deepClone(value)
+    };
+    if (current.tiers || value.tiers) {
+      merged[key].tiers = {
+        ...(current.tiers || {}),
+        ...(value.tiers || {})
+      };
+    }
+    if (current.featureMatrix && !value.featureMatrix) {
+      merged[key].featureMatrix = current.featureMatrix;
+    }
+  });
+  return normalizeCategoryConfigPayload(merged);
+}
+
 function normalizeCustomCategoriesPayload(customCategories = []) {
   return (Array.isArray(customCategories) ? customCategories : [])
     .map(category => normalizePresentationPayload(category))
     .filter(category => category.id && category.name && Object.keys(category.tiers || {}).length > 0);
+}
+
+function mergeCustomCategoriesPayload(existingCategories = [], incomingCategories = []) {
+  const existingById = new Map((existingCategories || []).map(category => [category.id, category]));
+  return normalizeCustomCategoriesPayload((incomingCategories || []).map(category => {
+    const existing = existingById.get(category?.id) || {};
+    const merged = {
+      ...deepClone(existing),
+      ...deepClone(category || {})
+    };
+    if (existing.tiers || category?.tiers) {
+      merged.tiers = {
+        ...(existing.tiers || {}),
+        ...(category?.tiers || {})
+      };
+    }
+    if (existing.featureMatrix && !category?.featureMatrix) {
+      merged.featureMatrix = existing.featureMatrix;
+    }
+    return merged;
+  }));
 }
 
 function slugifySectionId(value) {
@@ -1417,7 +1473,7 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
     
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
     }
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
@@ -1654,7 +1710,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
     }
     console.error('Create budget error:', err);
     res.status(500).json({ error: 'Failed to create budget' });
@@ -1739,11 +1795,12 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     
     if (normalizeState(lastVersion.state) === normalizeState(data.state)) {
       if (data.pin && !lastVersion.pinned) {
-        await supabase
+        const { error: pinError } = await supabase
           .from('budget_versions')
           .update({ is_pinned: true, note: data.note || lastVersion.note })
           .eq('budget_id', req.params.id)
           .eq('version_number', lastVersion.version);
+        throwSupabaseError(pinError, 'pinVersion');
         return res.json({ success: true, message: 'Version pinned', versionCount: budget.versions.length });
       }
       return res.json({ success: true, message: 'No changes detected', versionCount: budget.versions.length });
@@ -1757,11 +1814,12 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     const versionMeta = buildVersionMeta(req, user);
 
     if (!isNewVersion) {
-      await supabase
+      const { error: versionUpdateError } = await supabase
         .from('budget_versions')
         .update({ state: withVersionMeta(data.state, versionMeta), created_at: nowISO })
         .eq('budget_id', req.params.id)
         .eq('version_number', lastVersion.version);
+      throwSupabaseError(versionUpdateError, 'updateVersion');
     } else {
       const newVersionNum = budget.versions.length + 1;
       await addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin, versionMeta);
@@ -1801,7 +1859,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
     }
     console.error('Update budget error:', err);
     res.status(500).json({ error: 'Failed to update budget' });
@@ -2042,7 +2100,7 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     res.json({ success: true, budget: updatedBudget });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
     }
     console.error('Update project details error:', err);
     res.status(500).json({ error: 'Failed to update project details' });
@@ -2062,10 +2120,11 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
     const newVersionNum = budget.versions.length + 1;
     await addVersion(req.params.id, newVersionNum, restoredState, `Restored to version ${versionNum}`, true, buildVersionMeta(req, req.user));
     
-    await supabase
+    const { error: restoreError } = await supabase
       .from('budgets')
       .update({ current_state: restoredState, modified_at: new Date().toISOString() })
       .eq('id', req.params.id);
+    throwSupabaseError(restoreError, 'restoreBudget');
     
     res.json({ success: true, newVersion: newVersionNum });
     
@@ -2078,8 +2137,10 @@ app.post('/api/admin/budgets/:id/restore/:version', requireAuth, async (req, res
 app.delete('/api/admin/budgets/:id', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
-    await supabase.from('budget_views').delete().eq('budget_id', id);
-    await supabase.from('budget_versions').delete().eq('budget_id', id);
+    const { error: viewsDeleteError } = await supabase.from('budget_views').delete().eq('budget_id', id);
+    throwSupabaseError(viewsDeleteError, 'deleteBudgetViews');
+    const { error: versionsDeleteError } = await supabase.from('budget_versions').delete().eq('budget_id', id);
+    throwSupabaseError(versionsDeleteError, 'deleteBudgetVersions');
     const { error } = await supabase.from('budgets').delete().eq('id', id);
     if (error) return res.status(404).json({ error: 'Budget not found' });
     res.json({ success: true });
@@ -2174,7 +2235,7 @@ app.post('/api/admin/budgets/:id/clone', requireAuth, async (req, res) => {
     res.json({ success: true, id, url: `/b/${id}`, budget: cloned });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
     }
     console.error('Clone budget error:', err);
     res.status(500).json({ error: 'Failed to clone budget' });
@@ -2183,7 +2244,7 @@ app.post('/api/admin/budgets/:id/clone', requireAuth, async (req, res) => {
 
 app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
   try {
-    const data = req.body;
+    const data = schemas.customizeBudget.parse(req.body);
     const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
     
@@ -2192,12 +2253,12 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     const sqftLocked = budget.currentState?.homeSize || budget.versions[0]?.state?.homeSize;
     const propertyTypeLocked = budget.currentState?.propertyType || budget.versions[0]?.state?.propertyType;
     const defaults = await loadCategoryDefaultsData();
-    const categoryConfig = normalizeCategoryConfigPayload({
+    const baseCategoryConfig = normalizeCategoryConfigPayload({
       ...buildBudgetDefaultSnapshot(defaults),
-      ...(budget.categoryConfig || {}),
-      ...(data.categoryConfig || {})
+      ...(budget.categoryConfig || {})
     });
-    const customCategories = normalizeCustomCategoriesPayload(data.customCategories || []);
+    const categoryConfig = mergeCategoryConfigPayload(baseCategoryConfig, data.categoryConfig);
+    const customCategories = mergeCustomCategoriesPayload(budget.customCategories || [], data.customCategories);
     currentState.total = calculateBudgetTotal(currentState, defaults, {
       sqft: sqftLocked,
       propertyType: propertyTypeLocked,
@@ -2206,7 +2267,7 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
       customCategories
     });
     
-    await supabase
+    const { error: updateError } = await supabase
       .from('budgets')
       .update({
         is_customized: true,
@@ -2219,14 +2280,17 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
         modified_at: now
       })
       .eq('id', req.params.id);
-    
-    // Wipe versions and create fresh one
-    await supabase.from('budget_versions').delete().eq('budget_id', req.params.id);
-    await addVersion(req.params.id, 1, currentState, 'Customization applied', true, buildVersionMeta(req, req.user));
-    
-    res.json({ success: true, message: 'Budget customized successfully', versionsWiped: true });
+    throwSupabaseError(updateError, 'customizeBudget');
+
+    const nextVersionNum = (budget.versions?.length || 0) + 1;
+    await addVersion(req.params.id, nextVersionNum, currentState, 'Customization applied', true, buildVersionMeta(req, req.user));
+
+    res.json({ success: true, message: 'Budget customized successfully', newVersion: nextVersionNum });
     
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
+    }
     console.error('Customize budget error:', err);
     res.status(500).json({ error: 'Failed to customize budget' });
   }
@@ -2261,7 +2325,7 @@ app.post('/api/shorten', limits.api, async (req, res) => {
     
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: err.errors });
+      return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
     }
     console.error('Shorten error:', err);
     res.status(500).json({ error: 'Failed to create short link' });
@@ -2407,9 +2471,10 @@ app.post('/api/debug', (req, res) => {
 // ============================================================
 app.use((err, req, res, next) => {
   if (err instanceof z.ZodError) {
+    const issues = err.issues || err.errors || [];
     return res.status(400).json({ 
       error: 'Validation failed', 
-      details: err.errors.map(e => `${e.path.join('.')}: ${e.message}`)
+      details: issues.map(e => `${e.path.join('.')}: ${e.message}`)
     });
   }
   console.error('Unhandled error:', err);

@@ -336,12 +336,13 @@ test.describe('Mobile responsive layout', () => {
       const copyGrid = document.querySelector('.copy-section-grid');
       const defaultEditor = document.querySelector('.category-editor[data-cat-id="networking"]');
       const customEditor = document.querySelector('.custom-category-editor[data-cc-id="custom-1"]');
-      const viewControl = defaultEditor.querySelector('.customize-view-control');
-      const viewSelect = viewControl.querySelector('select');
+      const headerViewControl = defaultEditor.querySelector('.category-editor-actions .customize-view-control');
       const collapseButton = defaultEditor.querySelector('.customize-collapse-btn');
       const collapsedBodyDisplay = getComputedStyle(defaultEditor.querySelector('.customize-editor-body')).display;
       collapseButton.click();
       const expandedBodyDisplay = getComputedStyle(defaultEditor.querySelector('.customize-editor-body')).display;
+      const viewControl = defaultEditor.querySelector('.customize-editor-body .customize-view-control');
+      const viewSelect = viewControl.querySelector('select');
       return {
         modalOverflow: modal.scrollWidth > modal.clientWidth + 4,
         bodyOverflow: body.scrollWidth > body.clientWidth + 4,
@@ -352,6 +353,7 @@ test.describe('Mobile responsive layout', () => {
         defaultCollapsed: collapsedBodyDisplay === 'none',
         customCollapsed: getComputedStyle(customEditor.querySelector('.customize-editor-body')).display === 'none',
         expanded: expandedBodyDisplay !== 'none',
+        headerViewHidden: !headerViewControl,
         viewControlOverflow: viewControl.scrollWidth > viewControl.clientWidth + 4,
         viewSelectOverflow: viewSelect.scrollWidth > viewSelect.clientWidth + 4,
         headerSelectVisible: !!defaultEditor.querySelector('.customize-item-section'),
@@ -368,6 +370,7 @@ test.describe('Mobile responsive layout', () => {
     expect(result.defaultCollapsed).toBe(true);
     expect(result.customCollapsed).toBe(true);
     expect(result.expanded).toBe(true);
+    expect(result.headerViewHidden).toBe(true);
     expect(result.viewControlOverflow).toBe(false);
     expect(result.viewSelectOverflow).toBe(false);
     expect(result.headerSelectVisible).toBe(true);
@@ -537,6 +540,7 @@ test.describe('Mobile responsive layout', () => {
         tierCardDisplay: getComputedStyle(tierCard).display,
         editableTierLabels: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-label').length,
         editableTierPrices: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-price').length,
+        editableTierScales: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-scale').length,
         editableTierToggles: card.querySelectorAll('.feature-matrix-tier-card .matrix-tier-enabled').length,
         applyButtons: card.querySelectorAll('.fm-apply-right').length,
         bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim()
@@ -551,6 +555,7 @@ test.describe('Mobile responsive layout', () => {
     expect(result.tierCardDisplay).toBe('grid');
     expect(result.editableTierLabels).toBeGreaterThan(0);
     expect(result.editableTierPrices).toBeGreaterThan(0);
+    expect(result.editableTierScales).toBeGreaterThan(0);
     expect(result.editableTierToggles).toBeGreaterThan(0);
     expect(result.applyButtons).toBeGreaterThan(0);
     expect(result.bottomAddButton).toBe('+ Feature');
