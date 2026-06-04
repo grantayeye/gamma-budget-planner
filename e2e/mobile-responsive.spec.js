@@ -636,4 +636,69 @@ test.describe('Mobile responsive layout', () => {
     expect(result.applyButtons).toBeGreaterThan(0);
     expect(result.bottomAddButton).toBe('+ Feature');
   });
+
+  test('customize mobile matrix shows add-on price field after selecting add-on', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/admin');
+    await page.waitForFunction(() => typeof renderCustomizeEditor === 'function');
+
+    const result = await page.evaluate(() => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        sectionId: 'infrastructure',
+        sortOrder: 0,
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: {
+          good: { price: 1000, label: 'Good', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand A' },
+          better: { price: 2000, label: 'Better', features: ['WiFi coverage', 'UPS backup'], brands: 'Brand B' }
+        }
+      };
+      customizeBudgetData = {
+        id: 'mobile-addon-price-budget',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] },
+          __layout: { sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }] }
+        },
+        customCategories: []
+      };
+      document.getElementById('customizeModal').classList.add('active');
+      renderCustomizeEditor();
+      const editor = document.querySelector('.category-editor[data-cat-id="networking"]');
+      editor.classList.add('is-open');
+      const select = editor.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'networking');
+      const row = [...editor.querySelectorAll('.feature-matrix-row')]
+        .find(item => item.querySelector('.fm-label')?.value === 'UPS backup');
+      const status = row.querySelector('.fm-status[data-tier="good"]');
+      status.value = 'addon';
+      updateMatrixAddonPriceVisibility(status);
+      const priceWrap = row.querySelector('.fm-addon-price');
+      const priceInput = row.querySelector('.fm-addon-price-input[data-tier="good"]');
+      const rect = priceWrap.getBoundingClientRect();
+      return {
+        hidden: priceWrap.hidden,
+        display: getComputedStyle(priceWrap).display,
+        width: Math.round(rect.width),
+        gridColumn: getComputedStyle(priceWrap).gridColumnStart,
+        hasInput: !!priceInput,
+        globalPricingInputs: document.querySelectorAll('.cat-editor-card .fm-addon-price-input').length
+      };
+    });
+
+    expect(result.hidden).toBe(false);
+    expect(result.display).not.toBe('none');
+    expect(result.width).toBeGreaterThan(180);
+    expect(result.gridColumn).toBe('2');
+    expect(result.hasInput).toBe(true);
+    expect(result.globalPricingInputs).toBe(0);
+  });
 });
