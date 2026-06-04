@@ -277,6 +277,20 @@ test.describe('Mobile responsive layout', () => {
               better: { price: 2000, label: 'Better', features: ['Better'], brands: 'Brand C' },
               best: { price: 2500, label: 'Best', features: ['Best'], brands: 'Brand D' }
             }
+          },
+          {
+            id: 'surveillance',
+            section: 'Infrastructure',
+            section_id: 'infrastructure',
+            sectionId: 'infrastructure',
+            sortOrder: 1,
+            name: 'Surveillance',
+            icon: '📹',
+            desc: 'Cameras',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 800, label: 'Good', features: ['Good'], brands: 'Brand A' }
+            }
           }
         ],
         residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
@@ -317,13 +331,29 @@ test.describe('Mobile responsive layout', () => {
       const footer = document.querySelector('.customize-actions-sticky');
       const tier = document.querySelector('.customize-tier-row');
       const copyGrid = document.querySelector('.copy-section-grid');
+      const defaultEditor = document.querySelector('.category-editor[data-cat-id="networking"]');
+      const customEditor = document.querySelector('.custom-category-editor[data-cc-id="custom-1"]');
+      const viewControl = defaultEditor.querySelector('.customize-view-control');
+      const viewSelect = viewControl.querySelector('select');
+      const collapseButton = defaultEditor.querySelector('.customize-collapse-btn');
+      const collapsedBodyDisplay = getComputedStyle(defaultEditor.querySelector('.customize-editor-body')).display;
+      collapseButton.click();
+      const expandedBodyDisplay = getComputedStyle(defaultEditor.querySelector('.customize-editor-body')).display;
       return {
         modalOverflow: modal.scrollWidth > modal.clientWidth + 4,
         bodyOverflow: body.scrollWidth > body.clientWidth + 4,
         footerBottom: Math.round(footer.getBoundingClientRect().bottom),
         viewportHeight: window.innerHeight,
         tierColumns: getComputedStyle(tier).gridTemplateColumns.split(' ').length,
-        copyColumns: getComputedStyle(copyGrid).gridTemplateColumns.split(' ').length
+        copyColumns: getComputedStyle(copyGrid).gridTemplateColumns.split(' ').length,
+        defaultCollapsed: collapsedBodyDisplay === 'none',
+        customCollapsed: getComputedStyle(customEditor.querySelector('.customize-editor-body')).display === 'none',
+        expanded: expandedBodyDisplay !== 'none',
+        viewControlOverflow: viewControl.scrollWidth > viewControl.clientWidth + 4,
+        viewSelectOverflow: viewSelect.scrollWidth > viewSelect.clientWidth + 4,
+        headerSelectVisible: !!defaultEditor.querySelector('.customize-item-section'),
+        moveButtonsVisible: [...defaultEditor.querySelectorAll('.customize-item-move-buttons .btn')]
+          .some(button => getComputedStyle(button).visibility !== 'hidden')
       };
     });
 
@@ -332,6 +362,13 @@ test.describe('Mobile responsive layout', () => {
     expect(result.footerBottom).toBeLessThanOrEqual(result.viewportHeight);
     expect(result.tierColumns).toBe(3);
     expect(result.copyColumns).toBe(1);
+    expect(result.defaultCollapsed).toBe(true);
+    expect(result.customCollapsed).toBe(true);
+    expect(result.expanded).toBe(true);
+    expect(result.viewControlOverflow).toBe(false);
+    expect(result.viewSelectOverflow).toBe(false);
+    expect(result.headerSelectVisible).toBe(true);
+    expect(result.moveButtonsVisible).toBe(true);
   });
 
   test('budget details modal keeps close button visible while scrolling on mobile', async ({ page }) => {

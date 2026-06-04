@@ -714,7 +714,7 @@
 
     .custom-category-header {
       display: grid;
-      grid-template-columns: 42px minmax(180px, 1fr) 210px 34px 34px 78px 66px 74px;
+      grid-template-columns: 42px minmax(180px, 1fr) minmax(190px, 230px) 76px 160px 80px 70px 74px 62px;
       gap: 8px;
       align-items: center;
       margin-bottom: 12px;
@@ -1013,6 +1013,16 @@
       justify-content: flex-end;
     }
 
+    .customize-editor-body {
+      display: none;
+      margin-top: 12px;
+    }
+
+    .category-editor.is-open > .customize-editor-body,
+    .custom-category-editor.is-open > .customize-editor-body {
+      display: block;
+    }
+
     .customize-item-header-control {
       display: flex;
       gap: 6px;
@@ -1020,6 +1030,19 @@
       font-size: 12px;
       color: var(--text-light);
       white-space: nowrap;
+    }
+
+    .customize-view-control,
+    .customize-show-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-light);
+    }
+
+    .customize-view-control select {
+      min-width: 150px;
     }
 
     .customize-item-move-buttons {
@@ -1037,7 +1060,7 @@
 
     @media (max-width: 900px) {
       .custom-category-header {
-        grid-template-columns: 42px minmax(160px, 1fr) 190px 34px 34px;
+        grid-template-columns: 42px minmax(160px, 1fr) 190px 76px 160px;
       }
 
       .custom-category-header .btn:nth-last-child(-n+3) {
@@ -1253,7 +1276,7 @@
 
       .category-editor-actions {
         display: grid;
-        grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
         justify-content: stretch;
         align-items: center;
@@ -1279,12 +1302,29 @@
 
       .customize-item-header-control select {
         width: 100%;
+        min-width: 0;
+        max-width: none !important;
+      }
+
+      .customize-view-control {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        white-space: normal;
+      }
+
+      .customize-view-control select {
+        width: 100%;
+        min-width: 0;
         max-width: none !important;
       }
 
       .customize-item-move-buttons {
         grid-template-columns: 44px 44px;
         gap: 8px;
+        justify-content: start;
       }
 
       .customize-item-move-buttons .btn {
@@ -1309,12 +1349,19 @@
         grid-template-columns: 44px minmax(0, 1fr);
       }
 
-      .custom-category-header > label {
+      .custom-category-header > label,
+      .custom-category-header .customize-view-control {
         grid-column: 1 / -1;
       }
 
       .custom-category-header .btn {
         min-height: 38px;
+      }
+
+      .custom-category-header .customize-copy-to-btn,
+      .custom-category-header .customize-clone-btn,
+      .custom-category-header .customize-collapse-btn {
+        width: 100%;
       }
 
       .customize-tier-row {
@@ -5313,83 +5360,86 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
         </div>
         <div class="category-editor-actions">
           ${layoutControlsHtml}
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
+          <label class="customize-view-control">
             View
             <select class="presentation-mode-select" onchange="setMatrixMode(this, '${cat.id}')" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;">
               <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
               <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
             </select>
           </label>
-          <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;${isLocked ? 'opacity:0.5;' : ''}">
+          <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
+          <label class="customize-show-control" style="${isLocked ? 'opacity:0.5;' : ''}">
             <input type="checkbox"
               ${isHidden ? '' : 'checked'}
               ${isLocked ? 'disabled' : ''}
               onchange="toggleCategoryHidden('${cat.id}', !this.checked)"
             > Show
           </label>
+          <button type="button" class="btn btn-secondary btn-small customize-collapse-btn" onclick="toggleCustomizeEditorCollapsed(this)" aria-expanded="false">Edit</button>
         </div>
       </div>
-      <div class="tier-editors" style="display:${isHidden || presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
-        ${allTiers.map(tierKey => {
-          const defaultTier = cat.tiers[tierKey];
-          const tierOverride = override.tiers?.[tierKey] || {};
-          const existsInBase = !!defaultTier;
-          
-          // For tiers that exist in base: enabled by default unless explicitly disabled
-          // For tiers that DON'T exist: disabled by default unless explicitly enabled
-          const isEnabled = existsInBase 
-            ? (tierOverride.enabled !== false)
-            : (tierOverride.enabled === true);
-          
-          const isTierLocked = selectedTier === tierKey;
-          
-          // Get base price and scale it for sqft
-          const basePrice = defaultTier?.price || 0;
-          const tierSizeScale = defaultTier?.sizeScale ?? sizeScale;
-          const scaledPrice = basePrice ? getScaledPrice(basePrice, sqft, tierSizeScale) : 0;
-          
-          // Use override price if set, otherwise use scaled price
-          const price = tierOverride.price ?? scaledPrice;
-          const label = tierOverride.label ?? (defaultTier?.label || tierLabels[tierKey]);
-          
-          // Get features for data attribute (for features editor)
-          const features = tierOverride.features ?? (defaultTier?.features || []);
-          const brands = tierOverride.brands ?? (defaultTier?.brands || '');
-          
-          const showUp = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, -1);
-          const showDown = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, 1);
+      <div class="customize-editor-body">
+        <div class="tier-editors" style="display:${isHidden || presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
+          ${allTiers.map(tierKey => {
+            const defaultTier = cat.tiers[tierKey];
+            const tierOverride = override.tiers?.[tierKey] || {};
+            const existsInBase = !!defaultTier;
 
-          return `
-            <div class="tier-row customize-tier-row" data-tier="${tierKey}"
-                 data-has-base="${existsInBase}" 
-                 data-base-price="${basePrice}"
-                 data-scaled-price="${scaledPrice}"
-                 data-features="${escapeAttr(JSON.stringify(features))}"
-                 data-brands="${escapeAttr(brands)}"
-                 style="background:${existsInBase ? 'white' : '#FFF3E0'};${!isEnabled ? 'opacity:0.5;' : ''}${!existsInBase ? 'border:1px dashed #FFB74D;' : ''}">
-              <label class="customize-tier-name" style="${isTierLocked ? 'opacity:0.5;' : ''}">
-                <input type="checkbox" class="tier-enabled" 
-                  ${isEnabled ? 'checked' : ''} 
-                  ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
-                  onchange="toggleTierEnabled('${cat.id}', '${tierKey}', this.checked)"
-                > ${tierLabels[tierKey]}
-              </label>
-              <input type="text" class="tier-label customize-tier-label" value="${escapeAttr(label)}" placeholder="Label" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
-              <div class="customize-tier-price-wrap" style="position:relative;">
-                <input type="number" class="tier-price customize-tier-price" value="${price}" placeholder="Price" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
-                ${existsInBase && scaledPrice ? `<span style="position:absolute;right:4px;top:-8px;font-size:10px;color:var(--text-light);">base: $${scaledPrice.toLocaleString()}</span>` : ''}
+            // For tiers that exist in base: enabled by default unless explicitly disabled
+            // For tiers that DON'T exist: disabled by default unless explicitly enabled
+            const isEnabled = existsInBase
+              ? (tierOverride.enabled !== false)
+              : (tierOverride.enabled === true);
+
+            const isTierLocked = selectedTier === tierKey;
+
+            // Get base price and scale it for sqft
+            const basePrice = defaultTier?.price || 0;
+            const tierSizeScale = defaultTier?.sizeScale ?? sizeScale;
+            const scaledPrice = basePrice ? getScaledPrice(basePrice, sqft, tierSizeScale) : 0;
+
+            // Use override price if set, otherwise use scaled price
+            const price = tierOverride.price ?? scaledPrice;
+            const label = tierOverride.label ?? (defaultTier?.label || tierLabels[tierKey]);
+
+            // Get features for data attribute (for features editor)
+            const features = tierOverride.features ?? (defaultTier?.features || []);
+            const brands = tierOverride.brands ?? (defaultTier?.brands || '');
+
+            const showUp = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, -1);
+            const showDown = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, 1);
+
+            return `
+              <div class="tier-row customize-tier-row" data-tier="${tierKey}"
+                   data-has-base="${existsInBase}"
+                   data-base-price="${basePrice}"
+                   data-scaled-price="${scaledPrice}"
+                   data-features="${escapeAttr(JSON.stringify(features))}"
+                   data-brands="${escapeAttr(brands)}"
+                   style="background:${existsInBase ? 'white' : '#FFF3E0'};${!isEnabled ? 'opacity:0.5;' : ''}${!existsInBase ? 'border:1px dashed #FFB74D;' : ''}">
+                <label class="customize-tier-name" style="${isTierLocked ? 'opacity:0.5;' : ''}">
+                  <input type="checkbox" class="tier-enabled"
+                    ${isEnabled ? 'checked' : ''}
+                    ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
+                    onchange="toggleTierEnabled('${cat.id}', '${tierKey}', this.checked)"
+                  > ${tierLabels[tierKey]}
+                </label>
+                <input type="text" class="tier-label customize-tier-label" value="${escapeAttr(label)}" placeholder="Label" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+                <div class="customize-tier-price-wrap" style="position:relative;">
+                  <input type="number" class="tier-price customize-tier-price" value="${price}" placeholder="Price" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled ? 'disabled' : ''}>
+                  ${existsInBase && scaledPrice ? `<span style="position:absolute;right:4px;top:-8px;font-size:10px;color:var(--text-light);">base: $${scaledPrice.toLocaleString()}</span>` : ''}
+                </div>
+                <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" style="width:100%;" ${!isEnabled ? 'disabled' : ''}>Features</button>
+                <div class="customize-tier-swap-cell">
+                  <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showUp ? '' : 'is-hidden'}" data-direction="-1" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)" ${showUp ? '' : 'disabled'}>↑</button>
+                  <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showDown ? '' : 'is-hidden'}" data-direction="1" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)" ${showDown ? '' : 'disabled'}>↓</button>
+                </div>
               </div>
-              <button type="button" class="btn btn-secondary btn-small" onclick="editTierFeatures('${cat.id}', '${tierKey}')" style="width:100%;" ${!isEnabled ? 'disabled' : ''}>Features</button>
-              <div class="customize-tier-swap-cell">
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showUp ? '' : 'is-hidden'}" data-direction="-1" title="Swap with previous tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', -1)" ${showUp ? '' : 'disabled'}>↑</button>
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showDown ? '' : 'is-hidden'}" data-direction="1" title="Swap with next tier" onclick="swapTierWithNeighbor('${cat.id}', '${tierKey}', 1)" ${showDown ? '' : 'disabled'}>↓</button>
-              </div>
-            </div>
-          `;
-        }).join('')}
+            `;
+          }).join('')}
+        </div>
+        ${renderFeatureMatrixEditorPanel(cat, override, { sqft, scalePrices: true })}
       </div>
-      ${renderFeatureMatrixEditorPanel(cat, override, { sqft, scalePrices: true })}
     </div>
   `;
 }
@@ -5414,51 +5464,65 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
         <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
         <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
         ${layoutControlsHtml}
-        <select class="presentation-mode-select" onchange="setMatrixMode(this, '${escapeAttr(cc.id || `custom-${index}`)}')" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:white;">
-          <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
-          <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
-        </select>
-        <button type="button" class="btn btn-secondary btn-small" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
-        <button type="button" class="btn btn-secondary btn-small" onclick="cloneCustomCategory(${index})">Clone</button>
+        <label class="customize-view-control">
+          View
+          <select class="presentation-mode-select" onchange="setMatrixMode(this, '${escapeAttr(cc.id || `custom-${index}`)}')" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:white;">
+            <option value="list" ${presentationMode === 'list' ? 'selected' : ''}>Feature list</option>
+            <option value="matrix" ${presentationMode === 'matrix' ? 'selected' : ''}>Comparison table</option>
+          </select>
+        </label>
+        <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
+        <button type="button" class="btn btn-secondary btn-small customize-clone-btn" onclick="cloneCustomCategory(${index})">Clone</button>
+        <button type="button" class="btn btn-secondary btn-small customize-collapse-btn" onclick="toggleCustomizeEditorCollapsed(this)" aria-expanded="false">Edit</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
       </div>
-      <div class="cc-tiers" style="display:${presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
-        ${allTiers.map(tierKey => {
-          const tier = cc.tiers?.[tierKey] || {};
-          const isTierLocked = selectedTier === tierKey;
-          const isEnabled = !!(tier.enabled !== false && (tier.label || tier.price));
-          const features = tier.features || [];
-          const brands = tier.brands || '';
-          
-          const showUp = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, -1);
-          const showDown = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, 1);
+      <div class="customize-editor-body">
+        <div class="cc-tiers" style="display:${presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
+          ${allTiers.map(tierKey => {
+            const tier = cc.tiers?.[tierKey] || {};
+            const isTierLocked = selectedTier === tierKey;
+            const isEnabled = !!(tier.enabled !== false && (tier.label || tier.price));
+            const features = tier.features || [];
+            const brands = tier.brands || '';
 
-          return `
-            <div class="cc-tier-row customize-tier-row" data-tier="${tierKey}"
-                 data-features="${escapeAttr(JSON.stringify(features))}"
-                 data-brands="${escapeAttr(brands || '')}"
-                 style="background:white;${!isEnabled && !isTierLocked ? 'opacity:0.5;' : ''}">
-              <label class="customize-tier-name" style="${isTierLocked ? 'opacity:0.5;' : ''}">
-                <input type="checkbox" class="cc-tier-enabled" 
-                  ${isEnabled || isTierLocked ? 'checked' : ''} 
-                  ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
-                  onchange="toggleCustomTierEnabled(${index}, '${tierKey}', this.checked)"
-                > ${tierLabels[tierKey]}
-              </label>
-              <input type="text" class="cc-tier-label customize-tier-label" data-tier="${tierKey}" value="${escapeAttr(tier.label || '')}" placeholder="Label" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
-              <input type="number" class="cc-tier-price customize-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
-              <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" style="width:100%;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
-              <div class="customize-tier-swap-cell">
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showUp ? '' : 'is-hidden'}" data-direction="-1" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)" ${showUp ? '' : 'disabled'}>↑</button>
-                <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showDown ? '' : 'is-hidden'}" data-direction="1" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)" ${showDown ? '' : 'disabled'}>↓</button>
+            const showUp = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, -1);
+            const showDown = !!getAdjacentActiveTierKey(tierKey, tierEnabledState, 1);
+
+            return `
+              <div class="cc-tier-row customize-tier-row" data-tier="${tierKey}"
+                   data-features="${escapeAttr(JSON.stringify(features))}"
+                   data-brands="${escapeAttr(brands || '')}"
+                   style="background:white;${!isEnabled && !isTierLocked ? 'opacity:0.5;' : ''}">
+                <label class="customize-tier-name" style="${isTierLocked ? 'opacity:0.5;' : ''}">
+                  <input type="checkbox" class="cc-tier-enabled"
+                    ${isEnabled || isTierLocked ? 'checked' : ''}
+                    ${isTierLocked ? 'disabled title="Tier is selected"' : ''}
+                    onchange="toggleCustomTierEnabled(${index}, '${tierKey}', this.checked)"
+                  > ${tierLabels[tierKey]}
+                </label>
+                <input type="text" class="cc-tier-label customize-tier-label" data-tier="${tierKey}" value="${escapeAttr(tier.label || '')}" placeholder="Label" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+                <input type="number" class="cc-tier-price customize-tier-price" data-tier="${tierKey}" value="${tier.price || ''}" placeholder="Price" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>
+                <button type="button" class="btn btn-secondary btn-small" onclick="editCustomTierFeatures(${index}, '${tierKey}')" style="width:100%;" ${!isEnabled && !isTierLocked ? 'disabled' : ''}>Features</button>
+                <div class="customize-tier-swap-cell">
+                  <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showUp ? '' : 'is-hidden'}" data-direction="-1" title="Swap with previous tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', -1)" ${showUp ? '' : 'disabled'}>↑</button>
+                  <button type="button" class="btn btn-secondary btn-small tier-swap-btn ${showDown ? '' : 'is-hidden'}" data-direction="1" title="Swap with next tier" onclick="swapCustomTierWithNeighbor(${index}, '${tierKey}', 1)" ${showDown ? '' : 'disabled'}>↓</button>
+                </div>
               </div>
-            </div>
-          `;
-        }).join('')}
+            `;
+          }).join('')}
+        </div>
+        ${renderFeatureMatrixEditorPanel(cc)}
       </div>
-      ${renderFeatureMatrixEditorPanel(cc)}
     </div>
   `;
+}
+
+function toggleCustomizeEditorCollapsed(button) {
+  const editor = button.closest('.category-editor, .custom-category-editor');
+  if (!editor) return;
+  const isOpen = editor.classList.toggle('is-open');
+  button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  button.textContent = isOpen ? 'Done' : 'Edit';
 }
 
 function renderCustomExtraEditor(extra, existingOverride, isSelected, sqft) {
