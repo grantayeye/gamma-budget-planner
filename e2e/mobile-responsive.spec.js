@@ -126,7 +126,7 @@ test.describe('Mobile responsive layout', () => {
   });
 
   test('customer comparison matrix uses compact table headers on landscape mobile', async ({ page }) => {
-    await page.setViewportSize({ width: 844, height: 390 });
+    await page.setViewportSize({ width: 932, height: 430 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
