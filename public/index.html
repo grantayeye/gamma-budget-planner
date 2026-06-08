@@ -1979,7 +1979,9 @@ function normalizeMatrixTierCell(value) {
   const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
-  return price > 0 ? { status, price } : status;
+  if (price <= 0) return status;
+  const scale = Number(value && typeof value === 'object' ? value.scale : 0) || 0;
+  return scale > 0 ? { status, price, scale } : { status, price };
 }
 
 function matrixCellStatus(value) {
@@ -1988,6 +1990,16 @@ function matrixCellStatus(value) {
 
 function matrixCellPrice(value) {
   return value && typeof value === 'object' ? Math.max(0, Number(value.price) || 0) : 0;
+}
+
+function matrixCellScale(value) {
+  return value && typeof value === 'object' ? Math.max(0, Number(value.scale) || 0) : 0;
+}
+
+function matrixCellCalculatedPrice(value) {
+  const basePrice = matrixCellPrice(value);
+  if (basePrice <= 0) return 0;
+  return Math.round(basePrice * getSizeMultiplier(state.homeSize, matrixCellScale(value)) / 100) * 100;
 }
 
 function normalizeFeatureMatrix(matrix = []) {
@@ -2039,7 +2051,7 @@ function matrixAddOnTotalForCategory(cat, tierKey) {
   return getFeatureMatrix(cat).reduce((total, feature) => {
     if (!selected[feature.id]) return total;
     const cell = featureCellForTier(feature, tierKey);
-    return matrixCellStatus(cell) === 'addon' ? total + matrixCellPrice(cell) : total;
+    return matrixCellStatus(cell) === 'addon' ? total + matrixCellCalculatedPrice(cell) : total;
   }, 0);
 }
 
@@ -2053,7 +2065,7 @@ function matrixSelectedAddOnRows(cat, tierKey) {
         id: feature.id,
         label: feature.label,
         selected: !!selected[feature.id],
-        price: matrixCellStatus(cell) === 'addon' ? matrixCellPrice(cell) : 0
+        price: matrixCellStatus(cell) === 'addon' ? matrixCellCalculatedPrice(cell) : 0
       };
     })
     .filter(row => row.selected && row.price > 0);
@@ -2438,7 +2450,7 @@ function renderFeatureStatusCell(cell, context = {}) {
   const status = matrixCellStatus(cell);
   if (status === 'included') return '<span class="matrix-check" aria-label="Included">✓</span>';
   if (status === 'addon') {
-    const price = matrixCellPrice(cell);
+    const price = matrixCellCalculatedPrice(cell);
     if (price > 0) {
       const label = `Add-on ${formatCurrency(price)}`;
       if (context.selectable && context.catId && context.tierKey && context.featureId) {

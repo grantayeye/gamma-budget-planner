@@ -749,7 +749,9 @@ function normalizeMatrixTierCell(value) {
   const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
-  return price > 0 ? { status, price } : status;
+  if (price <= 0) return status;
+  const scale = Number(value && typeof value === 'object' ? value.scale : 0) || 0;
+  return scale > 0 ? { status, price, scale } : { status, price };
 }
 
 function matrixCellStatus(value) {
@@ -758,6 +760,16 @@ function matrixCellStatus(value) {
 
 function matrixCellPrice(value) {
   return value && typeof value === 'object' ? Math.max(0, Number(value.price) || 0) : 0;
+}
+
+function matrixCellScale(value) {
+  return value && typeof value === 'object' ? Math.max(0, Number(value.scale) || 0) : 0;
+}
+
+function matrixCellCalculatedPrice(value, sqft) {
+  const basePrice = matrixCellPrice(value);
+  if (basePrice <= 0) return 0;
+  return getScaledBudgetPrice(basePrice, sqft || 4000, matrixCellScale(value));
 }
 
 function normalizeFeatureMatrixPayload(matrix = []) {
@@ -791,14 +803,14 @@ function legacyFeaturesFromMatrixPayload(matrix = [], tierKey) {
     .map(feature => feature.label);
 }
 
-function selectedMatrixAddOnTotal(category = {}, tierKey, selectedForCategory = {}) {
+function selectedMatrixAddOnTotal(category = {}, tierKey, selectedForCategory = {}, sqft = 4000) {
   if (!tierKey || !category?.featureMatrix) return 0;
   const selectedForTier = selectedForCategory?.[tierKey] || {};
   return normalizeFeatureMatrixPayload(category.featureMatrix)
     .reduce((total, feature) => {
       if (!selectedForTier[feature.id]) return total;
       const cell = feature.tierStatus?.[tierKey];
-      return matrixCellStatus(cell) === 'addon' ? total + matrixCellPrice(cell) : total;
+      return matrixCellStatus(cell) === 'addon' ? total + matrixCellCalculatedPrice(cell, sqft) : total;
     }, 0);
 }
 
@@ -813,23 +825,7 @@ function normalizeTierPayload(tier = {}) {
   return payload;
 }
 
-function stripScaledTemplateAddonPrices(matrix = [], category = {}) {
-  const categoryScale = Number(category.sizeScale ?? 0) || 0;
-  return normalizeFeatureMatrixPayload(matrix).map(feature => {
-    const tierStatus = { ...(feature.tierStatus || {}) };
-    TIER_KEYS.forEach(tierKey => {
-      const cell = tierStatus[tierKey];
-      if (matrixCellStatus(cell) !== 'addon' || matrixCellPrice(cell) <= 0) return;
-      const tierScale = category.tiers?.[tierKey]?.sizeScale !== undefined
-        ? Number(category.tiers[tierKey].sizeScale) || 0
-        : categoryScale;
-      if (tierScale !== 0) tierStatus[tierKey] = 'addon';
-    });
-    return { ...feature, tierStatus };
-  });
-}
-
-function normalizePresentationPayload(payload = {}, options = {}) {
+function normalizePresentationPayload(payload = {}) {
   const normalized = deepClone(payload || {}) || {};
   const presentationMode = normalized.presentationMode === 'matrix' ? 'matrix' : 'list';
   let featureMatrix = presentationMode === 'matrix'
@@ -844,9 +840,6 @@ function normalizePresentationPayload(payload = {}, options = {}) {
   normalized.presentationMode = presentationMode;
   delete normalized.tierOrder;
   delete normalized.tier_order;
-  if (presentationMode === 'matrix' && options.stripScaledTemplateAddonPrices) {
-    featureMatrix = stripScaledTemplateAddonPrices(featureMatrix, normalized);
-  }
   if (presentationMode === 'matrix') {
     TIER_KEYS.forEach(tierKey => {
       if (!normalized.tiers?.[tierKey]) return;
@@ -982,7 +975,7 @@ function normalizeCategoryList(categories = [], sections = []) {
   const nextOrderBySection = new Map();
 
   const normalizedCategories = (categories || []).map((cat, index) => {
-    const copy = normalizePresentationPayload(deepClone(cat) || {}, { stripScaledTemplateAddonPrices: true });
+    const copy = normalizePresentationPayload(deepClone(cat) || {});
     let section = byId.get(copy.section_id || copy.sectionId);
     if (!section) {
       const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';
@@ -1252,7 +1245,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
     const customCat = customById.get(catId);
     if (customCat?.tiers?.[tierKey]) {
       subtotal += Number(customCat.tiers[tierKey].price || 0);
-      subtotal += selectedMatrixAddOnTotal(customCat, tierKey, selectedAddOns);
+      subtotal += selectedMatrixAddOnTotal(customCat, tierKey, selectedAddOns, sqft);
       return;
     }
 
@@ -1265,14 +1258,14 @@ function calculateBudgetTotal(state, defaults, options = {}) {
     if (isCustomized && override?.enabled === false) return;
     if (isCustomized && override?.price !== undefined) {
       subtotal += Number(override.price || 0);
-      subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns);
+      subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns, sqft);
       return;
     }
 
     if (!defaultCat?.tiers?.[tierKey]) return;
     const price = getDefaultTierPrice(defaultCat, tierKey, sqft);
     subtotal += price || 0;
-    subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns);
+    subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns, sqft);
   });
 
   Object.values(state.catMods || {}).forEach(mod => {

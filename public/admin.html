@@ -966,6 +966,15 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .fm-addon-scale-label {
+      display: block;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-light);
+      text-transform: uppercase;
+      margin: 5px 0 3px;
+    }
+
     .fm-apply-right {
       width: 28px;
       height: 32px;
@@ -2909,7 +2918,9 @@ function normalizeMatrixTierCell(value) {
   const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
-  return price > 0 ? { status, price } : status;
+  if (price <= 0) return status;
+  const scale = Number(value && typeof value === 'object' ? value.scale : 0) || 0;
+  return scale > 0 ? { status, price, scale } : { status, price };
 }
 
 function matrixCellStatus(value) {
@@ -2918,6 +2929,10 @@ function matrixCellStatus(value) {
 
 function matrixCellPrice(value) {
   return value && typeof value === 'object' ? Math.max(0, Number(value.price) || 0) : 0;
+}
+
+function matrixCellScale(value) {
+  return value && typeof value === 'object' ? Math.max(0, Number(value.scale) || 0) : 0;
 }
 
 function normalizeFeatureMatrix(matrix = []) {
@@ -2988,22 +3003,12 @@ function buildFeatureMatrixFromTiers(tiers = {}) {
 function matrixRenderOptionsForEditor(editor) {
   const isCustomize = !!editor?.closest?.('#customizeModal');
   if (isCustomize) return { allowAddonPricing: true, hideScaleControls: true };
-  const owner = editor?.closest?.('.cat-editor-card, .category-editor, .custom-category-editor') || editor;
-  const categoryScale = Number(owner?.querySelector?.('[data-field="sizeScale"]')?.value) || 0;
-  return {
-    allowTemplateAddonPricing: true,
-    addonPricingScaleByTier: Object.fromEntries(TIER_ORDER.map(tierKey => {
-      const tierScaleInput = owner?.querySelector?.(`.feature-matrix-tier-card[data-tier="${tierKey}"] .matrix-tier-scale`);
-      const tierScaleValue = tierScaleInput?.value?.trim();
-      return [tierKey, tierScaleValue ? (Number(tierScaleValue) || 0) : categoryScale];
-    }))
-  };
+  return { allowTemplateAddonPricing: true };
 }
 
 function matrixTierAllowsAddonPricing(tierKey, options = {}) {
   if (options.allowAddonPricing) return true;
-  if (!options.allowTemplateAddonPricing) return false;
-  return Number(options.addonPricingScaleByTier?.[tierKey] ?? 1) === 0;
+  return !!options.allowTemplateAddonPricing;
 }
 
 function legacyFeaturesFromMatrix(matrix = [], tierKey) {
@@ -3050,6 +3055,7 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
             const status = matrixCellStatus(feature.tierStatus?.[tierKey]);
             const canPriceAddon = matrixTierAllowsAddonPricing(tierKey, options);
             const priceValue = canPriceAddon ? matrixCellPrice(feature.tierStatus?.[tierKey]) : 0;
+            const scaleValue = canPriceAddon ? matrixCellScale(feature.tierStatus?.[tierKey]) : 0;
             return `
           <div class="fm-status-wrap">
             <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}" onchange="updateMatrixAddonPriceVisibility(this)">
@@ -3061,7 +3067,9 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
             <label class="fm-addon-price ${canPriceAddon ? '' : 'is-locked'}" ${status === 'addon' ? '' : 'hidden'}>
               <span style="display:block;font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;margin:5px 0 3px;">Add-on price</span>
               <input type="number" class="fm-addon-price-input" data-tier="${tierKey}" value="${priceValue || ''}" min="0" step="50" placeholder="${canPriceAddon ? 'Optional' : 'Locked'}" ${canPriceAddon ? '' : 'disabled'}>
-              <span class="fm-addon-price-note" style="${canPriceAddon ? 'display:none;' : ''}">Locked unless scale is 0.</span>
+              <span class="fm-addon-scale-label">Add-on scale</span>
+              <input type="number" class="fm-addon-scale-input" data-tier="${tierKey}" value="${scaleValue || ''}" min="0" max="2" step="0.1" placeholder="0">
+              <span class="fm-addon-price-note" style="${canPriceAddon ? 'display:none;' : ''}">Add-on pricing unavailable here.</span>
             </label>
           ` : ''}
             `;
@@ -3117,7 +3125,7 @@ function renderMatrixTierHeader(tierModels = [], options = {}) {
             </div>
             <input type="text" class="matrix-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${TIER_NAMES[tier.tierKey]} label">
             <input type="number" class="matrix-tier-price" value="${Number(tier.price) || 0}" min="0" step="100" placeholder="Price">
-            ${options.hideScaleControls ? '' : `<input type="number" class="matrix-tier-scale" value="${tier.sizeScale ?? ''}" min="0" max="2" step="0.1" placeholder="Scale" oninput="refreshMatrixAddonPricingLocks(this)" onchange="refreshMatrixAddonPricingLocks(this)">`}
+            ${options.hideScaleControls ? '' : `<input type="number" class="matrix-tier-scale" value="${tier.sizeScale ?? ''}" min="0" max="2" step="0.1" placeholder="Scale">`}
           </div>
         </th>
       `).join('')}
@@ -3147,10 +3155,16 @@ function readFeatureMatrixFromContainer(container) {
     const tierStatus = {};
     row.querySelectorAll('.fm-status[data-tier]').forEach(select => {
       const priceInput = row.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
+      const scaleInput = row.querySelector(`.fm-addon-scale-input[data-tier="${select.dataset.tier}"]`);
       const price = priceInput && !priceInput.disabled ? (Number(priceInput.value || 0) || 0) : 0;
-      tierStatus[select.dataset.tier] = select.value === 'addon' && price > 0
-        ? { status: 'addon', price }
-        : select.value;
+      const scale = scaleInput && !scaleInput.disabled ? (Number(scaleInput.value || 0) || 0) : 0;
+      if (select.value === 'addon' && price > 0) {
+        tierStatus[select.dataset.tier] = scale > 0
+          ? { status: 'addon', price, scale }
+          : { status: 'addon', price };
+      } else {
+        tierStatus[select.dataset.tier] = select.value;
+      }
     });
     return {
       id: row.dataset.featureId || slugifyFeatureId(label),
@@ -3322,8 +3336,11 @@ function applyMatrixStatusRight(button) {
     if (shouldApply) {
       select.value = sourceSelect.value;
       const sourcePrice = row.querySelector(`.fm-addon-price-input[data-tier="${sourceSelect.dataset.tier}"]`)?.value || '';
+      const sourceScale = row.querySelector(`.fm-addon-scale-input[data-tier="${sourceSelect.dataset.tier}"]`)?.value || '';
       const targetPrice = row.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
+      const targetScale = row.querySelector(`.fm-addon-scale-input[data-tier="${select.dataset.tier}"]`);
       if (targetPrice) targetPrice.value = sourceSelect.value === 'addon' ? sourcePrice : '';
+      if (targetScale) targetScale.value = sourceSelect.value === 'addon' ? sourceScale : '';
       updateMatrixAddonPriceVisibility(select);
     }
   });
@@ -3335,6 +3352,7 @@ function updateMatrixAddonPriceVisibility(select) {
   const cell = select.closest('td');
   const priceWrap = cell?.querySelector(`.fm-addon-price`);
   const priceInput = cell?.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
+  const scaleInput = cell?.querySelector(`.fm-addon-scale-input[data-tier="${select.dataset.tier}"]`);
   if (!priceWrap) return;
   const isAddon = select.value === 'addon';
   const canPriceAddon = matrixAddonPriceAllowedForControl(select);
@@ -3347,28 +3365,20 @@ function updateMatrixAddonPriceVisibility(select) {
     priceInput.placeholder = canPriceAddon ? 'Optional' : 'Locked';
     if (!isAddon || !canPriceAddon) priceInput.value = '';
   }
+  if (scaleInput) {
+    scaleInput.disabled = !canPriceAddon;
+    if (!isAddon || !canPriceAddon) scaleInput.value = '';
+  }
 }
 
 function getMatrixPanelForControl(control) {
   return control?.closest?.('.matrix-mode-panel') || control?.querySelector?.('.matrix-mode-panel') || null;
 }
 
-function getCurrentMatrixTierScale(panel, tierKey) {
-  const card = panel?.querySelector(`.feature-matrix-tier-card[data-tier="${tierKey}"]`);
-  const tierScaleInput = card?.querySelector('.matrix-tier-scale');
-  const tierScaleValue = tierScaleInput?.value?.trim();
-  if (tierScaleValue) return Number(tierScaleValue) || 0;
-  const editor = panel?.closest('.cat-editor-card, .category-editor, .custom-category-editor');
-  const categoryScaleValue = editor?.querySelector('[data-field="sizeScale"]')?.value;
-  return Number(categoryScaleValue) || 0;
-}
-
 function matrixAddonPriceAllowedForControl(control) {
   const panel = getMatrixPanelForControl(control);
   if (!panel) return false;
-  if (panel.closest('#customizeModal')) return true;
-  const tierKey = control?.dataset?.tier || control?.querySelector?.('.fm-addon-price-input')?.dataset?.tier;
-  return Number(getCurrentMatrixTierScale(panel, tierKey)) === 0;
+  return !!(panel.closest('#customizeModal') || panel.closest('.cat-editor-card'));
 }
 
 function refreshMatrixAddonPricingLocks(control) {
@@ -3535,8 +3545,7 @@ function renderFeatureMatrixEditorPanel(cat, override = {}, options = {}) {
   const enabledTierKeys = tierModels.filter(tier => tier.enabled).map(tier => tier.tierKey);
   const rowOptions = {
     allowAddonPricing: !!options.allowAddonPricing,
-    allowTemplateAddonPricing: options.allowAddonPricing ? false : options.allowTemplateAddonPricing !== false,
-    addonPricingScaleByTier: Object.fromEntries(tierModels.map(tier => [tier.tierKey, tier.effectiveSizeScale]))
+    allowTemplateAddonPricing: options.allowAddonPricing ? false : options.allowTemplateAddonPricing !== false
   };
   return `
     <div class="matrix-mode-panel" style="display:${mode === 'matrix' ? 'block' : 'none'};">
@@ -6523,7 +6532,7 @@ function loadCategoryEditor() {
               </div>
               <div class="cat-field-row">
                 <label>Size Scale</label>
-                <input type="number" data-field="sizeScale" value="${cat.sizeScale ?? 0}" step="0.1" min="0" max="2" style="width:80px;" oninput="refreshMatrixAddonPricingLocks(this)" onchange="refreshMatrixAddonPricingLocks(this)">
+                <input type="number" data-field="sizeScale" value="${cat.sizeScale ?? 0}" step="0.1" min="0" max="2" style="width:80px;">
               </div>
               <div class="cat-field-row">
                 <label>Display Style</label>

@@ -387,7 +387,7 @@ test.describe('Budget Planner', () => {
               id: 'ups-backup',
               label: 'UPS backup',
               description: 'Keeps the network alive during short power outages.',
-              tierStatus: { good: { status: 'addon', price: 250 }, better: 'included' }
+              tierStatus: { good: { status: 'addon', price: 250, scale: 0.5 }, better: 'included' }
             }
           ],
           tiers: {
@@ -400,6 +400,7 @@ test.describe('Budget Planner', () => {
       };
       currentBudgetId = null;
       state.propertyType = 'residential';
+      state.homeSize = 8000;
       state.selections = { networking: 'good' };
       state.catMods = { networking: { name: '', amount: 0 } };
       state.extras = {};
@@ -427,17 +428,17 @@ test.describe('Budget Planner', () => {
         categoryHeaderPrice,
         savedAddOn: apiState.addOns?.networking?.good?.['ups-backup'],
         savedTotal: apiState.total,
-        summaryHasAddOn: summaryRows.some(row => row.includes('UPS backup') && row.includes('Add-on') && row.includes('$250'))
+        summaryHasAddOn: summaryRows.some(row => row.includes('UPS backup') && row.includes('Add-on') && row.includes('$400'))
       };
     });
 
     expect(result.before).toBe('$1,060');
-    expect(result.buttonBefore).toBe('+ Add $250');
-    expect(result.after).toBe('$1,325');
-    expect(result.buttonAfter).toBe('✓ Added $250');
-    expect(result.categoryHeaderPrice).toBe('$1,250');
+    expect(result.buttonBefore).toBe('+ Add $400');
+    expect(result.after).toBe('$1,484');
+    expect(result.buttonAfter).toBe('✓ Added $400');
+    expect(result.categoryHeaderPrice).toBe('$1,400');
     expect(result.savedAddOn).toBe(true);
-    expect(result.savedTotal).toBe(1325);
+    expect(result.savedTotal).toBe(1484);
     expect(result.summaryHasAddOn).toBe(true);
   });
 });

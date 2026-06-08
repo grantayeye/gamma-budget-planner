@@ -290,7 +290,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
   });
 
-  test('template matrix add-on prices are locked unless tier scale is zero', async ({ page }) => {
+  test('template matrix add-ons save tier-specific price and scale', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {
         residential_categories: [{
@@ -329,8 +329,12 @@ test.describe('Admin copy/customization tools', () => {
       updateMatrixAddonPriceVisibility(betterStatus);
       const goodPrice = subwooferRow.querySelector('.fm-addon-price-input[data-tier="good"]');
       const betterPrice = subwooferRow.querySelector('.fm-addon-price-input[data-tier="better"]');
+      const goodScale = subwooferRow.querySelector('.fm-addon-scale-input[data-tier="good"]');
+      const betterScale = subwooferRow.querySelector('.fm-addon-scale-input[data-tier="better"]');
       goodPrice.value = '500';
+      goodScale.value = '0.5';
       betterPrice.value = '450';
+      betterScale.value = '0.2';
 
       card.querySelector('[data-field="sizeScale"]').value = '0.5';
       refreshMatrixAddonPricingLocks(card.querySelector('[data-field="sizeScale"]'));
@@ -341,19 +345,25 @@ test.describe('Admin copy/customization tools', () => {
       return {
         goodDisabled: goodPrice.disabled,
         goodValue: goodPrice.value,
+        goodScaleDisabled: goodScale.disabled,
+        goodScaleValue: goodScale.value,
         betterDisabled: betterPrice.disabled,
         betterValue: betterPrice.value,
+        betterScaleValue: betterScale.value,
         goodSaved: savedFeature.tierStatus.good,
         betterSaved: savedFeature.tierStatus.better
       };
     });
 
-    expect(result.goodDisabled).toBe(true);
-    expect(result.goodValue).toBe('');
+    expect(result.goodDisabled).toBe(false);
+    expect(result.goodValue).toBe('500');
+    expect(result.goodScaleDisabled).toBe(false);
+    expect(result.goodScaleValue).toBe('0.5');
     expect(result.betterDisabled).toBe(false);
     expect(result.betterValue).toBe('450');
-    expect(result.goodSaved).toBe('addon');
-    expect(result.betterSaved).toEqual({ status: 'addon', price: 450 });
+    expect(result.betterScaleValue).toBe('0.2');
+    expect(result.goodSaved).toEqual({ status: 'addon', price: 500, scale: 0.5 });
+    expect(result.betterSaved).toEqual({ status: 'addon', price: 450, scale: 0.2 });
   });
 
   test('switching matrix back to feature list confirms and discards matrix-only metadata', async ({ page }) => {
@@ -477,6 +487,7 @@ test.describe('Admin copy/customization tools', () => {
       defaultGoodStatus.value = 'addon';
       updateMatrixAddonPriceVisibility(defaultGoodStatus);
       upsRow.querySelector('.fm-addon-price-input[data-tier="good"]').value = '275';
+      upsRow.querySelector('.fm-addon-scale-input[data-tier="good"]').value = '0.4';
 
       const customEditor = document.querySelector('.custom-category-editor[data-cc-id="custom-matrix"]');
       const customSelect = customEditor.querySelector('.presentation-mode-select');
@@ -488,6 +499,7 @@ test.describe('Admin copy/customization tools', () => {
       customGoodStatus.value = 'addon';
       updateMatrixAddonPriceVisibility(customGoodStatus);
       customUpgradeRow.querySelector('.fm-addon-price-input[data-tier="good"]').value = '125';
+      customUpgradeRow.querySelector('.fm-addon-scale-input[data-tier="good"]').value = '0.2';
 
       const collected = collectCustomizationData();
       const defaultGoodCell = collected.categoryConfig.networking.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good;
@@ -497,11 +509,13 @@ test.describe('Admin copy/customization tools', () => {
         defaultHasTierOrder: Object.prototype.hasOwnProperty.call(collected.categoryConfig.networking, 'tierOrder'),
         defaultGoodStatus: defaultGoodCell?.status,
         defaultGoodPrice: defaultGoodCell?.price,
+        defaultGoodScale: defaultGoodCell?.scale,
         defaultGoodFeatures: collected.categoryConfig.networking.tiers.good.features,
         customMode: collected.customCategories[0].presentationMode,
         customHasTierOrder: Object.prototype.hasOwnProperty.call(collected.customCategories[0], 'tierOrder'),
         customGoodStatus: customGoodCell?.status,
         customGoodPrice: customGoodCell?.price,
+        customGoodScale: customGoodCell?.scale,
         customBetterFeatures: collected.customCategories[0].tiers.better.features
       };
     });
@@ -510,11 +524,13 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.defaultHasTierOrder).toBe(false);
     expect(result.defaultGoodStatus).toBe('addon');
     expect(result.defaultGoodPrice).toBe(275);
+    expect(result.defaultGoodScale).toBe(0.4);
     expect(result.defaultGoodFeatures).toEqual(['WiFi coverage']);
     expect(result.customMode).toBe('matrix');
     expect(result.customHasTierOrder).toBe(false);
     expect(result.customGoodStatus).toBe('addon');
     expect(result.customGoodPrice).toBe(125);
+    expect(result.customGoodScale).toBe(0.2);
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
   });
 
