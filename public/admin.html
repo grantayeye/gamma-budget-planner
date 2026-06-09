@@ -997,11 +997,29 @@
       pointer-events: none;
     }
 
-    .feature-matrix-remove {
+    .feature-matrix-row-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 32px);
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .feature-matrix-row-action {
       width: 32px;
       height: 32px;
       padding: 0 !important;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       line-height: 1;
+    }
+
+    .feature-matrix-row-action.is-hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .feature-matrix-remove {
       color: var(--danger) !important;
       background: #FFF5F5 !important;
     }
@@ -1243,6 +1261,11 @@
 
       .feature-matrix-table {
         min-width: 0;
+      }
+
+      .feature-matrix-row-actions {
+        grid-template-columns: repeat(4, 32px);
+        justify-content: flex-start;
       }
 
       .feature-matrix-table thead {
@@ -3077,7 +3100,12 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
         </td>
       `).join('')}
       <td>
-        <button type="button" class="btn btn-secondary btn-small feature-matrix-remove" onclick="removeFeatureMatrixRow(this)" title="Remove feature">×</button>
+        <div class="feature-matrix-row-actions">
+          <button type="button" class="btn btn-secondary btn-small feature-matrix-row-action ${index > 0 ? '' : 'is-hidden'}" onclick="moveFeatureMatrixRow(this, -1)" title="Move feature up">↑</button>
+          <button type="button" class="btn btn-secondary btn-small feature-matrix-row-action ${index < rows.length - 1 ? '' : 'is-hidden'}" onclick="moveFeatureMatrixRow(this, 1)" title="Move feature down">↓</button>
+          <button type="button" class="btn btn-secondary btn-small feature-matrix-row-action" onclick="insertFeatureMatrixRowAfter(this)" title="Insert feature below">+</button>
+          <button type="button" class="btn btn-secondary btn-small feature-matrix-row-action feature-matrix-remove" onclick="removeFeatureMatrixRow(this)" title="Remove feature">×</button>
+        </div>
       </td>
     </tr>
   `).join('');
@@ -3289,18 +3317,75 @@ function addFeatureMatrixRow(button) {
   queueCustomizeDraftSave();
 }
 
+function matrixRowIndexFromButton(button, list) {
+  const row = button.closest('.feature-matrix-row');
+  if (!row || !list) return -1;
+  return Array.from(list.querySelectorAll('.feature-matrix-row')).indexOf(row);
+}
+
+function newFeatureMatrixRow(existing = [], insertIndex = existing.length) {
+  return {
+    id: uniqueSectionId('new-feature', new Set(existing.map(feature => feature.id))),
+    label: 'New feature',
+    description: '',
+    group: '',
+    order: insertIndex,
+    tierStatus: Object.fromEntries(TIER_ORDER.map(tierKey => [tierKey, 'not_included']))
+  };
+}
+
+function renderFeatureMatrixList(panel, list, matrix, focusIndex = null, previousScroll = null, scrollArea = null) {
+  const orderedMatrix = matrix.map((feature, index) => ({ ...feature, order: index }));
+  list.innerHTML = renderFeatureMatrixRows(orderedMatrix, getVisibleMatrixTierKeys(panel), matrixRenderOptionsForEditor(panel));
+  requestAnimationFrame(() => {
+    if (scrollArea && previousScroll !== null) scrollArea.scrollTop = previousScroll;
+    if (focusIndex !== null) {
+      list.querySelectorAll('.feature-matrix-row')[focusIndex]?.querySelector('.fm-label')?.focus();
+    }
+  });
+}
+
+function insertFeatureMatrixRowAfter(button) {
+  const panel = button.closest('.matrix-mode-panel');
+  const list = panel?.querySelector('.feature-matrix-list');
+  if (!list) return;
+  const scrollArea = button.closest('.customize-scroll-area') || document.scrollingElement;
+  const previousScroll = scrollArea?.scrollTop || 0;
+  const existing = readFeatureMatrixFromContainer(list);
+  const currentIndex = matrixRowIndexFromButton(button, list);
+  const insertIndex = currentIndex >= 0 ? currentIndex + 1 : existing.length;
+  existing.splice(insertIndex, 0, newFeatureMatrixRow(existing, insertIndex));
+  renderFeatureMatrixList(panel, list, existing, insertIndex, previousScroll, scrollArea);
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function moveFeatureMatrixRow(button, direction) {
+  const panel = button.closest('.matrix-mode-panel');
+  const list = panel?.querySelector('.feature-matrix-list');
+  if (!list) return;
+  const existing = readFeatureMatrixFromContainer(list);
+  const currentIndex = matrixRowIndexFromButton(button, list);
+  const nextIndex = currentIndex + direction;
+  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= existing.length) return;
+  const scrollArea = button.closest('.customize-scroll-area') || document.scrollingElement;
+  const previousScroll = scrollArea?.scrollTop || 0;
+  [existing[currentIndex], existing[nextIndex]] = [existing[nextIndex], existing[currentIndex]];
+  renderFeatureMatrixList(panel, list, existing, nextIndex, previousScroll, scrollArea);
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
 function removeFeatureMatrixRow(button) {
   const panel = button.closest('.matrix-mode-panel');
   const scrollArea = button.closest('.customize-scroll-area') || document.scrollingElement;
   const previousScroll = scrollArea?.scrollTop || 0;
-  button.closest('.feature-matrix-row')?.remove();
   const list = panel?.querySelector('.feature-matrix-list');
-  if (list && !list.querySelector('.feature-matrix-row')) {
-    list.innerHTML = renderFeatureMatrixRows([], getVisibleMatrixTierKeys(panel), matrixRenderOptionsForEditor(panel));
-  }
-  requestAnimationFrame(() => {
-    if (scrollArea) scrollArea.scrollTop = previousScroll;
-  });
+  if (!list) return;
+  const existing = readFeatureMatrixFromContainer(list);
+  const currentIndex = matrixRowIndexFromButton(button, list);
+  if (currentIndex >= 0) existing.splice(currentIndex, 1);
+  renderFeatureMatrixList(panel, list, existing, Math.min(currentIndex, existing.length - 1), previousScroll, scrollArea);
   markCatDirty();
   queueCustomizeDraftSave();
 }
@@ -3435,11 +3520,18 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
     const currentPrice = row.querySelector(`.fm-addon-price-input[data-tier="${tierKey}"]`);
     const nextPrice = row.querySelector(`.fm-addon-price-input[data-tier="${nextTier}"]`);
     const currentPriceValue = currentPrice?.value || '';
+    const currentScale = row.querySelector(`.fm-addon-scale-input[data-tier="${tierKey}"]`);
+    const nextScale = row.querySelector(`.fm-addon-scale-input[data-tier="${nextTier}"]`);
+    const currentScaleValue = currentScale?.value || '';
     currentSelect.value = nextSelect.value;
     nextSelect.value = currentValue;
     if (currentPrice && nextPrice) {
       currentPrice.value = nextPrice.value || '';
       nextPrice.value = currentPriceValue;
+    }
+    if (currentScale && nextScale) {
+      currentScale.value = nextScale.value || '';
+      nextScale.value = currentScaleValue;
     }
     updateMatrixAddonPriceVisibility(currentSelect);
     updateMatrixAddonPriceVisibility(nextSelect);

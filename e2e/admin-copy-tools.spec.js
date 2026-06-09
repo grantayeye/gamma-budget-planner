@@ -290,6 +290,70 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodFeatures).toEqual(['WiFi coverage']);
   });
 
+  test('categories pricing comparison matrix inserts and reorders feature rows', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: 'W',
+          sizeScale: 0,
+          tiers: {
+            good: { price: 1000, label: 'Good', features: ['Coverage', 'Router'], brands: 'Brand A' },
+            better: { price: 2000, label: 'Better', features: ['Coverage', 'Router', 'Support'], brands: 'Brand B' }
+          }
+        }],
+        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+      const card = document.querySelector('.cat-editor-card[data-cat-idx="0"]');
+      card.classList.add('open');
+      const select = card.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'networking');
+
+      const coverageRow = [...card.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Coverage');
+      insertFeatureMatrixRowAfter(coverageRow.querySelector('[title="Insert feature below"]'));
+      const insertedRow = card.querySelectorAll('.feature-matrix-row')[1];
+      insertedRow.querySelector('.fm-label').value = 'UPS battery';
+      insertedRow.querySelector('.fm-status[data-tier="good"]').value = 'included';
+      const insertedBetterStatus = insertedRow.querySelector('.fm-status[data-tier="better"]');
+      insertedBetterStatus.value = 'addon';
+      updateMatrixAddonPriceVisibility(insertedBetterStatus);
+      insertedRow.querySelector('.fm-addon-price-input[data-tier="better"]').value = '450';
+      insertedRow.querySelector('.fm-addon-scale-input[data-tier="better"]').value = '0.5';
+
+      const supportRow = [...card.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Support');
+      moveFeatureMatrixRow(supportRow.querySelector('[title="Move feature up"]'), -1);
+
+      collectCategoryEditorData();
+      const cat = catData.residential_categories[0];
+      const upsCell = cat.featureMatrix.find(feature => feature.label === 'UPS battery')?.tierStatus.better;
+      return {
+        labels: cat.featureMatrix.map(feature => feature.label),
+        goodFeatures: cat.tiers.good.features,
+        betterFeatures: cat.tiers.better.features,
+        upsCell,
+        hasFeatureListTextarea: !!document.getElementById('featuresTextarea')
+      };
+    });
+
+    expect(result.labels).toEqual(['Coverage', 'UPS battery', 'Support', 'Router']);
+    expect(result.goodFeatures).toEqual(['Coverage', 'UPS battery', 'Router']);
+    expect(result.betterFeatures).toEqual(['Coverage', 'Support', 'Router']);
+    expect(result.upsCell).toEqual({ status: 'addon', price: 450, scale: 0.5 });
+    expect(result.hasFeatureListTextarea).toBe(false);
+  });
+
   test('template matrix add-ons save tier-specific price and scale', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {
@@ -532,6 +596,71 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customGoodPrice).toBe(125);
     expect(result.customGoodScale).toBe(0.2);
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
+  });
+
+  test('customize comparison matrix inserts and reorders feature rows', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Whole-Home WiFi & Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: {
+          good: { price: 1000, label: 'Good', features: ['Coverage', 'Router'], brands: 'Brand A' },
+          better: { price: 2000, label: 'Better', features: ['Coverage', 'Router', 'Support'], brands: 'Brand B' }
+        }
+      };
+      customizeBudgetData = {
+        id: 'matrix-row-edit-budget',
+        sqftLocked: 5000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 5000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+
+      const editor = document.querySelector('.category-editor[data-cat-id="networking"]');
+      const select = editor.querySelector('.presentation-mode-select');
+      select.value = 'matrix';
+      setMatrixMode(select, 'networking');
+
+      const coverageRow = [...editor.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Coverage');
+      insertFeatureMatrixRowAfter(coverageRow.querySelector('[title="Insert feature below"]'));
+      const insertedRow = editor.querySelectorAll('.feature-matrix-row')[1];
+      insertedRow.querySelector('.fm-label').value = 'UPS battery';
+      insertedRow.querySelector('.fm-status[data-tier="good"]').value = 'included';
+      const betterStatus = insertedRow.querySelector('.fm-status[data-tier="better"]');
+      betterStatus.value = 'addon';
+      updateMatrixAddonPriceVisibility(betterStatus);
+      insertedRow.querySelector('.fm-addon-price-input[data-tier="better"]').value = '325';
+      insertedRow.querySelector('.fm-addon-scale-input[data-tier="better"]').value = '0.2';
+
+      const supportRow = [...editor.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Support');
+      moveFeatureMatrixRow(supportRow.querySelector('[title="Move feature up"]'), -1);
+
+      const collected = collectCustomizationData();
+      const override = collected.categoryConfig.networking;
+      const upsCell = override.featureMatrix.find(feature => feature.label === 'UPS battery')?.tierStatus.better;
+      return {
+        labels: override.featureMatrix.map(feature => feature.label),
+        goodFeatures: override.tiers.good.features,
+        betterFeatures: override.tiers.better.features,
+        upsCell
+      };
+    });
+
+    expect(result.labels).toEqual(['Coverage', 'UPS battery', 'Support', 'Router']);
+    expect(result.goodFeatures).toEqual(['Coverage', 'UPS battery', 'Router']);
+    expect(result.betterFeatures).toEqual(['Coverage', 'Support', 'Router']);
+    expect(result.upsCell).toEqual({ status: 'addon', price: 325, scale: 0.2 });
   });
 
   test('customize matrix hides unchecked tiers and swaps package data within fixed tier slots', async ({ page }) => {
