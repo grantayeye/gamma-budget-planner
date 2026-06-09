@@ -338,7 +338,7 @@ test.describe('Budget Planner', () => {
           featureMatrix: [{
             id: 'wifi-coverage',
             label: 'Whole-home WiFi coverage',
-            description: 'Reliable wireless coverage throughout the home.',
+            description: 'Reliable wireless coverage throughout the home.\nIncludes indoor and outdoor access points.',
             tierStatus: { good: 'included', standard: 'included', better: 'included', best: 'included' }
           }],
           tiers: {
@@ -357,11 +357,14 @@ test.describe('Budget Planner', () => {
 
     await page.locator('.matrix-feature-label.has-description').click();
     await expect(page.locator('.matrix-feature-popover')).toContainText('Reliable wireless coverage');
+    await expect(page.locator('.matrix-feature-popover')).toContainText('Includes indoor and outdoor access points');
+    expect(await page.locator('.matrix-feature-popover').evaluate(el => getComputedStyle(el).whiteSpace)).toBe('pre-line');
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('body').click({ position: { x: 5, y: 5 } });
     await page.locator('.comparison-mobile-focus .mobile-feature-compare-title.has-description').click();
     await expect(page.locator('.matrix-feature-popover')).toContainText('Reliable wireless coverage');
+    await expect(page.locator('.matrix-feature-popover')).toContainText('Includes indoor and outdoor access points');
   });
 
   test('priced comparison add-ons can be toggled and saved in state', async ({ page }) => {
