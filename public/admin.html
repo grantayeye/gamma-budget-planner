@@ -1776,6 +1776,74 @@
       transition: all var(--transition);
     }
     .tier-features-btn:hover { background: #F7FAFC; border-color: var(--accent); }
+
+    .feature-list-editor {
+      display: grid;
+      gap: 10px;
+    }
+
+    .feature-list-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .feature-list-rows {
+      display: grid;
+      gap: 8px;
+      max-height: min(46vh, 420px);
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .feature-list-row {
+      display: grid;
+      grid-template-columns: 32px 32px minmax(0, 1fr) 32px 32px;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .feature-list-row input {
+      min-width: 0;
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .feature-list-row input:focus {
+      border-color: var(--accent);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(1,126,215,0.1);
+    }
+
+    .feature-list-icon-btn {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: white;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .feature-list-icon-btn:hover {
+      border-color: var(--accent);
+      background: #F7FAFC;
+    }
+
+    .feature-list-icon-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .feature-list-remove {
+      color: #B42318;
+    }
     
     .extras-editor {
       background: var(--card);
@@ -5847,8 +5915,8 @@ function editCustomTierFeatures(index, tierKey) {
   
   document.getElementById('featuresBody').innerHTML = `
     <div style="margin-bottom:20px;">
-      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
-      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeAttr(features.join('\n'))}</textarea>
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features</label>
+      ${renderFeatureListEditor(features)}
     </div>
     
     <div style="margin-bottom:20px;">
@@ -5863,15 +5931,12 @@ function editCustomTierFeatures(index, tierKey) {
   `;
   
   document.getElementById('featuresModal').classList.add('active');
+  refreshFeatureListControls();
 }
 
 function saveCustomTierFeatures(index, tierKey) {
-  const textarea = document.getElementById('featuresTextarea');
   const brandsInput = document.getElementById('brandsInput');
-  
-  const features = textarea.value.split('\n')
-    .map(f => f.trim())
-    .filter(f => f.length > 0);
+  const features = getFeatureListValues();
   
   const brands = brandsInput.value.trim();
   
@@ -5881,6 +5946,8 @@ function saveCustomTierFeatures(index, tierKey) {
   if (tierRow) {
     tierRow.dataset.features = JSON.stringify(features);
     tierRow.dataset.brands = brands;
+    const featureButton = tierRow.querySelector('.tier-features-btn, button');
+    if (featureButton) featureButton.textContent = `Features (${features.length})`;
   }
   
   closeFeaturesModal();
@@ -5916,6 +5983,93 @@ function toggleTierEnabled(catId, tierKey, enabled) {
 let featureEditorCatId = null;
 let featureEditorTierKey = null;
 
+function renderFeatureListEditor(features = []) {
+  const rows = (features.length ? features : ['']).map(feature => renderFeatureListRow(feature)).join('');
+  return `
+    <div class="feature-list-editor" id="featureListEditor">
+      <div class="feature-list-toolbar">
+        <button type="button" class="btn btn-secondary btn-small" onclick="addFeatureListItem()">+ Add feature</button>
+      </div>
+      <div class="feature-list-rows" id="featureListRows">
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+function renderFeatureListRow(value = '') {
+  return `
+    <div class="feature-list-row">
+      <button type="button" class="feature-list-icon-btn" title="Move up" onclick="moveFeatureListItem(this, -1)">↑</button>
+      <button type="button" class="feature-list-icon-btn" title="Move down" onclick="moveFeatureListItem(this, 1)">↓</button>
+      <input type="text" class="feature-list-input" value="${escapeAttr(value)}" placeholder="Feature" onkeydown="handleFeatureListKeydown(event, this)">
+      <button type="button" class="feature-list-icon-btn" title="Insert feature below" onclick="insertFeatureListItem(this)">+</button>
+      <button type="button" class="feature-list-icon-btn feature-list-remove" title="Remove feature" onclick="removeFeatureListItem(this)">×</button>
+    </div>
+  `;
+}
+
+function refreshFeatureListControls() {
+  const rows = Array.from(document.querySelectorAll('#featureListRows .feature-list-row'));
+  rows.forEach((row, index) => {
+    const buttons = row.querySelectorAll('.feature-list-icon-btn');
+    if (buttons[0]) buttons[0].disabled = index === 0;
+    if (buttons[1]) buttons[1].disabled = index === rows.length - 1;
+  });
+}
+
+function addFeatureListItem() {
+  const rows = document.getElementById('featureListRows');
+  if (!rows) return;
+  rows.insertAdjacentHTML('beforeend', renderFeatureListRow(''));
+  refreshFeatureListControls();
+  rows.querySelector('.feature-list-row:last-child .feature-list-input')?.focus();
+}
+
+function insertFeatureListItem(button) {
+  const row = button.closest('.feature-list-row');
+  if (!row) return;
+  row.insertAdjacentHTML('afterend', renderFeatureListRow(''));
+  refreshFeatureListControls();
+  row.nextElementSibling?.querySelector('.feature-list-input')?.focus();
+}
+
+function removeFeatureListItem(button) {
+  const row = button.closest('.feature-list-row');
+  const rows = document.getElementById('featureListRows');
+  if (!row || !rows) return;
+  const nextFocus = row.nextElementSibling?.querySelector('.feature-list-input') || row.previousElementSibling?.querySelector('.feature-list-input');
+  row.remove();
+  if (!rows.querySelector('.feature-list-row')) {
+    rows.innerHTML = renderFeatureListRow('');
+  }
+  refreshFeatureListControls();
+  (nextFocus && document.body.contains(nextFocus) ? nextFocus : rows.querySelector('.feature-list-input'))?.focus();
+}
+
+function moveFeatureListItem(button, direction) {
+  const row = button.closest('.feature-list-row');
+  const target = direction < 0 ? row?.previousElementSibling : row?.nextElementSibling;
+  if (!row || !target) return;
+  const input = row.querySelector('.feature-list-input');
+  if (direction < 0) target.before(row);
+  else target.after(row);
+  refreshFeatureListControls();
+  input?.focus();
+}
+
+function handleFeatureListKeydown(event, input) {
+  if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+  event.preventDefault();
+  insertFeatureListItem(input);
+}
+
+function getFeatureListValues() {
+  return Array.from(document.querySelectorAll('#featureListRows .feature-list-input'))
+    .map(input => input.value.trim())
+    .filter(Boolean);
+}
+
 function editTierFeatures(catId, tierKey) {
   featureEditorCatId = catId;
   featureEditorTierKey = tierKey;
@@ -5946,8 +6100,8 @@ function editTierFeatures(catId, tierKey) {
   
   document.getElementById('featuresBody').innerHTML = `
     <div style="margin-bottom:20px;">
-      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
-      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeAttr(features.join('\n'))}</textarea>
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features</label>
+      ${renderFeatureListEditor(features)}
     </div>
     
     <div style="margin-bottom:20px;">
@@ -5962,16 +6116,12 @@ function editTierFeatures(catId, tierKey) {
   `;
   
   document.getElementById('featuresModal').classList.add('active');
+  refreshFeatureListControls();
 }
 
 function saveTierFeatures() {
-  const textarea = document.getElementById('featuresTextarea');
   const brandsInput = document.getElementById('brandsInput');
-  
-  // Parse features from textarea (one per line, filter empty)
-  const features = textarea.value.split('\n')
-    .map(f => f.trim())
-    .filter(f => f.length > 0);
+  const features = getFeatureListValues();
   
   const brands = brandsInput.value.trim();
   
@@ -5982,6 +6132,8 @@ function saveTierFeatures() {
   if (tierRow) {
     tierRow.dataset.features = JSON.stringify(features);
     tierRow.dataset.brands = brands;
+    const featureButton = tierRow.querySelector('.tier-features-btn, button');
+    if (featureButton) featureButton.textContent = `Features (${features.length})`;
   }
   
   closeFeaturesModal();
@@ -6946,8 +7098,8 @@ function editCatTierFeatures(catId, tierKey) {
   document.getElementById('featuresTitle').textContent = `${cat.icon} ${cat.name} → ${t.label || TIER_LABELS[tierKey]}`;
   document.getElementById('featuresBody').innerHTML = `
     <div style="margin-bottom:20px;">
-      <label style="font-weight:600;display:block;margin-bottom:8px;">Features (one per line)</label>
-      <textarea id="featuresTextarea" style="width:100%;height:200px;padding:12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeAttr((t.features || []).join('\n'))}</textarea>
+      <label style="font-weight:600;display:block;margin-bottom:8px;">Features</label>
+      ${renderFeatureListEditor(t.features || [])}
     </div>
     <div style="display:flex;gap:12px;">
       <button class="btn btn-primary" onclick="saveCatTierFeatures('${catId}', '${tierKey}')" style="flex:1;">Save Features</button>
@@ -6955,11 +7107,12 @@ function editCatTierFeatures(catId, tierKey) {
     </div>
   `;
   document.getElementById('featuresModal').classList.add('active');
+  refreshFeatureListControls();
 }
 
 function saveCatTierFeatures(catId, tierKey) {
   markCatDirty();
-  const features = document.getElementById('featuresTextarea').value.split('\n').map(f => f.trim()).filter(f => f);
+  const features = getFeatureListValues();
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
   const cat = categories.find(c => c.id === catId);

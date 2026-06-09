@@ -103,11 +103,12 @@ test.describe('Budget Planner', () => {
   test('selecting tier updates total', async ({ page }) => {
     const initialTotal = await page.locator('#headerTotal').textContent();
     
-    // Click first category to expand
-    await page.locator('.category-header').first().click();
+    // Click a category that has a Good tier to expand
+    const categoryWithGood = page.locator('.category-card:has(.tier-btn.good-btn)').first();
+    await categoryWithGood.locator('.category-header').click();
     
-    // Click a tier button
-    await page.locator('.tier-btn.good-btn').first().click();
+    // Click a visible tier button in the opened category
+    await categoryWithGood.locator('.tier-btn.good-btn').click();
     
     // Check total changed
     const newTotal = await page.locator('#headerTotal').textContent();
