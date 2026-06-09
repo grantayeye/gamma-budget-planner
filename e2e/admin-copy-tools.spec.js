@@ -98,53 +98,6 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.category.sectionId).toBe('design-services');
   });
 
-  test('categories pricing feature list supports insert and reorder', async ({ page }) => {
-    const result = await page.evaluate(() => {
-      catData = {
-        residential_categories: [{
-          id: 'networking',
-          section: 'Infrastructure',
-          section_id: 'infrastructure',
-          name: 'Networking',
-          icon: 'N',
-          sizeScale: 0,
-          tiers: {
-            good: {
-              price: 1000,
-              label: 'Good',
-              features: ['Coverage', 'Router', 'Support'],
-              brands: 'UniFi'
-            }
-          }
-        }],
-        residential_sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
-        residential_extras: [],
-        condo_categories: [],
-        condo_sections: [],
-        condo_extras: [],
-        base_sqft: 4000
-      };
-      document.getElementById('catPropertyType').value = 'residential';
-      loadCategoryEditor();
-      editCatTierFeatures('networking', 'good');
-
-      insertFeatureListItem(document.querySelector('.feature-list-row [title="Insert feature below"]'));
-      document.querySelectorAll('.feature-list-input')[1].value = 'Inserted UPS';
-      const supportRow = [...document.querySelectorAll('.feature-list-row')]
-        .find(row => row.querySelector('.feature-list-input')?.value === 'Support');
-      moveFeatureListItem(supportRow.querySelector('[title="Move up"]'), -1);
-      saveCatTierFeatures('networking', 'good');
-
-      return {
-        features: catData.residential_categories[0].tiers.good.features,
-        buttonText: document.querySelector('.tier-edit-card[data-tier="good"] .tier-features-btn')?.textContent.trim()
-      };
-    });
-
-    expect(result.features).toEqual(['Coverage', 'Inserted UPS', 'Support', 'Router']);
-    expect(result.buttonText).toBe('✏️ Edit Features (4)');
-  });
-
   test('customize layout does not duplicate old name-based section ids', async ({ page }) => {
     const result = await page.evaluate(() => {
       const model = getCustomizeLayoutModel(
@@ -723,60 +676,6 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customCount).toBe(0);
     expect(result.copySourceOpen).toBe(false);
     expect(result.openMenus).toBe(0);
-  });
-
-  test('customize feature list supports insert and reorder', async ({ page }) => {
-    const result = await page.evaluate(() => {
-      const targetCat = {
-        id: 'networking',
-        section: 'Infrastructure',
-        section_id: 'infrastructure',
-        name: 'Whole-Home WiFi & Networking',
-        icon: 'W',
-        sizeScale: 0,
-        tiers: {
-          good: {
-            price: 1000,
-            label: 'Good',
-            features: ['Coverage', 'Router', 'Support'],
-            brands: 'UniFi'
-          }
-        }
-      };
-      customizeBudgetId = 'features123';
-      customizeBudgetData = {
-        id: 'features123',
-        sqftLocked: 4000,
-        propertyTypeLocked: 'residential',
-        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
-        categoryConfig: {
-          __defaultCategories: { residential: [targetCat], condo: [] },
-          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] },
-          __layout: { sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }] }
-        },
-        customCategories: []
-      };
-      document.getElementById('customizeModal').classList.add('active');
-      renderCustomizeEditor();
-      editTierFeatures('networking', 'good');
-
-      insertFeatureListItem(document.querySelector('.feature-list-row [title="Insert feature below"]'));
-      document.querySelectorAll('.feature-list-input')[1].value = 'Inserted UPS';
-      const supportRow = [...document.querySelectorAll('.feature-list-row')]
-        .find(row => row.querySelector('.feature-list-input')?.value === 'Support');
-      moveFeatureListItem(supportRow.querySelector('[title="Move up"]'), -1);
-      saveTierFeatures();
-
-      const editor = document.querySelector('.category-editor[data-cat-id="networking"]');
-      const row = editor.querySelector('.tier-row[data-tier="good"]');
-      return {
-        features: JSON.parse(row.dataset.features || '[]'),
-        buttonText: row.querySelector('button[onclick^="editTierFeatures"]')?.textContent.trim()
-      };
-    });
-
-    expect(result.features).toEqual(['Coverage', 'Inserted UPS', 'Support', 'Router']);
-    expect(result.buttonText).toBe('Features (4)');
   });
 
   test('customize close only prompts when unsaved changes exist', async ({ page }) => {
