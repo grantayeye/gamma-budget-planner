@@ -1117,6 +1117,7 @@ function getScaledBudgetPrice(basePrice, sqft, scaleFactor) {
 function getDefaultTierPrice(cat, tierKey, sqft) {
   const tier = cat?.tiers?.[tierKey];
   if (!tier) return null;
+  if (tier.enabled === false) return null;
   if (cat.baseTierNoScale && tierKey === 'good') return tier.price || 0;
   const scale = tier.sizeScale !== undefined ? tier.sizeScale : (cat.sizeScale ?? 0.5);
   return getScaledBudgetPrice(tier.price || 0, sqft, scale);
@@ -1244,6 +1245,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
     const selectedAddOns = state.addOns?.[catId] || {};
     const customCat = customById.get(catId);
     if (customCat?.tiers?.[tierKey]) {
+      if (customCat.tiers[tierKey].enabled === false) return;
       subtotal += Number(customCat.tiers[tierKey].price || 0);
       subtotal += selectedMatrixAddOnTotal(customCat, tierKey, selectedAddOns, sqft);
       return;
@@ -1262,7 +1264,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
       return;
     }
 
-    if (!defaultCat?.tiers?.[tierKey]) return;
+    if (!defaultCat?.tiers?.[tierKey] || defaultCat.tiers[tierKey].enabled === false) return;
     const price = getDefaultTierPrice(defaultCat, tierKey, sqft);
     subtotal += price || 0;
     subtotal += selectedMatrixAddOnTotal(categoryForAddOns, tierKey, selectedAddOns, sqft);

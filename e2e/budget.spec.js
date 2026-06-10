@@ -113,6 +113,47 @@ test.describe('Budget Planner', () => {
     expect(newTotal).not.toBe(initialTotal);
   });
 
+  test('customer ignores template tiers marked disabled but preserves their data server-side', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [{
+          id: 'security',
+          section: 'Security',
+          section_id: 'security',
+          name: 'Security',
+          icon: '🔒',
+          desc: 'Security',
+          sizeScale: 0,
+          tiers: {
+            good: { price: 1000, label: 'Good', tag: 'Good', features: ['Good sensors'], brands: 'Good Brand' },
+            best: { enabled: false, price: 3000, label: 'Best', tag: 'Best', features: ['Best sensors'], brands: 'Best Brand' }
+          }
+        }],
+        sections: [{ id: 'security', name: 'Security', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.homeSize = 4000;
+      state.selections = { security: 'best' };
+      state.extras = {};
+      state.catMods = {};
+      state.modifiers = [];
+      renderCategories();
+      updateTotals();
+      return {
+        bestButtonVisible: !!document.querySelector('#cat-security .tier-btn.best-btn'),
+        categoryShowsSkipped: document.querySelector('#cat-security .category-price')?.textContent.trim(),
+        bestPrice: getCategoryPrice(CONFIGS.residential.categories[0], 'best'),
+        headerTotal: document.getElementById('headerTotal')?.textContent.trim()
+      };
+    });
+
+    expect(result.bestButtonVisible).toBe(false);
+    expect(result.categoryShowsSkipped).toBe('Not selected');
+    expect(result.bestPrice).toBe(0);
+    expect(result.headerTotal).toBe('$0');
+  });
+
   test('customer categories behave as a single-open accordion', async ({ page }) => {
     const headers = page.locator('.category-header');
     await headers.nth(0).click();

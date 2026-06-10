@@ -430,6 +430,69 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.betterSaved).toEqual({ status: 'addon', price: 450, scale: 0.2 });
   });
 
+  test('categories pricing hides tiers without deleting saved tier data', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [{
+          id: 'security',
+          section: 'Security',
+          section_id: 'security',
+          name: 'Security',
+          icon: 'S',
+          sizeScale: 0,
+          tiers: {
+            good: { price: 1000, label: 'Good', features: ['good sensor'], brands: 'Good Brand' },
+            better: { price: 2000, label: 'Better', features: ['better sensor'], brands: 'Better Brand' },
+            best: { price: 3000, label: 'Best', features: ['best sensor'], brands: 'Best Brand' }
+          }
+        }],
+        residential_sections: [{ id: 'security', name: 'Security', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+      document.querySelector('.cat-editor-card[data-cat-idx="0"]').classList.add('open');
+
+      let confirmCalled = false;
+      confirm = () => {
+        confirmCalled = true;
+        return false;
+      };
+      const disabled = disableTier('security', 'best', 0);
+      const afterDisable = catData.residential_categories[0].tiers.best;
+      const hiddenCardText = document.querySelector('.cat-editor-card[data-cat-idx="0"] .tier-not-configured[data-tier="best"]')?.textContent || '';
+      const summaryAfterDisable = document.querySelector('.cat-editor-card[data-cat-idx="0"] .cat-meta')?.textContent || '';
+
+      const enabled = enableTier('security', 'best', 0);
+      const afterEnable = catData.residential_categories[0].tiers.best;
+      return {
+        confirmCalled,
+        disabled,
+        enabled,
+        afterDisable,
+        afterEnable,
+        hiddenCardText,
+        summaryAfterDisable
+      };
+    });
+
+    expect(result.confirmCalled).toBe(false);
+    expect(result.disabled).toBe(true);
+    expect(result.afterDisable.enabled).toBe(false);
+    expect(result.afterDisable.price).toBe(3000);
+    expect(result.afterDisable.features).toEqual(['best sensor']);
+    expect(result.afterDisable.brands).toBe('Best Brand');
+    expect(result.hiddenCardText).toContain('Hidden - data preserved');
+    expect(result.summaryAfterDisable).toContain('2/4 tiers');
+    expect(result.enabled).toBe(true);
+    expect(result.afterEnable.enabled).toBe(true);
+    expect(result.afterEnable.price).toBe(3000);
+    expect(result.afterEnable.features).toEqual(['best sensor']);
+  });
+
   test('switching matrix back to feature list confirms and discards matrix-only metadata', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {
@@ -661,6 +724,53 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodFeatures).toEqual(['Coverage', 'UPS battery', 'Router']);
     expect(result.betterFeatures).toEqual(['Coverage', 'Support', 'Router']);
     expect(result.upsCell).toEqual({ status: 'addon', price: 325, scale: 0.2 });
+  });
+
+  test('disabled populated custom category tiers stay disabled after collection and rerender', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      customizeBudgetData = {
+        id: 'custom-disabled-tier-budget',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [], condo: [] },
+          __defaultSections: { residential: [], condo: [] }
+        },
+        customCategories: [{
+          id: 'custom-security',
+          icon: 'S',
+          name: 'Custom Security',
+          tiers: {
+            good: { enabled: true, label: 'Good', price: 1000, features: ['good custom'], brands: 'Good Brand' },
+            standard: { enabled: true, label: 'Standard', price: 2000, features: ['standard custom'], brands: 'Standard Brand' },
+            better: { enabled: true, label: 'Better', price: 3000, features: ['better custom'], brands: 'Better Brand' }
+          }
+        }]
+      };
+      renderCustomizeEditor();
+      const editor = document.querySelector('.custom-category-editor[data-cc-id="custom-security"]');
+      const standardRow = editor.querySelector('.cc-tier-row[data-tier="standard"]');
+      standardRow.querySelector('.cc-tier-enabled').checked = false;
+      toggleCustomTierEnabled(0, 'standard', false);
+
+      const collected = collectCustomizationData();
+      customizeBudgetData.customCategories = collected.customCategories;
+      renderCustomizeEditor();
+      const rerenderedStandardRow = document.querySelector('.custom-category-editor[data-cc-id="custom-security"] .cc-tier-row[data-tier="standard"]');
+      return {
+        collectedStandard: collected.customCategories[0].tiers.standard,
+        rerenderedChecked: rerenderedStandardRow.querySelector('.cc-tier-enabled').checked,
+        rerenderedLabelDisabled: rerenderedStandardRow.querySelector('.cc-tier-label').disabled
+      };
+    });
+
+    expect(result.collectedStandard.enabled).toBe(false);
+    expect(result.collectedStandard.price).toBe(2000);
+    expect(result.collectedStandard.features).toEqual(['standard custom']);
+    expect(result.collectedStandard.brands).toBe('Standard Brand');
+    expect(result.rerenderedChecked).toBe(false);
+    expect(result.rerenderedLabelDisabled).toBe(true);
   });
 
   test('customize matrix hides unchecked tiers and swaps package data within fixed tier slots', async ({ page }) => {

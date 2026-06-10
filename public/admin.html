@@ -3118,7 +3118,9 @@ function getMatrixTierModels(cat = {}, override = {}, options = {}) {
     const defaultTier = cat.tiers?.[tierKey];
     const tierOverride = override.tiers?.[tierKey] || {};
     const existsInBase = !!defaultTier;
-    const enabled = existsInBase ? tierOverride.enabled !== false : tierOverride.enabled === true;
+    const enabled = existsInBase
+      ? (tierOverride.enabled !== undefined ? tierOverride.enabled !== false : defaultTier.enabled !== false)
+      : tierOverride.enabled === true;
     const basePrice = defaultTier?.price || 0;
     const tierSizeScale = tierOverride.sizeScale ?? defaultTier?.sizeScale ?? categoryScale;
     const scaledPrice = options.scalePrices && basePrice ? getScaledPrice(basePrice, sqft, tierSizeScale) : basePrice;
@@ -3570,11 +3572,13 @@ function buildMatrixCategoryFromEditor(editor) {
   const tiers = {};
   editor?.querySelectorAll('.tier-row[data-tier], .cc-tier-row[data-tier], .tier-edit-card[data-tier]:not(.tier-not-configured)').forEach(row => {
     const tierKey = row.dataset.tier;
+    const enabledInput = row.querySelector('.tier-enabled, .cc-tier-enabled');
     const label = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value || TIER_NAMES[tierKey];
     const price = parseInt(row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value) || 0;
     const scaleInput = row.querySelector('[data-tf="sizeScale"]');
     const sizeScale = scaleInput?.value?.trim();
     tiers[tierKey] = {
+      ...(enabledInput ? { enabled: enabledInput.checked || enabledInput.disabled } : {}),
       label,
       price,
       ...(sizeScale ? { sizeScale: parseFloat(sizeScale) || 0 } : {}),
@@ -3594,10 +3598,14 @@ function toggleMatrixTierEnabled(control, tierKey, enabled) {
   if (editor.classList.contains('cat-editor-card')) {
     const catIdx = parseInt(editor.dataset.catIdx || '-1');
     const catId = editor.id?.replace(/^catCard-/, '') || '';
+    let changed = false;
     if (enabled) {
-      enableTier(catId, tierKey, catIdx);
+      changed = enableTier(catId, tierKey, catIdx);
     } else {
-      disableTier(catId, tierKey, catIdx);
+      changed = disableTier(catId, tierKey, catIdx);
+    }
+    if (!changed) {
+      control.checked = !enabled;
     }
     requestAnimationFrame(() => {
       if (scrollArea) scrollArea.scrollTop = previousScroll;
@@ -5104,7 +5112,7 @@ function buildCategoryOverrideFromBudget(budget, catId) {
     const tierOverride = override.tiers?.[tierKey] || {};
     const existsInBase = !!defaultTier;
     const enabled = existsInBase
-      ? (tierOverride.enabled !== false)
+      ? (tierOverride.enabled !== undefined ? tierOverride.enabled !== false : defaultTier.enabled !== false)
       : (tierOverride.enabled === true);
     const basePrice = defaultTier?.price || 0;
     const tierSizeScale = defaultTier?.sizeScale ?? sizeScale;
@@ -5265,7 +5273,7 @@ function readCustomCategoryEditorPayload(editor, options = {}) {
     enabled: '.cc-tier-enabled',
     label: '.cc-tier-label',
     price: '.cc-tier-price'
-  }, { onlyEnabled: true, onlyPopulated: true });
+  }, { onlyPopulated: true });
   const featureMatrix = readMatrixForPresentationMode(editor, presentationMode);
   applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode);
   const layout = document.getElementById('customizeLayoutSections')
@@ -5699,7 +5707,9 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
     const defaultTier = cat.tiers[tierKey];
     const tierOverride = override.tiers?.[tierKey] || {};
     const existsInBase = !!defaultTier;
-    return [tierKey, selectedTier === tierKey || (existsInBase ? (tierOverride.enabled !== false) : (tierOverride.enabled === true))];
+    return [tierKey, selectedTier === tierKey || (existsInBase
+      ? (tierOverride.enabled !== undefined ? tierOverride.enabled !== false : defaultTier.enabled !== false)
+      : (tierOverride.enabled === true))];
   }));
   
   return `
@@ -5735,7 +5745,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
             // For tiers that exist in base: enabled by default unless explicitly disabled
             // For tiers that DON'T exist: disabled by default unless explicitly enabled
             const isEnabled = existsInBase
-              ? (tierOverride.enabled !== false)
+              ? (tierOverride.enabled !== undefined ? tierOverride.enabled !== false : defaultTier.enabled !== false)
               : (tierOverride.enabled === true);
 
             const isTierLocked = selectedTier === tierKey;
@@ -6584,7 +6594,7 @@ function loadCategoryEditor() {
         </span>
       </h3>`;
     cats.forEach((cat, secIdx) => {
-      const configuredTiers = TIER_KEYS.filter(k => cat.tiers[k]);
+      const configuredTiers = TIER_KEYS.filter(k => cat.tiers[k] && cat.tiers[k].enabled !== false);
       const tierSummary = configuredTiers.map(k => {
         return `<span style="color:${TIER_COLORS[k]};">$${(cat.tiers[k].price || 0).toLocaleString()}</span>`;
       }).join(' / ');
@@ -6637,15 +6647,15 @@ function loadCategoryEditor() {
               <div class="tier-edit-grid" style="display:${getCategoryPresentationMode(cat) === 'matrix' ? 'none' : 'grid'};">
                 ${TIER_KEYS.map(tk => {
                   const t = cat.tiers[tk];
-                  if (!t) return `
+                  if (!t || t.enabled === false) return `
                     <div class="tier-edit-card tier-not-configured" data-tier="${tk}" style="opacity:0.5;border:2px dashed var(--border);">
                       <h4 style="display:flex;align-items:center;justify-content:space-between;">
                         <span><span style="color:${TIER_COLORS[tk]};">●</span> ${TIER_LABELS[tk]}</span>
                         <button class="btn btn-small" style="padding:2px 10px;font-size:11px;background:#E8F5E9;color:#2E7D32;" onclick="enableTier('${cat.id}', '${tk}', ${cat._idx})">Enable</button>
                       </h4>
-                      <div style="font-size:12px;color:var(--text-light);margin-top:4px;">Not configured</div>
+                      <div style="font-size:12px;color:var(--text-light);margin-top:4px;">${t ? 'Hidden - data preserved' : 'Not configured'}</div>
                     </div>`;
-                  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k]).length;
+                  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k] && cat.tiers[k].enabled !== false).length;
                   return `
                     <div class="tier-edit-card" data-tier="${tk}">
                       <h4 style="display:flex;align-items:center;justify-content:space-between;">
@@ -6720,14 +6730,16 @@ function enableTier(catId, tierKey, catIdx) {
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
   const cat = categories[catIdx];
-  if (!cat) return;
-  
+  if (!cat) return false;
+  cat.tiers = cat.tiers || {};
   cat.tiers[tierKey] = {
     price: 0,
     label: TIER_LABELS[tierKey],
     tag: TIER_LABELS[tierKey],
     features: [],
-    brands: ''
+    brands: '',
+    ...(cat.tiers[tierKey] || {}),
+    enabled: true
   };
   
   loadCategoryEditor();
@@ -6737,6 +6749,7 @@ function enableTier(catId, tierKey, catIdx) {
     if (card) card.classList.add('open');
   }, 50);
   showToast(`✓ ${TIER_LABELS[tierKey]} tier enabled for ${cat.name}`);
+  return true;
 }
 
 function disableTier(catId, tierKey, catIdx) {
@@ -6744,23 +6757,22 @@ function disableTier(catId, tierKey, catIdx) {
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
   const cat = categories[catIdx];
-  if (!cat) return;
+  if (!cat?.tiers?.[tierKey]) return false;
   
-  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k]).length;
+  const enabledCount = TIER_KEYS.filter(k => cat.tiers[k] && cat.tiers[k].enabled !== false).length;
   if (enabledCount <= 1) {
     showToast('❌ Must keep at least 1 tier');
-    return;
+    return false;
   }
   
-  if (!confirm(`Disable ${TIER_LABELS[tierKey]} tier for ${cat.name}? This will remove its data.`)) return;
-  
-  delete cat.tiers[tierKey];
+  cat.tiers[tierKey].enabled = false;
   loadCategoryEditor();
   setTimeout(() => {
     const card = document.getElementById('catCard-' + catId);
     if (card) card.classList.add('open');
   }, 50);
-  showToast(`✓ ${TIER_LABELS[tierKey]} tier disabled`);
+  showToast(`✓ ${TIER_LABELS[tierKey]} tier hidden. Data preserved.`);
+  return true;
 }
 
 // ============================================================

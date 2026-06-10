@@ -1943,8 +1943,9 @@ function normalizeStoredSectionId(section) {
 
 function orderedTierKeys(tiers) {
   if (!tiers) return [];
-  const known = TIER_ORDER.filter(tierKey => tiers[tierKey]);
-  const unknown = Object.keys(tiers).filter(tierKey => !TIER_ORDER.includes(tierKey));
+  const isEnabledTier = tierKey => tiers[tierKey] && tiers[tierKey].enabled !== false;
+  const known = TIER_ORDER.filter(isEnabledTier);
+  const unknown = Object.keys(tiers).filter(tierKey => !TIER_ORDER.includes(tierKey) && isEnabledTier(tierKey));
   return [...known, ...unknown];
 }
 
@@ -2296,6 +2297,7 @@ function getCategoryPrice(cat, tier) {
   if (!tier) return 0;
   const tierData = cat.tiers[tier];
   if (!tierData) return 0;
+  if (tierData.enabled === false) return 0;
   const base = tierData.price;
   
   // If category is customized, use fixed price (no scaling)
@@ -2353,7 +2355,7 @@ function renderCategories() {
     
     // Render categories in this section
     cats.forEach(cat => {
-      const selected = state.selections[cat.id];
+      const selected = cat.tiers[state.selections[cat.id]]?.enabled === false ? null : state.selections[cat.id];
       const basePrice = getCategoryPrice(cat, selected);
       const addOnTotal = matrixAddOnTotalForCategory(cat, selected);
       const catModAmount = state.catMods[cat.id]?.amount || 0;
@@ -3203,7 +3205,7 @@ async function sendProposalEmail() {
   const categories = [];
   CATEGORIES().forEach(cat => {
     const tier = state.selections[cat.id];
-    if (tier && cat.tiers[tier]) {
+    if (tier && cat.tiers[tier] && cat.tiers[tier].enabled !== false) {
       const price = getCategoryPrice(cat, tier);
       categories.push({
         name: cat.name,
@@ -3217,7 +3219,7 @@ async function sendProposalEmail() {
   let subtotal = 0;
   CATEGORIES().forEach(cat => {
     const tier = state.selections[cat.id];
-    if (tier && cat.tiers[tier]) subtotal += getCategoryPrice(cat, tier);
+    if (tier && cat.tiers[tier] && cat.tiers[tier].enabled !== false) subtotal += getCategoryPrice(cat, tier);
   });
   EXTRAS().forEach(e => {
     if (state.extras[e.id]) {
