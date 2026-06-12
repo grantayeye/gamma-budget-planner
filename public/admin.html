@@ -1218,8 +1218,13 @@
       }
 
       #budgetModal .detail-editor-card > div[style*="grid"],
+      #budgetModal .project-details-grid,
       #budgetModal .modal-body > div[style*="grid"] {
         grid-template-columns: 1fr !important;
+      }
+
+      #budgetModal .project-details-grid > div {
+        grid-column: auto !important;
       }
 
       #budgetModal input,
@@ -1540,6 +1545,18 @@
       padding: 14px 16px;
       margin-bottom: 20px;
     }
+
+    .project-details-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .project-field-wide { grid-column: span 3; }
+    .project-field-owner { grid-column: span 3; }
+    .project-field-sqft { grid-column: span 1; }
+    .project-field-type { grid-column: span 2; }
     
     .section-title {
       font-size: 14px;
@@ -2877,6 +2894,9 @@ function updateStats(rows = budgets) {
 
 async function viewBudget(id) {
   try {
+    if (!users.length) {
+      await loadUsers();
+    }
     const res = await fetch(api(`/api/admin/budgets/${id}`), { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to load budget');
     
@@ -3894,6 +3914,24 @@ function renderVersionChangeLog(budget, version) {
   `;
 }
 
+function renderSalespersonOptions(currentEmail) {
+  const options = new Map();
+  (users || []).forEach(user => {
+    const email = user.email || user.username;
+    if (email) options.set(email, user.name || email);
+  });
+  if (currentUser?.email) options.set(currentUser.email, currentUser.name || currentUser.email);
+  if (currentEmail) options.set(currentEmail, currentEmail);
+
+  const sorted = [...options.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  return [
+    `<option value="" ${currentEmail ? '' : 'selected'}>None</option>`,
+    ...sorted.map(([email, label]) => (
+      `<option value="${escapeAttr(email)}" ${email === currentEmail ? 'selected' : ''}>${escapeAttr(label)}${label !== email ? ` (${escapeAttr(email)})` : ''}</option>`
+    ))
+  ].join('');
+}
+
 function showBudgetModal(budget) {
   window.__currentBudget = budget;
   document.getElementById('modalTitle').textContent = budget.clientName || 'Unnamed Budget';
@@ -3902,6 +3940,8 @@ function showBudgetModal(budget) {
   const followUp = budget.followUpDate || '';
   const notes = budget.notes || '';
   const projectName = budget.currentState?.clientName || budget.clientName || '';
+  const projectBuilder = budget.currentState?.builder || budget.builder || '';
+  const salespersonEmail = budget.createdByEmail || '';
   const projectSqft = budget.sqftLocked || budget.currentState?.homeSize || 4000;
   const projectType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
   const expiresAt = budget.expiresAt || budget.currentState?.expiresAt || '';
@@ -3954,20 +3994,32 @@ function showBudgetModal(budget) {
     <div
       id="projectDetailsEditor"
       data-original-name="${escapeAttr(projectName)}"
+      data-original-builder="${escapeAttr(projectBuilder)}"
+      data-original-salesperson="${escapeAttr(salespersonEmail)}"
       data-original-sqft="${projectSqft}"
       data-original-type="${projectType}"
       class="detail-editor-card"
     >
-      <div style="display:grid;grid-template-columns:1fr 130px 170px;gap:12px;margin-bottom:12px;">
-        <div>
+      <div class="project-details-grid">
+        <div class="project-field-wide">
           <label class="detail-form-label">Budget Name</label>
           <input id="projectClientName" type="text" value="${escapeAttr(projectName)}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
         </div>
-        <div>
+        <div class="project-field-wide">
+          <label class="detail-form-label">Builder</label>
+          <input id="projectBuilder" type="text" value="${escapeAttr(projectBuilder)}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
+        </div>
+        <div class="project-field-owner">
+          <label class="detail-form-label">Salesperson</label>
+          <select id="projectSalesperson" onchange="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
+            ${renderSalespersonOptions(salespersonEmail)}
+          </select>
+        </div>
+        <div class="project-field-sqft">
           <label class="detail-form-label">Sqft</label>
           <input id="projectSqft" type="number" min="500" max="50000" value="${projectSqft}" oninput="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;" />
         </div>
-        <div>
+        <div class="project-field-type">
           <label class="detail-form-label">Home Type</label>
           <select id="projectPropertyType" onchange="handleProjectDetailsChange()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:white;">
             <option value="residential" ${projectType === 'residential' ? 'selected' : ''}>Residential</option>
@@ -4109,13 +4161,17 @@ function handleProjectDetailsChange() {
   const editor = document.getElementById('projectDetailsEditor');
   if (!editor) return;
   const name = document.getElementById('projectClientName').value.trim();
+  const builder = document.getElementById('projectBuilder').value.trim();
+  const salesperson = document.getElementById('projectSalesperson').value.trim();
   const sqft = parseInt(document.getElementById('projectSqft').value) || 0;
   const propertyType = document.getElementById('projectPropertyType').value;
   const originalName = editor.dataset.originalName || '';
+  const originalBuilder = editor.dataset.originalBuilder || '';
+  const originalSalesperson = editor.dataset.originalSalesperson || '';
   const originalSqft = parseInt(editor.dataset.originalSqft) || 0;
   const originalType = editor.dataset.originalType || 'residential';
   const pricingChanged = sqft !== originalSqft || propertyType !== originalType;
-  const changed = name !== originalName || pricingChanged;
+  const changed = name !== originalName || builder !== originalBuilder || salesperson !== originalSalesperson || pricingChanged;
   document.getElementById('projectPricingChoice').style.display = pricingChanged ? 'block' : 'none';
   document.getElementById('projectSaveBtn').disabled = !changed;
   document.getElementById('projectSaveStatus').textContent = changed ? 'Unsaved changes' : '';
@@ -4128,6 +4184,8 @@ async function saveProjectDetails(budgetId) {
   if (!editor) return;
 
   const clientName = document.getElementById('projectClientName').value.trim();
+  const builder = document.getElementById('projectBuilder').value.trim();
+  const createdByEmail = document.getElementById('projectSalesperson').value.trim();
   const homeSize = parseInt(document.getElementById('projectSqft').value);
   const propertyType = document.getElementById('projectPropertyType').value;
   const originalSqft = parseInt(editor.dataset.originalSqft) || 0;
@@ -4151,7 +4209,7 @@ async function saveProjectDetails(budgetId) {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientName, homeSize, propertyType, pricingMode })
+      body: JSON.stringify({ clientName, builder, createdByEmail, homeSize, propertyType, pricingMode })
     });
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
@@ -4162,6 +4220,8 @@ async function saveProjectDetails(budgetId) {
       budgets[idx] = {
         ...budgets[idx],
         clientName: data.budget.clientName,
+        builder: data.budget.builder,
+        createdByEmail: data.budget.createdByEmail,
         currentTotal: data.budget.currentState?.total || 0,
         isCustomized: data.budget.isCustomized,
         sqftLocked: data.budget.sqftLocked,
@@ -4184,6 +4244,8 @@ function updateBudgetListEntry(updatedBudget) {
   budgets[idx] = {
     ...budgets[idx],
     clientName: updatedBudget.clientName,
+    builder: updatedBudget.builder,
+    createdByEmail: updatedBudget.createdByEmail,
     currentTotal: updatedBudget.currentState?.total || 0,
     isCustomized: updatedBudget.isCustomized,
     sqftLocked: updatedBudget.sqftLocked,

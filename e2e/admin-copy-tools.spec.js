@@ -69,6 +69,101 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.sameVerticalBand).toBe(true);
   });
 
+  test('budget details can edit builder and salesperson owner', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const calls = [];
+      users = [
+        { email: 'alex@gamma.tech', username: 'alex@gamma.tech', name: 'Alex' },
+        { email: 'sam@gamma.tech', username: 'sam@gamma.tech', name: 'Sam' }
+      ];
+      currentUser = { email: 'admin@gamma.tech', name: 'Admin' };
+      budgets = [{
+        id: 'detail123',
+        clientName: 'Original Residence',
+        builder: 'Old Builder',
+        createdByEmail: 'alex@gamma.tech',
+        status: 'active',
+        currentTotal: 12000,
+        created: new Date().toISOString(),
+        clientViews: 0,
+        internalViews: 0,
+        activeBrowserCount: 0,
+        versionCount: 1,
+        lastClientActivity: null
+      }];
+      renderBudgets();
+
+      const budget = {
+        id: 'detail123',
+        clientName: 'Original Residence',
+        builder: 'Old Builder',
+        createdByEmail: 'alex@gamma.tech',
+        status: 'active',
+        created: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        currentState: {
+          clientName: 'Original Residence',
+          builder: 'Old Builder',
+          homeSize: 4000,
+          propertyType: 'residential',
+          total: 12000,
+          selections: {},
+          extras: {}
+        },
+        views: [],
+        activeBrowsers: [],
+        versions: [],
+        categoryConfig: {},
+        customCategories: []
+      };
+      showBudgetModal(budget);
+      document.getElementById('projectBuilder').value = 'New Builder';
+      document.getElementById('projectSalesperson').value = 'sam@gamma.tech';
+      handleProjectDetailsChange();
+      const saveEnabled = !document.getElementById('projectSaveBtn').disabled;
+
+      fetch = async (url, options = {}) => {
+        calls.push({ url: String(url), body: JSON.parse(options.body || '{}') });
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            budget: {
+              ...budget,
+              builder: 'New Builder',
+              createdByEmail: 'sam@gamma.tech',
+              lastModified: new Date().toISOString(),
+              currentState: { ...budget.currentState, builder: 'New Builder' }
+            }
+          })
+        };
+      };
+
+      await saveProjectDetails('detail123');
+      const listRowText = document.querySelector('#budgetTableBody tr').textContent;
+      return {
+        saveEnabled,
+        call: calls[0],
+        updatedBuilder: budgets[0].builder,
+        updatedOwner: budgets[0].createdByEmail,
+        listRowText
+      };
+    });
+
+    expect(result.saveEnabled).toBe(true);
+    expect(result.call.url).toContain('/api/admin/budgets/detail123/project');
+    expect(result.call.body).toMatchObject({
+      builder: 'New Builder',
+      createdByEmail: 'sam@gamma.tech',
+      homeSize: 4000,
+      propertyType: 'residential'
+    });
+    expect(result.updatedBuilder).toBe('New Builder');
+    expect(result.updatedOwner).toBe('sam@gamma.tech');
+    expect(result.listRowText).toContain('New Builder');
+    expect(result.listRowText).toContain('sam');
+  });
+
   test('category editor creates stable section ids for typed new headers', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {

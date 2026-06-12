@@ -659,6 +659,8 @@ const schemas = {
 
   updateBudgetProject: z.object({
     clientName: z.string().max(200).optional().nullable(),
+    builder: z.string().max(200).optional().nullable(),
+    createdByEmail: z.union([z.string().email().max(254), z.literal('')]).optional().nullable(),
     homeSize: z.coerce.number().int().min(500).max(50000).optional(),
     propertyType: z.enum(['residential', 'condo']).optional(),
     pricingMode: z.enum(['recalculate', 'preserve']).optional()
@@ -2075,8 +2077,15 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     const oldPropertyType = budget.propertyTypeLocked || state.propertyType || 'residential';
     const newSqft = data.homeSize !== undefined ? data.homeSize : oldSqft;
     const newPropertyType = data.propertyType || oldPropertyType;
-    const clientName = data.clientName !== undefined ? (data.clientName || null) : (budget.clientName || state.clientName || null);
+    const oldClientName = budget.clientName || state.clientName || null;
+    const oldBuilder = budget.builder || state.builder || null;
+    const oldCreatedByEmail = budget.createdByEmail || null;
+    const clientName = data.clientName !== undefined ? (String(data.clientName || '').trim() || null) : oldClientName;
+    const builder = data.builder !== undefined ? (String(data.builder || '').trim() || null) : oldBuilder;
+    const createdByEmail = data.createdByEmail !== undefined ? (String(data.createdByEmail || '').trim() || null) : (budget.createdByEmail || null);
     const pricingChanged = newSqft !== oldSqft || newPropertyType !== oldPropertyType;
+    const projectStateChanged = clientName !== oldClientName || builder !== oldBuilder || pricingChanged;
+    const ownerChanged = createdByEmail !== oldCreatedByEmail;
 
     if (pricingChanged && !data.pricingMode) {
       return res.status(400).json({ error: 'pricingMode is required when sqft or property type changes' });
@@ -2115,6 +2124,7 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     }
 
     state.clientName = clientName;
+    state.builder = builder;
     state.homeSize = newSqft;
     state.propertyType = newPropertyType;
     state.total = calculateBudgetTotal(state, defaults, {
@@ -2128,6 +2138,8 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     const now = new Date().toISOString();
     const update = {
       client_name: clientName,
+      builder,
+      created_by_email: createdByEmail,
       current_state: state,
       is_customized: isCustomized,
       sqft_locked: sqftLocked || null,
@@ -2140,11 +2152,15 @@ app.patch('/api/admin/budgets/:id/project', requireAuth, async (req, res) => {
     const { error } = await supabase.from('budgets').update(update).eq('id', req.params.id);
     if (error) return res.status(400).json({ error: error.message });
 
-    const versionNum = (budget.versions?.length || 0) + 1;
-    const note = pricingChanged
-      ? `Admin updated project details (${data.pricingMode === 'preserve' ? 'pricing preserved' : 'standard pricing recalculated'})`
-      : 'Admin updated project details';
-    await addVersion(req.params.id, versionNum, state, note, true, buildVersionMeta(req, req.user));
+    if (projectStateChanged) {
+      const versionNum = (budget.versions?.length || 0) + 1;
+      const note = pricingChanged
+        ? `Admin updated project details (${data.pricingMode === 'preserve' ? 'pricing preserved' : 'standard pricing recalculated'})`
+        : 'Admin updated project details';
+      await addVersion(req.params.id, versionNum, state, note, true, buildVersionMeta(req, req.user));
+    } else if (ownerChanged) {
+      console.log(`Admin updated budget owner for ${req.params.id}: ${createdByEmail || 'none'}`);
+    }
 
     const updatedBudget = await loadBudget(req.params.id);
     res.json({ success: true, budget: updatedBudget });
