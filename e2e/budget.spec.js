@@ -102,11 +102,13 @@ test.describe('Budget Planner', () => {
 
   test('selecting tier updates total', async ({ page }) => {
     const initialTotal = await page.locator('#headerTotal').textContent();
-    
-    const categoryWithGood = page.locator('.category-card:has(.tier-btn.good-btn)').first();
-    await categoryWithGood.locator('.category-header').click();
-    
-    await categoryWithGood.locator('.tier-btn.good-btn').click();
+
+    await page.evaluate(() => {
+      const categoryWithGood = [...document.querySelectorAll('.category-card')]
+        .find(card => card.querySelector('.tier-btn.good-btn'));
+      categoryWithGood?.querySelector('.category-header')?.click();
+      categoryWithGood?.querySelector('.tier-btn.good-btn')?.click();
+    });
     
     // Check total changed
     const newTotal = await page.locator('#headerTotal').textContent();
@@ -454,21 +456,27 @@ test.describe('Budget Planner', () => {
       document.getElementById('cat-networking').classList.add('open');
 
       const before = document.getElementById('headerTotal').textContent;
+      const tierPriceBefore = document.querySelector('.comparison-tier-card.good .comparison-tier-price')?.textContent.trim();
       const buttonBefore = document.querySelector('.comparison-table td.selected-col .matrix-addon-toggle')?.textContent.replace(/\s+/g, ' ').trim();
       toggleMatrixAddOn({ preventDefault() {}, stopPropagation() {} }, 'networking', 'good', 'ups-backup');
       const after = document.getElementById('headerTotal').textContent;
       const buttonAfter = document.querySelector('.comparison-table td.selected-col .matrix-addon-toggle')?.textContent.replace(/\s+/g, ' ').trim();
       const categoryHeaderPrice = document.querySelector('#cat-networking .category-price')?.textContent.trim();
+      const tierPriceAfter = document.querySelector('.comparison-tier-card.good .comparison-tier-price')?.textContent.trim();
+      const mobileActivePriceAfter = document.querySelector('.comparison-mobile-active-price')?.textContent.trim();
       const apiState = getStateForAPI();
       showSummary();
       const summaryRows = [...document.querySelectorAll('#summaryBody tbody tr')].map(row => row.textContent.replace(/\s+/g, ' ').trim());
 
       return {
         before,
+        tierPriceBefore,
         buttonBefore,
         after,
         buttonAfter,
         categoryHeaderPrice,
+        tierPriceAfter,
+        mobileActivePriceAfter,
         savedAddOn: apiState.addOns?.networking?.good?.['ups-backup'],
         savedTotal: apiState.total,
         summaryHasAddOn: summaryRows.some(row => row.includes('UPS backup') && row.includes('Add-on') && row.includes('$400'))
@@ -476,10 +484,13 @@ test.describe('Budget Planner', () => {
     });
 
     expect(result.before).toBe('$1,060');
+    expect(result.tierPriceBefore).toBe('$1,000');
     expect(result.buttonBefore).toBe('+ Add $400');
     expect(result.after).toBe('$1,484');
     expect(result.buttonAfter).toBe('✓ Added $400');
     expect(result.categoryHeaderPrice).toBe('$1,400');
+    expect(result.tierPriceAfter).toBe('$1,400');
+    expect(result.mobileActivePriceAfter).toBe('$1,400');
     expect(result.savedAddOn).toBe(true);
     expect(result.savedTotal).toBe(1484);
     expect(result.summaryHasAddOn).toBe(true);

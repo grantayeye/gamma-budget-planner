@@ -2057,6 +2057,11 @@ function matrixAddOnTotalForCategory(cat, tierKey) {
   }, 0);
 }
 
+function categoryTierDisplayPrice(cat, tierKey) {
+  if (!cat || !tierKey) return 0;
+  return getCategoryPrice(cat, tierKey) + matrixAddOnTotalForCategory(cat, tierKey);
+}
+
 function matrixSelectedAddOnRows(cat, tierKey) {
   if (!cat || !tierKey) return [];
   const selected = selectedAddOnsForCategory(cat.id, tierKey);
@@ -2488,7 +2493,7 @@ function renderComparisonTierCard(cat, tierKey, selectedTier) {
   const tier = cat.tiers[tierKey] || {};
   const tierDisabled = isTierUnavailable(cat, tierKey);
   const fixedName = tierFixedName(tierKey);
-  const price = tierDisabled ? 'N/A' : formatCurrency(getCategoryPrice(cat, tierKey));
+  const price = tierDisabled ? 'N/A' : formatCurrency(categoryTierDisplayPrice(cat, tierKey));
   const packageName = tier.label && tier.label !== fixedName ? tier.label : '';
   const tag = tierDisabled ? 'Not available' : (packageName || tier.tag || fixedName);
   const badge = tierKey === 'best' ? 'Best experience' : (tierKey === 'better' ? 'Popular choice' : '');
@@ -2529,7 +2534,7 @@ function comparisonTierDisplay(cat, tierKey) {
   return {
     kicker: fixedName,
     name: tier.label || fixedName,
-    price: isTierUnavailable(cat, tierKey) ? 'N/A' : formatCurrency(getCategoryPrice(cat, tierKey))
+    price: isTierUnavailable(cat, tierKey) ? 'N/A' : formatCurrency(categoryTierDisplayPrice(cat, tierKey))
   };
 }
 
