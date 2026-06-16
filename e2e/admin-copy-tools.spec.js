@@ -449,6 +449,75 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.hasFeatureListTextarea).toBe(false);
   });
 
+  test('categories pricing configures dependencies and deletes default items', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      catData = {
+        residential_categories: [
+          {
+            id: 'lighting-centralized',
+            section: 'Lighting',
+            section_id: 'lighting',
+            name: 'Centralized Lighting',
+            icon: 'C',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 1000, label: 'Good', features: [], brands: '' },
+              better: { price: 2000, label: 'Better', features: [], brands: '' }
+            }
+          },
+          {
+            id: 'lighting-designer',
+            section: 'Lighting',
+            section_id: 'lighting',
+            name: 'Designer Keypads',
+            icon: 'D',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 500, label: 'Good', features: [], brands: '' }
+            }
+          }
+        ],
+        residential_sections: [{ id: 'lighting', name: 'Lighting', order: 0 }],
+        residential_extras: [],
+        condo_categories: [],
+        condo_sections: [],
+        condo_extras: []
+      };
+      document.getElementById('catPropertyType').value = 'residential';
+      loadCategoryEditor();
+
+      const designerCard = document.querySelector('.cat-editor-card[data-cat-idx="1"]');
+      designerCard.classList.add('open');
+      const dependencySelect = designerCard.querySelector('[data-field="dependsOnCategory"]');
+      const defaultDependency = dependencySelect.value;
+      dependencySelect.value = 'lighting-centralized';
+      updateCategoryDependencyTierControls(dependencySelect);
+      const anyTier = designerCard.querySelector('[data-field="dependsOnAnyTier"]');
+      anyTier.checked = false;
+      updateCategoryDependencyAnyTier(anyTier);
+      designerCard.querySelector('[data-field="dependsOnTier"][value="better"]').checked = true;
+      collectCategoryEditorData();
+      const savedDependency = catData.residential_categories[1].dependsOn;
+
+      confirm = () => true;
+      const headerDeleteVisible = !!document.querySelector('.cat-editor-header button[title="Delete item"]');
+      deleteItem('lighting-centralized', 0);
+      return {
+        defaultDependency,
+        savedDependency,
+        headerDeleteVisible,
+        remainingIds: catData.residential_categories.map(cat => cat.id),
+        childDependencyAfterDelete: catData.residential_categories[0]?.dependsOn
+      };
+    });
+
+    expect(result.defaultDependency).toBe('lighting-centralized');
+    expect(result.savedDependency).toEqual({ categoryId: 'lighting-centralized', tierKeys: ['better'] });
+    expect(result.headerDeleteVisible).toBe(true);
+    expect(result.remainingIds).toEqual(['lighting-designer']);
+    expect(result.childDependencyAfterDelete).toBe(null);
+  });
+
   test('template matrix add-ons save tier-specific price and scale', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {

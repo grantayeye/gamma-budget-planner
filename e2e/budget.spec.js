@@ -156,6 +156,89 @@ test.describe('Budget Planner', () => {
     expect(result.headerTotal).toBe('$0');
   });
 
+  test('customer hides dependent categories until parent selection is active', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [
+          {
+            id: 'lighting-centralized',
+            section: 'Lighting',
+            section_id: 'lighting',
+            name: 'Centralized Lighting',
+            icon: 'C',
+            desc: 'Lighting control',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 1000, label: 'Good', tag: 'Good', features: [], brands: '' },
+              better: { price: 2000, label: 'Better', tag: 'Better', features: [], brands: '' }
+            }
+          },
+          {
+            id: 'lighting-designer',
+            section: 'Lighting',
+            section_id: 'lighting',
+            name: 'Designer Keypads',
+            icon: 'D',
+            desc: 'Designer keypad upgrade',
+            sizeScale: 0,
+            dependsOn: { categoryId: 'lighting-centralized', tierKeys: ['better'] },
+            tiers: {
+              good: { price: 500, label: 'Good', tag: 'Good', features: [], brands: '' }
+            }
+          }
+        ],
+        sections: [{ id: 'lighting', name: 'Lighting', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.selections = { 'lighting-centralized': null, 'lighting-designer': 'good' };
+      state.extras = {};
+      state.catMods = {};
+      state.modifiers = [];
+      state.addOns = {};
+      renderCategories();
+      updateTotals();
+      const hiddenInitially = !document.getElementById('cat-lighting-designer');
+      const totalInitially = document.getElementById('statSubtotal').textContent;
+      const designerSelectionAfterCleanup = state.selections['lighting-designer'];
+
+      selectTier('lighting-centralized', 'good');
+      const hiddenOnWrongTier = !document.getElementById('cat-lighting-designer');
+
+      selectTier('lighting-centralized', 'better');
+      const visibleOnRequiredTier = !!document.getElementById('cat-lighting-designer');
+      selectTier('lighting-designer', 'good');
+      const totalWithDependency = document.getElementById('statSubtotal').textContent;
+
+      selectTier('lighting-centralized', null);
+      const hiddenAfterParentClear = !document.getElementById('cat-lighting-designer');
+      const designerSelectionAfterParentClear = state.selections['lighting-designer'];
+      const totalAfterParentClear = document.getElementById('statSubtotal').textContent;
+
+      return {
+        hiddenInitially,
+        totalInitially,
+        designerSelectionAfterCleanup,
+        hiddenOnWrongTier,
+        visibleOnRequiredTier,
+        totalWithDependency,
+        hiddenAfterParentClear,
+        designerSelectionAfterParentClear,
+        totalAfterParentClear
+      };
+    });
+
+    expect(result.hiddenInitially).toBe(true);
+    expect(result.totalInitially).toBe('$0');
+    expect(result.designerSelectionAfterCleanup).toBe(null);
+    expect(result.hiddenOnWrongTier).toBe(true);
+    expect(result.visibleOnRequiredTier).toBe(true);
+    expect(result.totalWithDependency).toBe('$2,500');
+    expect(result.hiddenAfterParentClear).toBe(true);
+    expect(result.designerSelectionAfterParentClear).toBe(null);
+    expect(result.totalAfterParentClear).toBe('$0');
+  });
+
   test('customer categories behave as a single-open accordion', async ({ page }) => {
     const headers = page.locator('.category-header');
     await headers.nth(0).click();

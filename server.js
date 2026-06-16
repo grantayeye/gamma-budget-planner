@@ -816,6 +816,39 @@ function selectedMatrixAddOnTotal(category = {}, tierKey, selectedForCategory = 
     }, 0);
 }
 
+const DEFAULT_CATEGORY_DEPENDENCIES = {
+  'lighting-designer': { categoryId: 'lighting-centralized', tierKeys: [] },
+  'invisible-speakers': { categoryId: 'audio', tierKeys: [] }
+};
+
+function normalizeCategoryDependencyPayload(value) {
+  if (value === null || value === false) return null;
+  const raw = value && typeof value === 'object' ? value : {};
+  const categoryId = String(raw.categoryId || raw.category || raw.dependsOnCategoryId || '').trim();
+  if (!categoryId) return null;
+  const tierKeys = Array.isArray(raw.tierKeys)
+    ? raw.tierKeys
+    : (Array.isArray(raw.tiers) ? raw.tiers : []);
+  return {
+    categoryId,
+    tierKeys: tierKeys.filter(tierKey => TIER_KEYS.includes(tierKey))
+  };
+}
+
+function categoryDependencyFor(category = {}) {
+  if (Object.prototype.hasOwnProperty.call(category, 'dependsOn')) return normalizeCategoryDependencyPayload(category.dependsOn);
+  if (Object.prototype.hasOwnProperty.call(category, 'visibilityDependency')) return normalizeCategoryDependencyPayload(category.visibilityDependency);
+  return normalizeCategoryDependencyPayload(DEFAULT_CATEGORY_DEPENDENCIES[category.id]);
+}
+
+function isCategoryDependencySatisfied(category = {}, selections = {}) {
+  const dependency = categoryDependencyFor(category);
+  if (!dependency) return true;
+  const selectedTier = selections?.[dependency.categoryId];
+  if (!selectedTier) return false;
+  return !dependency.tierKeys.length || dependency.tierKeys.includes(selectedTier);
+}
+
 function normalizeTierPayload(tier = {}) {
   const payload = {};
   if (tier.enabled !== undefined) payload.enabled = tier.enabled !== false;
@@ -829,6 +862,13 @@ function normalizeTierPayload(tier = {}) {
 
 function normalizePresentationPayload(payload = {}) {
   const normalized = deepClone(payload || {}) || {};
+  const dependencyWasProvided = Object.prototype.hasOwnProperty.call(normalized, 'dependsOn') ||
+    Object.prototype.hasOwnProperty.call(normalized, 'visibilityDependency');
+  const dependency = normalizeCategoryDependencyPayload(
+    Object.prototype.hasOwnProperty.call(normalized, 'dependsOn')
+      ? normalized.dependsOn
+      : normalized.visibilityDependency
+  );
   const presentationMode = normalized.presentationMode === 'matrix' ? 'matrix' : 'list';
   let featureMatrix = presentationMode === 'matrix'
     ? normalizeFeatureMatrixPayload(normalized.featureMatrix || [])
@@ -840,6 +880,10 @@ function normalizePresentationPayload(payload = {}) {
   });
   normalized.tiers = tiers;
   normalized.presentationMode = presentationMode;
+  delete normalized.visibilityDependency;
+  if (dependency) normalized.dependsOn = dependency;
+  else if (dependencyWasProvided) normalized.dependsOn = null;
+  else delete normalized.dependsOn;
   delete normalized.tierOrder;
   delete normalized.tier_order;
   if (presentationMode === 'matrix') {
@@ -1247,6 +1291,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
     const selectedAddOns = state.addOns?.[catId] || {};
     const customCat = customById.get(catId);
     if (customCat?.tiers?.[tierKey]) {
+      if (!isCategoryDependencySatisfied(customCat, state.selections || {})) return;
       if (customCat.tiers[tierKey].enabled === false) return;
       subtotal += Number(customCat.tiers[tierKey].price || 0);
       subtotal += selectedMatrixAddOnTotal(customCat, tierKey, selectedAddOns, sqft);
@@ -1254,6 +1299,7 @@ function calculateBudgetTotal(state, defaults, options = {}) {
     }
 
     const defaultCat = defaultById.get(catId);
+    if (defaultCat && !isCategoryDependencySatisfied(defaultCat, state.selections || {})) return;
     const categoryForAddOns = {
       ...(defaultCat || {}),
       ...(categoryConfig[catId]?.featureMatrix ? { featureMatrix: categoryConfig[catId].featureMatrix } : {})

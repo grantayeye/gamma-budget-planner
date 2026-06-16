@@ -1936,6 +1936,56 @@ function normalizeCategoryList(categories = [], sections = []) {
   return { categories: normalizedCategories, sections: normalizedSections };
 }
 
+const DEFAULT_CATEGORY_DEPENDENCIES = {
+  'lighting-designer': { categoryId: 'lighting-centralized', tierKeys: [] },
+  'invisible-speakers': { categoryId: 'audio', tierKeys: [] }
+};
+
+function normalizeCategoryDependency(value) {
+  if (value === null || value === false) return null;
+  const raw = value && typeof value === 'object' ? value : {};
+  const categoryId = String(raw.categoryId || raw.category || raw.dependsOnCategoryId || '').trim();
+  if (!categoryId) return null;
+  const tierKeys = Array.isArray(raw.tierKeys)
+    ? raw.tierKeys
+    : (Array.isArray(raw.tiers) ? raw.tiers : []);
+  return {
+    categoryId,
+    tierKeys: tierKeys.filter(tierKey => TIER_ORDER.includes(tierKey))
+  };
+}
+
+function categoryDependencyFor(cat) {
+  if (!cat) return null;
+  if (Object.prototype.hasOwnProperty.call(cat, 'dependsOn')) return normalizeCategoryDependency(cat.dependsOn);
+  if (Object.prototype.hasOwnProperty.call(cat, 'visibilityDependency')) return normalizeCategoryDependency(cat.visibilityDependency);
+  return normalizeCategoryDependency(DEFAULT_CATEGORY_DEPENDENCIES[cat.id]);
+}
+
+function isCategoryDependencySatisfied(cat) {
+  const dependency = categoryDependencyFor(cat);
+  if (!dependency) return true;
+  const selectedTier = state.selections?.[dependency.categoryId];
+  if (!selectedTier) return false;
+  return !dependency.tierKeys.length || dependency.tierKeys.includes(selectedTier);
+}
+
+function clearDependencyBlockedSelections(categories = CATEGORIES()) {
+  let changed = false;
+  let guard = 0;
+  do {
+    changed = false;
+    (categories || []).forEach(cat => {
+      if (!state.selections?.[cat.id]) return;
+      if (isCategoryDependencySatisfied(cat)) return;
+      state.selections[cat.id] = null;
+      if (state.addOns) delete state.addOns[cat.id];
+      changed = true;
+    });
+    guard += 1;
+  } while (changed && guard < 5);
+}
+
 function normalizeStoredSectionId(section) {
   const raw = section?.section_id || section?.sectionId || section?.id || section?.name || 'other';
   return slugifySectionId(raw);
@@ -2322,12 +2372,14 @@ function getCategoryPrice(cat, tier) {
 // RENDERING
 // ============================================================
 function isTierUnavailable(cat, tierKey) {
-  return cat?.id === 'lighting-designer' && tierKey === 'best' && state.selections['lighting'];
+  return !isCategoryDependencySatisfied(cat);
 }
 
 function renderCategories() {
   updateCustomerStickyOffset();
   const categories = CATEGORIES();
+  clearDependencyBlockedSelections(categories);
+  const visibleCategories = categories.filter(cat => isCategoryDependencySatisfied(cat));
   if (categories.length > 0) {
   }
   
@@ -2336,14 +2388,14 @@ function renderCategories() {
   
   // Group categories by section
   const sections = {};
-  CATEGORIES().forEach(cat => {
+  visibleCategories.forEach(cat => {
     const section = cat.section || 'Other';
     if (!sections[section]) sections[section] = [];
     sections[section].push(cat);
   });
   
   const allSections = [];
-  categories.forEach(cat => {
+  visibleCategories.forEach(cat => {
     const section = cat.section || 'Other';
     if (!allSections.includes(section)) allSections.push(section);
   });
@@ -2373,14 +2425,6 @@ function renderCategories() {
       if (cat.id === 'lighting' && state.selections['lighting-centralized']) {
         isDisabled = true;
       } else if (cat.id === 'lighting-centralized' && state.selections['lighting']) {
-        isDisabled = true;
-      }
-      // Designer Keypads requires a lighting control selection first, and not compatible with Wireless Basic
-      if (cat.id === 'lighting-designer' && (!state.selections['lighting'] && !state.selections['lighting-centralized'] || state.selections['lighting'] === 'good')) {
-        isDisabled = true;
-      }
-      // Invisible Speakers requires Multi-Room Audio selection first
-      if (cat.id === 'invisible-speakers' && !state.selections['audio']) {
         isDisabled = true;
       }
       
@@ -2846,23 +2890,11 @@ function selectTier(catId, tier) {
   if (tier !== null) {
     if (catId === 'lighting') {
       state.selections['lighting-centralized'] = null;
-      // Bespoke keypads not available with Wireless - clear if selected
-      if (state.selections['lighting-designer'] === 'best') {
-        state.selections['lighting-designer'] = null;
-      }
-      // Wireless Basic doesn't support designer keypads at all
-      if (tier === 'good' && state.selections['lighting-designer']) {
-        state.selections['lighting-designer'] = null;
-      }
     } else if (catId === 'lighting-centralized') {
       state.selections['lighting'] = null;
     }
   }
-  
-  // Clear Invisible Speakers if Multi-Room Audio is deselected
-  if (catId === 'audio' && tier === null) {
-    state.selections['invisible-speakers'] = null;
-  }
+  clearDependencyBlockedSelections();
   
   const scrollY = window.scrollY;
   renderCategories();
@@ -2945,16 +2977,19 @@ function applyPreset(level, el) {
         state.selections[c.id] = closest;
       }
     });
+    clearDependencyBlockedSelections();
   }
   renderCategories();
   updateTotals();
 }
 
 function updateTotals() {
+  clearDependencyBlockedSelections();
+  const visibleCategories = CATEGORIES().filter(cat => isCategoryDependencySatisfied(cat));
   let subtotal = 0;
   let selectedCount = 0;
   
-  CATEGORIES().forEach(cat => {
+  visibleCategories.forEach(cat => {
     const tier = state.selections[cat.id];
     if (tier) {
       subtotal += getCategoryPrice(cat, tier);
@@ -2978,7 +3013,7 @@ function updateTotals() {
   const equipmentSubtotal = subtotal + extrasTotal + modifiersTotal;
   const taxEstimate = Math.round(equipmentSubtotal * 0.06);
   const grandTotal = equipmentSubtotal + taxEstimate;
-  const catCount = CATEGORIES().length;
+  const catCount = visibleCategories.length;
   
   // Update displays
   document.getElementById('headerTotal').textContent = formatCurrency(grandTotal);

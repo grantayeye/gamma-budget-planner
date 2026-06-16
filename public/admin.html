@@ -1740,7 +1740,7 @@
       font-weight: 600;
       color: var(--text-light);
     }
-    .cat-field-row input, .cat-field-row textarea {
+    .cat-field-row input, .cat-field-row textarea, .cat-field-row select {
       padding: 10px 12px;
       border: 1.5px solid var(--border);
       border-radius: var(--radius-xs);
@@ -1749,11 +1749,34 @@
       transition: all var(--transition);
       background: #FAFBFC;
     }
-    .cat-field-row input:focus, .cat-field-row textarea:focus {
+    .cat-field-row input:focus, .cat-field-row textarea:focus, .cat-field-row select:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(1,126,215,0.1);
       background: white;
       outline: none;
+    }
+    .cat-dependency-panel {
+      background: #F8FAFC;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-xs);
+      padding: 10px 12px;
+      margin: 12px 0;
+    }
+    .cat-dependency-panel .cat-field-row {
+      margin-bottom: 8px;
+    }
+    .cat-dependency-tier-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      font-size: 12px;
+      color: var(--text-light);
+    }
+    .cat-dependency-tier-options label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 500;
     }
     .tier-edit-grid {
       display: grid;
@@ -3762,6 +3785,93 @@ function normalizeCategoryDefaults(data = {}) {
     condo_categories: condo.categories,
     condo_sections: condo.sections
   };
+}
+
+const DEFAULT_CATEGORY_DEPENDENCIES = {
+  'lighting-designer': { categoryId: 'lighting-centralized', tierKeys: [] },
+  'invisible-speakers': { categoryId: 'audio', tierKeys: [] }
+};
+
+function normalizeCategoryDependency(value) {
+  if (value === null || value === false) return null;
+  const raw = value && typeof value === 'object' ? value : {};
+  const categoryId = String(raw.categoryId || raw.category || raw.dependsOnCategoryId || '').trim();
+  if (!categoryId) return null;
+  const tierKeys = Array.isArray(raw.tierKeys)
+    ? raw.tierKeys
+    : (Array.isArray(raw.tiers) ? raw.tiers : []);
+  return {
+    categoryId,
+    tierKeys: tierKeys.filter(tierKey => TIER_KEYS.includes(tierKey))
+  };
+}
+
+function categoryDependencyFor(cat) {
+  if (!cat) return null;
+  if (Object.prototype.hasOwnProperty.call(cat, 'dependsOn')) return normalizeCategoryDependency(cat.dependsOn);
+  if (Object.prototype.hasOwnProperty.call(cat, 'visibilityDependency')) return normalizeCategoryDependency(cat.visibilityDependency);
+  return normalizeCategoryDependency(DEFAULT_CATEGORY_DEPENDENCIES[cat.id]);
+}
+
+function renderCategoryDependencyEditor(cat, categories) {
+  const dependency = categoryDependencyFor(cat);
+  const dependencyCategoryId = dependency?.categoryId || '';
+  const parentOptions = (categories || [])
+    .filter(item => item.id !== cat.id)
+    .map(item => `<option value="${escAttr(item.id)}" ${item.id === dependencyCategoryId ? 'selected' : ''}>${escAttr(item.name || item.id)}</option>`)
+    .join('');
+  const missingParent = dependencyCategoryId && !(categories || []).some(item => item.id === dependencyCategoryId)
+    ? `<option value="${escAttr(dependencyCategoryId)}" selected>Missing category: ${escAttr(dependencyCategoryId)}</option>`
+    : '';
+  const tierKeys = dependency?.tierKeys || [];
+  return `
+    <div class="cat-dependency-panel">
+      <div class="cat-field-row">
+        <label>Show When</label>
+        <select data-field="dependsOnCategory" class="cat-dependency-select" onchange="updateCategoryDependencyTierControls(this)">
+          <option value="">Always show</option>
+          ${missingParent}
+          ${parentOptions}
+        </select>
+      </div>
+      <div class="cat-field-row cat-dependency-tier-row" style="${dependencyCategoryId ? '' : 'display:none;'}">
+        <label>Parent Option</label>
+        <div>
+          <div class="cat-dependency-tier-options">
+            <label><input type="checkbox" data-field="dependsOnAnyTier" ${tierKeys.length ? '' : 'checked'} onchange="updateCategoryDependencyAnyTier(this)"> Any selected option</label>
+            ${TIER_KEYS.map(tk => `
+              <label><input type="checkbox" data-field="dependsOnTier" value="${tk}" ${tierKeys.includes(tk) ? 'checked' : ''} ${tierKeys.length ? '' : 'disabled'}> ${TIER_LABELS[tk]}</label>
+            `).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-light);margin-top:5px;">Controls when this item appears on the customer page.</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function updateCategoryDependencyTierControls(select) {
+  const panel = select.closest('.cat-dependency-panel');
+  const tierRow = panel?.querySelector('.cat-dependency-tier-row');
+  if (!tierRow) return;
+  tierRow.style.display = select.value ? '' : 'none';
+  if (!select.value) {
+    panel.querySelector('[data-field="dependsOnAnyTier"]').checked = true;
+    panel.querySelectorAll('[data-field="dependsOnTier"]').forEach(input => {
+      input.checked = false;
+      input.disabled = true;
+    });
+  }
+  markCatDirty();
+}
+
+function updateCategoryDependencyAnyTier(input) {
+  const panel = input.closest('.cat-dependency-panel');
+  panel?.querySelectorAll('[data-field="dependsOnTier"]').forEach(tierInput => {
+    tierInput.disabled = input.checked;
+    if (input.checked) tierInput.checked = false;
+  });
+  markCatDirty();
 }
 
 function normalizeStoredSectionId(section) {
@@ -6673,6 +6783,7 @@ function loadCategoryEditor() {
             <span class="reorder-btns" style="display:flex;gap:2px;margin-right:8px;">
               <button class="btn btn-small" style="padding:2px 6px;font-size:12px;line-height:1;${isFirst ? 'opacity:0.3;pointer-events:none;' : ''}" onclick="moveItem(${cat._idx}, -1)" title="Move up">▲</button>
               <button class="btn btn-small" style="padding:2px 6px;font-size:12px;line-height:1;${isLast ? 'opacity:0.3;pointer-events:none;' : ''}" onclick="moveItem(${cat._idx}, 1)" title="Move down">▼</button>
+              <button class="btn btn-small" style="padding:2px 8px;font-size:11px;line-height:1;background:#FFEBEE;color:#C62828;" onclick="deleteItem('${escAttr(cat.id)}', ${cat._idx})" title="Delete item">Delete</button>
             </span>
             <span style="color:var(--text-light);">▼</span>
           </div>
@@ -6705,6 +6816,7 @@ function loadCategoryEditor() {
                   <option value="matrix" ${getCategoryPresentationMode(cat) === 'matrix' ? 'selected' : ''}>Comparison table</option>
                 </select>
               </div>
+              ${renderCategoryDependencyEditor(cat, categoriesForRender)}
               
               <div class="tier-edit-grid" style="display:${getCategoryPresentationMode(cat) === 'matrix' ? 'none' : 'grid'};">
                 ${TIER_KEYS.map(tk => {
@@ -6750,9 +6862,6 @@ function loadCategoryEditor() {
               </div>
               ${renderFeatureMatrixEditorPanel(cat)}
               
-              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);text-align:right;">
-                <button class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteItem('${cat.id}', ${cat._idx})">🗑️ Delete Item</button>
-              </div>
             </div>
           </div>
         </div>`;
@@ -7056,7 +7165,6 @@ function doAddItem() {
 }
 
 function deleteItem(catId, catIdx) {
-  markCatDirty();
   collectCategoryEditorData();
   const propType = document.getElementById('catPropertyType').value;
   const categories = propType === 'condo' ? catData.condo_categories : catData.residential_categories;
@@ -7065,7 +7173,15 @@ function deleteItem(catId, catIdx) {
   
   if (!confirm(`Delete "${cat.name}"? This cannot be undone (save required).`)) return;
   
+  markCatDirty();
   categories.splice(catIdx, 1);
+  categories.forEach(item => {
+    const dependency = categoryDependencyFor(item);
+    if (dependency?.categoryId === cat.id) {
+      item.dependsOn = null;
+      delete item.visibilityDependency;
+    }
+  });
   loadCategoryEditor();
   showToast(`✓ "${cat.name}" deleted`);
 }
@@ -7180,6 +7296,20 @@ function collectCategoryEditorData() {
     }
     const scaleEl = card.querySelector('[data-field="sizeScale"]');
     if (scaleEl) cat.sizeScale = parseFloat(scaleEl.value) || 0;
+    const dependencyCategoryEl = card.querySelector('[data-field="dependsOnCategory"]');
+    if (dependencyCategoryEl) {
+      const dependencyCategoryId = dependencyCategoryEl.value;
+      if (dependencyCategoryId) {
+        const anyTier = card.querySelector('[data-field="dependsOnAnyTier"]')?.checked !== false;
+        const tierKeys = anyTier
+          ? []
+          : [...card.querySelectorAll('[data-field="dependsOnTier"]:checked')].map(input => input.value);
+        cat.dependsOn = { categoryId: dependencyCategoryId, tierKeys };
+      } else {
+        cat.dependsOn = null;
+      }
+      delete cat.visibilityDependency;
+    }
 
     const presentationMode = getEditorPresentationMode(card);
     if (presentationMode === 'matrix') {
