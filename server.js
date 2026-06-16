@@ -49,6 +49,13 @@ const limits = {
     max: 60,
     message: { error: 'Too many requests, please slow down' }
   }),
+  publicRead: rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    message: { error: 'Too many requests, please slow down' },
+    standardHeaders: true,
+    legacyHeaders: false
+  }),
   email: rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 10,
@@ -1408,7 +1415,7 @@ async function backfillBudgetDefaultSnapshots() {
 // ============================================================
 // CATEGORY API — PUBLIC
 // ============================================================
-app.get('/api/categories', async (req, res) => {
+app.get('/api/categories', limits.publicRead, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, max-age=0');
     const { data, error } = await supabase.from('category_defaults').select('*').eq('id', 'current').single();
@@ -1525,7 +1532,7 @@ app.post('/api/admin/categories/reset', requireAuth, async (req, res) => {
 // ============================================================
 // SHORT LINK ROUTES
 // ============================================================
-app.get('/s/:code', async (req, res) => {
+app.get('/s/:code', limits.publicRead, async (req, res) => {
   const { data: link } = await supabase
     .from('short_links')
     .select('*')
@@ -1815,7 +1822,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
   }
 });
 
-app.get('/api/budgets/:id', async (req, res) => {
+app.get('/api/budgets/:id', limits.publicRead, async (req, res) => {
   try {
     const budget = await loadBudget(req.params.id);
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
@@ -2571,11 +2578,6 @@ app.get('/api/health', async (req, res) => {
   } catch (err) {
     res.status(500).json({ status: 'error', message: 'Database error' });
   }
-});
-
-app.post('/api/debug', (req, res) => {
-  console.log('[FRONTEND DEBUG]', JSON.stringify(req.body, null, 2));
-  res.json({ ok: true });
 });
 
 // ============================================================
