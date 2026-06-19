@@ -762,6 +762,13 @@ main {
   height: 26px;
   font-size: 14px;
 }
+.mobile-feature-status .matrix-included-cell {
+  max-width: 100%;
+}
+.mobile-feature-status .matrix-included-label {
+  max-width: 58px;
+  font-size: 10px;
+}
 .mobile-feature-status .matrix-addon {
   min-height: 26px;
   padding: 3px 9px;
@@ -1050,6 +1057,25 @@ main {
   font-weight: 900;
   font-size: 14px;
 }
+.matrix-included-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+}
+.matrix-included-label {
+  display: inline-block;
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
 .matrix-addon {
   display: inline-flex;
   align-items: center;
@@ -1138,6 +1164,10 @@ main {
     width: 22px;
     height: 22px;
     font-size: 13px;
+  }
+  .matrix-included-label {
+    max-width: 66px;
+    font-size: 10px;
   }
   .matrix-addon {
     min-height: 22px;
@@ -2000,6 +2030,7 @@ function orderedTierKeys(tiers) {
 }
 
 const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
+const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 18;
 const FEATURE_MATRIX_STATUS_LABELS = {
   included: 'Included',
   addon: 'Add-on',
@@ -2026,9 +2057,20 @@ function splitFeatureLines(features) {
     .filter(Boolean);
 }
 
+function cleanMatrixIncludedLabel(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MATRIX_INCLUDED_LABEL_MAX_LENGTH);
+}
+
 function normalizeMatrixTierCell(value) {
   const rawStatus = value && typeof value === 'object' ? value.status : value;
-  const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
+  const status = rawStatus === 'included_note' ? 'included' : (FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included');
+  if (status === 'included') {
+    const label = cleanMatrixIncludedLabel(value && typeof value === 'object' ? (value.label ?? value.note) : '');
+    return label ? { status, label } : status;
+  }
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
   if (price <= 0) return status;
@@ -2046,6 +2088,12 @@ function matrixCellPrice(value) {
 
 function matrixCellScale(value) {
   return value && typeof value === 'object' ? Math.max(0, Number(value.scale) || 0) : 0;
+}
+
+function matrixCellIncludedLabel(value) {
+  return value && typeof value === 'object' && matrixCellStatus(value) === 'included'
+    ? cleanMatrixIncludedLabel(value.label ?? value.note)
+    : '';
 }
 
 function matrixCellCalculatedPrice(value) {
@@ -2500,7 +2548,17 @@ function renderCategoryDetails(cat, selectedTier) {
 
 function renderFeatureStatusCell(cell, context = {}) {
   const status = matrixCellStatus(cell);
-  if (status === 'included') return '<span class="matrix-check" aria-label="Included">✓</span>';
+  if (status === 'included') {
+    const label = matrixCellIncludedLabel(cell);
+    const check = '<span class="matrix-check" aria-label="Included">✓</span>';
+    if (!label) return check;
+    return `
+      <span class="matrix-included-cell" aria-label="Included: ${escapeAttr(label)}">
+        ${check}
+        <span class="matrix-included-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>
+      </span>
+    `;
+  }
   if (status === 'addon') {
     const price = matrixCellCalculatedPrice(cell);
     if (price > 0) {

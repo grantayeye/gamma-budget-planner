@@ -952,12 +952,19 @@
       align-items: center;
     }
 
+    .fm-included-note,
     .fm-addon-price {
       margin-top: 6px;
     }
 
+    .fm-included-note[hidden],
     .fm-addon-price[hidden] {
       display: none;
+    }
+
+    .fm-included-note input {
+      color: var(--text);
+      font-weight: 600;
     }
 
     .fm-addon-price input {
@@ -1326,6 +1333,7 @@
         text-transform: uppercase;
       }
 
+      .feature-matrix-table td[data-tier-label] .fm-included-note,
       .feature-matrix-table td[data-tier-label] .fm-addon-price {
         grid-column: 2;
         margin-top: -2px;
@@ -2962,8 +2970,11 @@ function uniqueSectionId(baseId, usedIds) {
 }
 
 const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
+const FEATURE_MATRIX_STATUS_OPTIONS = ['included', 'included_note', 'addon', 'not_included'];
+const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 18;
 const FEATURE_MATRIX_STATUS_LABELS = {
   included: 'Included',
+  included_note: 'Included with note',
   addon: 'Add-on',
   not_included: 'Not included'
 };
@@ -2979,9 +2990,20 @@ function splitFeatureLines(features) {
     .filter(Boolean);
 }
 
+function cleanMatrixIncludedLabel(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MATRIX_INCLUDED_LABEL_MAX_LENGTH);
+}
+
 function normalizeMatrixTierCell(value) {
   const rawStatus = value && typeof value === 'object' ? value.status : value;
-  const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
+  const status = rawStatus === 'included_note' ? 'included' : (FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included');
+  if (status === 'included') {
+    const label = cleanMatrixIncludedLabel(value && typeof value === 'object' ? (value.label ?? value.note) : '');
+    return label ? { status, label } : status;
+  }
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
   if (price <= 0) return status;
@@ -2999,6 +3021,12 @@ function matrixCellPrice(value) {
 
 function matrixCellScale(value) {
   return value && typeof value === 'object' ? Math.max(0, Number(value.scale) || 0) : 0;
+}
+
+function matrixCellIncludedLabel(value) {
+  return value && typeof value === 'object' && matrixCellStatus(value) === 'included'
+    ? cleanMatrixIncludedLabel(value.label ?? value.note)
+    : '';
 }
 
 function normalizeFeatureMatrix(matrix = []) {
@@ -3085,8 +3113,9 @@ function legacyFeaturesFromMatrix(matrix = [], tierKey) {
 
 function featureMatrixStatusOptions(selected = 'not_included') {
   const selectedStatus = matrixCellStatus(selected);
-  return FEATURE_MATRIX_STATUSES
-    .map(status => `<option value="${status}" ${selectedStatus === status ? 'selected' : ''}>${FEATURE_MATRIX_STATUS_LABELS[status]}</option>`)
+  const selectedValue = selectedStatus === 'included' && matrixCellIncludedLabel(selected) ? 'included_note' : selectedStatus;
+  return FEATURE_MATRIX_STATUS_OPTIONS
+    .map(status => `<option value="${status}" ${selectedValue === status ? 'selected' : ''}>${FEATURE_MATRIX_STATUS_LABELS[status]}</option>`)
     .join('');
 }
 
@@ -3118,17 +3147,23 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
       ${tierKeys.map((tierKey, tierIndex) => `
         <td data-tier-label="${TIER_NAMES[tierKey]}">
           ${(() => {
-            const status = matrixCellStatus(feature.tierStatus?.[tierKey]);
+            const cellValue = feature.tierStatus?.[tierKey];
+            const status = matrixCellStatus(cellValue);
+            const includedLabel = matrixCellIncludedLabel(cellValue);
             const canPriceAddon = matrixTierAllowsAddonPricing(tierKey, options);
-            const priceValue = canPriceAddon ? matrixCellPrice(feature.tierStatus?.[tierKey]) : 0;
-            const scaleValue = canPriceAddon ? matrixCellScale(feature.tierStatus?.[tierKey]) : 0;
+            const priceValue = canPriceAddon ? matrixCellPrice(cellValue) : 0;
+            const scaleValue = canPriceAddon ? matrixCellScale(cellValue) : 0;
             return `
           <div class="fm-status-wrap">
             <select class="fm-status" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} status for ${escapeAttr(feature.label)}" onchange="updateMatrixAddonPriceVisibility(this)">
-              ${featureMatrixStatusOptions(feature.tierStatus?.[tierKey] || 'not_included')}
+              ${featureMatrixStatusOptions(cellValue || 'not_included')}
             </select>
             <button type="button" class="btn btn-secondary btn-small fm-apply-right ${tierIndex < tierKeys.length - 1 ? '' : 'is-hidden'}" title="Apply this value to the following tiers" onclick="applyMatrixStatusRight(this)">→</button>
           </div>
+          <label class="fm-included-note" ${includedLabel ? '' : 'hidden'}>
+            <span style="display:block;font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;margin:5px 0 3px;">Included note</span>
+            <input type="text" class="fm-included-note-input" data-tier="${tierKey}" value="${escapeAttr(includedLabel)}" maxlength="${MATRIX_INCLUDED_LABEL_MAX_LENGTH}" placeholder="Upgraded">
+          </label>
           ${showAddonPricingControls ? `
             <label class="fm-addon-price ${canPriceAddon ? '' : 'is-locked'}" ${status === 'addon' ? '' : 'hidden'}>
               <span style="display:block;font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;margin:5px 0 3px;">Add-on price</span>
@@ -3227,14 +3262,20 @@ function readFeatureMatrixFromContainer(container) {
     const label = row.querySelector('.fm-label')?.value || '';
     const tierStatus = {};
     row.querySelectorAll('.fm-status[data-tier]').forEach(select => {
+      const includedNoteInput = row.querySelector(`.fm-included-note-input[data-tier="${select.dataset.tier}"]`);
       const priceInput = row.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
       const scaleInput = row.querySelector(`.fm-addon-scale-input[data-tier="${select.dataset.tier}"]`);
+      const includedLabel = cleanMatrixIncludedLabel(includedNoteInput?.value || '');
       const price = priceInput && !priceInput.disabled ? (Number(priceInput.value || 0) || 0) : 0;
       const scale = scaleInput && !scaleInput.disabled ? (Number(scaleInput.value || 0) || 0) : 0;
       if (select.value === 'addon' && price > 0) {
         tierStatus[select.dataset.tier] = scale > 0
           ? { status: 'addon', price, scale }
           : { status: 'addon', price };
+      } else if (select.value === 'included_note') {
+        tierStatus[select.dataset.tier] = includedLabel
+          ? { status: 'included', label: includedLabel }
+          : 'included';
       } else {
         tierStatus[select.dataset.tier] = select.value;
       }
@@ -3465,10 +3506,13 @@ function applyMatrixStatusRight(button) {
     }
     if (shouldApply) {
       select.value = sourceSelect.value;
+      const sourceIncludedNote = row.querySelector(`.fm-included-note-input[data-tier="${sourceSelect.dataset.tier}"]`)?.value || '';
+      const targetIncludedNote = row.querySelector(`.fm-included-note-input[data-tier="${select.dataset.tier}"]`);
       const sourcePrice = row.querySelector(`.fm-addon-price-input[data-tier="${sourceSelect.dataset.tier}"]`)?.value || '';
       const sourceScale = row.querySelector(`.fm-addon-scale-input[data-tier="${sourceSelect.dataset.tier}"]`)?.value || '';
       const targetPrice = row.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
       const targetScale = row.querySelector(`.fm-addon-scale-input[data-tier="${select.dataset.tier}"]`);
+      if (targetIncludedNote) targetIncludedNote.value = sourceSelect.value === 'included_note' ? sourceIncludedNote : '';
       if (targetPrice) targetPrice.value = sourceSelect.value === 'addon' ? sourcePrice : '';
       if (targetScale) targetScale.value = sourceSelect.value === 'addon' ? sourceScale : '';
       updateMatrixAddonPriceVisibility(select);
@@ -3480,9 +3524,14 @@ function applyMatrixStatusRight(button) {
 
 function updateMatrixAddonPriceVisibility(select) {
   const cell = select.closest('td');
+  const includedNoteWrap = cell?.querySelector(`.fm-included-note`);
+  const includedNoteInput = cell?.querySelector(`.fm-included-note-input[data-tier="${select.dataset.tier}"]`);
   const priceWrap = cell?.querySelector(`.fm-addon-price`);
   const priceInput = cell?.querySelector(`.fm-addon-price-input[data-tier="${select.dataset.tier}"]`);
   const scaleInput = cell?.querySelector(`.fm-addon-scale-input[data-tier="${select.dataset.tier}"]`);
+  const isIncludedNote = select.value === 'included_note';
+  if (includedNoteWrap) includedNoteWrap.hidden = !isIncludedNote;
+  if (includedNoteInput && !isIncludedNote) includedNoteInput.value = '';
   if (!priceWrap) return;
   const isAddon = select.value === 'addon';
   const canPriceAddon = matrixAddonPriceAllowedForControl(select);
@@ -3562,6 +3611,9 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
     const nextSelect = row.querySelector(`.fm-status[data-tier="${nextTier}"]`);
     if (!currentSelect || !nextSelect) return;
     const currentValue = currentSelect.value;
+    const currentIncludedNote = row.querySelector(`.fm-included-note-input[data-tier="${tierKey}"]`);
+    const nextIncludedNote = row.querySelector(`.fm-included-note-input[data-tier="${nextTier}"]`);
+    const currentIncludedNoteValue = currentIncludedNote?.value || '';
     const currentPrice = row.querySelector(`.fm-addon-price-input[data-tier="${tierKey}"]`);
     const nextPrice = row.querySelector(`.fm-addon-price-input[data-tier="${nextTier}"]`);
     const currentPriceValue = currentPrice?.value || '';
@@ -3570,6 +3622,10 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
     const currentScaleValue = currentScale?.value || '';
     currentSelect.value = nextSelect.value;
     nextSelect.value = currentValue;
+    if (currentIncludedNote && nextIncludedNote) {
+      currentIncludedNote.value = nextIncludedNote.value || '';
+      nextIncludedNote.value = currentIncludedNoteValue;
+    }
     if (currentPrice && nextPrice) {
       currentPrice.value = nextPrice.value || '';
       nextPrice.value = currentPriceValue;

@@ -347,7 +347,7 @@ test.describe('Budget Planner', () => {
               id: 'wifi-coverage',
               label: 'Whole-home WiFi coverage',
               description: 'Reliable wireless coverage throughout the home.',
-              tierStatus: { good: 'included', standard: 'included', better: 'included', best: 'included' }
+              tierStatus: { good: 'included', standard: 'included', better: { status: 'included', label: 'Upgraded' }, best: 'included' }
             },
             {
               id: 'ups-backup',
@@ -404,6 +404,12 @@ test.describe('Budget Planner', () => {
         mobileMissingStatus: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card')]
           .find(card => card.textContent.includes('Dedicated equipment rack'))
           ?.querySelector('.mobile-feature-status .matrix-empty')?.textContent.trim(),
+        includedNote: [...document.querySelectorAll('.comparison-table tbody tr')]
+          .find(row => row.textContent.includes('Whole-home WiFi coverage'))
+          ?.querySelector('td.selected-col .matrix-included-label')?.textContent.trim(),
+        mobileIncludedNote: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card')]
+          .find(card => card.textContent.includes('Whole-home WiFi coverage'))
+          ?.querySelector('.mobile-feature-status.selected .matrix-included-label')?.textContent.trim(),
         mobileTooltipTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-desktop-panel .selected-col .comparison-tier-name')?.textContent.trim(),
@@ -435,6 +441,8 @@ test.describe('Budget Planner', () => {
       'Dedicated equipment rack'
     ]);
     expect(result.mobileMissingStatus).toBe('—');
+    expect(result.includedNote).toBe('Upgraded');
+    expect(result.mobileIncludedNote).toBe('Upgraded');
     expect(result.mobileTooltipTitle).toContain('Reliable wireless coverage');
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');

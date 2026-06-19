@@ -343,6 +343,12 @@ test.describe('Admin copy/customization tools', () => {
       const select = card.querySelector('.presentation-mode-select');
       select.value = 'matrix';
       setMatrixMode(select, 'networking');
+      const wifiRow = [...card.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'WiFi coverage');
+      const wifiBetterStatus = wifiRow.querySelector('.fm-status[data-tier="better"]');
+      wifiBetterStatus.value = 'included_note';
+      updateMatrixAddonPriceVisibility(wifiBetterStatus);
+      wifiRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Upgraded';
       const upsRow = [...card.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
@@ -362,6 +368,7 @@ test.describe('Admin copy/customization tools', () => {
         goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
         betterUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.better,
         bestUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.best,
+        betterWifiStatus: cat.featureMatrix.find(feature => feature.label === 'WiFi coverage')?.tierStatus.better,
         hasTierOrder: Object.prototype.hasOwnProperty.call(cat, 'tierOrder'),
         betterLabel: cat.tiers.better.label,
         betterPrice: cat.tiers.better.price,
@@ -378,6 +385,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodUpsStatus).toBe('addon');
     expect(result.betterUpsStatus).toBe('addon');
     expect(result.bestUpsStatus).toBe('addon');
+    expect(result.betterWifiStatus).toEqual({ status: 'included', label: 'Upgraded' });
     expect(result.hasTierOrder).toBe(false);
     expect(result.betterLabel).toBe('Better Plus');
     expect(result.betterPrice).toBe(2400);
@@ -772,6 +780,12 @@ test.describe('Admin copy/customization tools', () => {
       const defaultSelect = defaultEditor.querySelector('.presentation-mode-select');
       defaultSelect.value = 'matrix';
       setMatrixMode(defaultSelect, 'networking');
+      const wifiRow = [...defaultEditor.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'WiFi coverage');
+      const defaultBetterStatus = wifiRow.querySelector('.fm-status[data-tier="better"]');
+      defaultBetterStatus.value = 'included_note';
+      updateMatrixAddonPriceVisibility(defaultBetterStatus);
+      wifiRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Premium';
       const upsRow = [...defaultEditor.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       const defaultGoodStatus = upsRow.querySelector('.fm-status[data-tier="good"]');
@@ -784,6 +798,12 @@ test.describe('Admin copy/customization tools', () => {
       const customSelect = customEditor.querySelector('.presentation-mode-select');
       customSelect.value = 'matrix';
       setMatrixMode(customSelect, 'custom-matrix');
+      const customBaseRow = [...customEditor.querySelectorAll('.feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Custom base');
+      const customBetterStatus = customBaseRow.querySelector('.fm-status[data-tier="better"]');
+      customBetterStatus.value = 'included_note';
+      updateMatrixAddonPriceVisibility(customBetterStatus);
+      customBaseRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Invisible';
       const customUpgradeRow = [...customEditor.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'Custom upgrade');
       const customGoodStatus = customUpgradeRow.querySelector('.fm-status[data-tier="good"]');
@@ -794,19 +814,23 @@ test.describe('Admin copy/customization tools', () => {
 
       const collected = collectCustomizationData();
       const defaultGoodCell = collected.categoryConfig.networking.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good;
+      const defaultBetterCell = collected.categoryConfig.networking.featureMatrix.find(feature => feature.label === 'WiFi coverage')?.tierStatus.better;
       const customGoodCell = collected.customCategories[0].featureMatrix.find(feature => feature.label === 'Custom upgrade')?.tierStatus.good;
+      const customBetterCell = collected.customCategories[0].featureMatrix.find(feature => feature.label === 'Custom base')?.tierStatus.better;
       return {
         defaultMode: collected.categoryConfig.networking.presentationMode,
         defaultHasTierOrder: Object.prototype.hasOwnProperty.call(collected.categoryConfig.networking, 'tierOrder'),
         defaultGoodStatus: defaultGoodCell?.status,
         defaultGoodPrice: defaultGoodCell?.price,
         defaultGoodScale: defaultGoodCell?.scale,
+        defaultBetterCell,
         defaultGoodFeatures: collected.categoryConfig.networking.tiers.good.features,
         customMode: collected.customCategories[0].presentationMode,
         customHasTierOrder: Object.prototype.hasOwnProperty.call(collected.customCategories[0], 'tierOrder'),
         customGoodStatus: customGoodCell?.status,
         customGoodPrice: customGoodCell?.price,
         customGoodScale: customGoodCell?.scale,
+        customBetterCell,
         customBetterFeatures: collected.customCategories[0].tiers.better.features
       };
     });
@@ -816,12 +840,14 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.defaultGoodStatus).toBe('addon');
     expect(result.defaultGoodPrice).toBe(275);
     expect(result.defaultGoodScale).toBe(0.4);
+    expect(result.defaultBetterCell).toEqual({ status: 'included', label: 'Premium' });
     expect(result.defaultGoodFeatures).toEqual(['WiFi coverage']);
     expect(result.customMode).toBe('matrix');
     expect(result.customHasTierOrder).toBe(false);
     expect(result.customGoodStatus).toBe('addon');
     expect(result.customGoodPrice).toBe(125);
     expect(result.customGoodScale).toBe(0.2);
+    expect(result.customBetterCell).toEqual({ status: 'included', label: 'Invisible' });
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
   });
 

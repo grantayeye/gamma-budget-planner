@@ -721,6 +721,7 @@ function loadStaticCategoryData() {
 
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
 const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
+const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 18;
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
 const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
@@ -753,9 +754,20 @@ function slugifyFeatureId(value) {
   return slug || 'feature';
 }
 
+function cleanMatrixIncludedLabel(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MATRIX_INCLUDED_LABEL_MAX_LENGTH);
+}
+
 function normalizeMatrixTierCell(value) {
   const rawStatus = value && typeof value === 'object' ? value.status : value;
-  const status = FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included';
+  const status = rawStatus === 'included_note' ? 'included' : (FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included');
+  if (status === 'included') {
+    const label = cleanMatrixIncludedLabel(value && typeof value === 'object' ? (value.label ?? value.note) : '');
+    return label ? { status, label } : status;
+  }
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
   if (price <= 0) return status;
