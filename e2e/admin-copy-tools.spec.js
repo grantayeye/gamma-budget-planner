@@ -348,7 +348,8 @@ test.describe('Admin copy/customization tools', () => {
       const wifiBetterStatus = wifiRow.querySelector('.fm-status[data-tier="better"]');
       wifiBetterStatus.value = 'included_note';
       updateMatrixAddonPriceVisibility(wifiBetterStatus);
-      wifiRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Upgraded';
+      wifiRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'TV';
+      wifiRow.querySelector('.fm-included-note-size[data-tier="better"]').value = 'large';
       const upsRow = [...card.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
@@ -387,7 +388,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.goodUpsStatus).toBe('addon');
     expect(result.betterUpsStatus).toBe('addon');
     expect(result.bestUpsStatus).toBe('addon');
-    expect(result.betterWifiStatus).toEqual({ status: 'included', label: 'Upgraded' });
+    expect(result.betterWifiStatus).toEqual({ status: 'included', label: 'TV', labelSize: 'large' });
     expect(result.hasTierOrder).toBe(false);
     expect(result.betterLabel).toBe('Better Plus');
     expect(result.betterPrice).toBe(2400);
@@ -788,6 +789,7 @@ test.describe('Admin copy/customization tools', () => {
       defaultBetterStatus.value = 'included_note';
       updateMatrixAddonPriceVisibility(defaultBetterStatus);
       wifiRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Premium';
+      wifiRow.querySelector('.fm-included-note-size[data-tier="better"]').value = 'medium';
       const upsRow = [...defaultEditor.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       const defaultGoodStatus = upsRow.querySelector('.fm-status[data-tier="good"]');
@@ -805,7 +807,8 @@ test.describe('Admin copy/customization tools', () => {
       const customBetterStatus = customBaseRow.querySelector('.fm-status[data-tier="better"]');
       customBetterStatus.value = 'included_note';
       updateMatrixAddonPriceVisibility(customBetterStatus);
-      customBaseRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Invisible';
+      customBaseRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'Invisible Speaker';
+      customBaseRow.querySelector('.fm-included-note-size[data-tier="better"]').value = 'large';
       const customUpgradeRow = [...customEditor.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'Custom upgrade');
       const customGoodStatus = customUpgradeRow.querySelector('.fm-status[data-tier="good"]');
@@ -842,14 +845,14 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.defaultGoodStatus).toBe('addon');
     expect(result.defaultGoodPrice).toBe(275);
     expect(result.defaultGoodScale).toBe(0.4);
-    expect(result.defaultBetterCell).toEqual({ status: 'included', label: 'Premium' });
+    expect(result.defaultBetterCell).toEqual({ status: 'included', label: 'Premium', labelSize: 'medium' });
     expect(result.defaultGoodFeatures).toEqual(['WiFi coverage']);
     expect(result.customMode).toBe('matrix');
     expect(result.customHasTierOrder).toBe(false);
     expect(result.customGoodStatus).toBe('addon');
     expect(result.customGoodPrice).toBe(125);
     expect(result.customGoodScale).toBe(0.2);
-    expect(result.customBetterCell).toEqual({ status: 'included', label: 'Invisible' });
+    expect(result.customBetterCell).toEqual({ status: 'included', label: 'Invisible Speaker' });
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
   });
 

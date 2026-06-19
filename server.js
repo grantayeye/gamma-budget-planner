@@ -722,6 +722,7 @@ function loadStaticCategoryData() {
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
 const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
 const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 18;
+const MATRIX_INCLUDED_LABEL_SIZES = ['small', 'medium', 'large'];
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
 const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';
@@ -761,12 +762,23 @@ function cleanMatrixIncludedLabel(value) {
     .slice(0, MATRIX_INCLUDED_LABEL_MAX_LENGTH);
 }
 
+function normalizeMatrixIncludedLabelSize(label, value) {
+  const requested = value && typeof value === 'object' ? String(value.labelSize || value.size || '').toLowerCase() : '';
+  let size = MATRIX_INCLUDED_LABEL_SIZES.includes(requested) ? requested : 'small';
+  const length = cleanMatrixIncludedLabel(label).length;
+  if (length > 8) return 'small';
+  if (length > 3 && size === 'large') return 'medium';
+  return size;
+}
+
 function normalizeMatrixTierCell(value) {
   const rawStatus = value && typeof value === 'object' ? value.status : value;
   const status = rawStatus === 'included_note' ? 'included' : (FEATURE_MATRIX_STATUSES.includes(rawStatus) ? rawStatus : 'not_included');
   if (status === 'included') {
     const label = cleanMatrixIncludedLabel(value && typeof value === 'object' ? (value.label ?? value.note) : '');
-    return label ? { status, label } : status;
+    if (!label) return status;
+    const labelSize = normalizeMatrixIncludedLabelSize(label, value);
+    return labelSize === 'small' ? { status, label } : { status, label, labelSize };
   }
   if (status !== 'addon') return status;
   const price = Number(value && typeof value === 'object' ? value.price : 0) || 0;
