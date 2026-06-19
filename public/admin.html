@@ -1020,6 +1020,10 @@
       cursor: not-allowed;
     }
 
+    .fm-included-note-size-btn[hidden] {
+      display: none;
+    }
+
     .fm-addon-price input {
       color: var(--accent);
       font-weight: 800;
@@ -3586,6 +3590,7 @@ function updateMatrixIncludedNoteSizeButtons(scope) {
     if (sizeInput) sizeInput.value = value;
     group.querySelectorAll('.fm-included-note-size-btn[data-size]').forEach(button => {
       const isAllowed = matrixIncludedNoteSizeAllowed(input?.value || '', button.dataset.size);
+      button.hidden = !isAllowed;
       button.disabled = !isAllowed;
       button.setAttribute('aria-disabled', String(!isAllowed));
       button.classList.toggle('is-selected', button.dataset.size === value);

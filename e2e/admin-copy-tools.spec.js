@@ -355,7 +355,7 @@ test.describe('Admin copy/customization tools', () => {
         value: betterNoteSize.value,
         buttons: [...betterCell.querySelectorAll('.fm-included-note-size-btn[data-size]')].map(button => ({
           size: button.dataset.size,
-          disabled: button.disabled,
+          hidden: button.hidden,
           selected: button.classList.contains('is-selected')
         }))
       });
@@ -423,25 +423,25 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.shortNoteSizeState).toEqual({
       value: 'large',
       buttons: [
-        { size: 'small', disabled: false, selected: false },
-        { size: 'medium', disabled: false, selected: false },
-        { size: 'large', disabled: false, selected: true }
+        { size: 'small', hidden: false, selected: false },
+        { size: 'medium', hidden: false, selected: false },
+        { size: 'large', hidden: false, selected: true }
       ]
     });
     expect(result.mediumNoteSizeState).toEqual({
       value: 'medium',
       buttons: [
-        { size: 'small', disabled: false, selected: false },
-        { size: 'medium', disabled: false, selected: true },
-        { size: 'large', disabled: true, selected: false }
+        { size: 'small', hidden: false, selected: false },
+        { size: 'medium', hidden: false, selected: true },
+        { size: 'large', hidden: true, selected: false }
       ]
     });
     expect(result.longNoteSizeState).toEqual({
       value: 'small',
       buttons: [
-        { size: 'small', disabled: false, selected: true },
-        { size: 'medium', disabled: true, selected: false },
-        { size: 'large', disabled: true, selected: false }
+        { size: 'small', hidden: false, selected: true },
+        { size: 'medium', hidden: true, selected: false },
+        { size: 'large', hidden: true, selected: false }
       ]
     });
     expect(result.hasIncludedNoteSizeSelect).toBe(false);
