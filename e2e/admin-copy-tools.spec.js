@@ -363,6 +363,7 @@ test.describe('Admin copy/customization tools', () => {
         visibleTierLabels: [...card.querySelectorAll('.feature-matrix-tier-card label')]
           .map(label => label.textContent.trim()),
         hasStandardStatusCells: !!card.querySelector('.fm-status[data-tier="standard"]'),
+        includedNoteMaxLength: wifiRow.querySelector('.fm-included-note-input[data-tier="better"]')?.maxLength,
         bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim(),
         matrixLabels: cat.featureMatrix.map(feature => feature.label),
         goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
@@ -380,6 +381,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.mode).toBe('matrix');
     expect(result.visibleTierLabels).toEqual(['Good', 'Better', 'Best']);
     expect(result.hasStandardStatusCells).toBe(false);
+    expect(result.includedNoteMaxLength).toBe(16);
     expect(result.bottomAddButton).toBe('+ Feature');
     expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);
     expect(result.goodUpsStatus).toBe('addon');

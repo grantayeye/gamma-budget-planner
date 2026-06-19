@@ -762,11 +762,7 @@ main {
   height: 26px;
   font-size: 14px;
 }
-.mobile-feature-status .matrix-included-cell {
-  max-width: 100%;
-}
 .mobile-feature-status .matrix-included-label {
-  max-width: 58px;
   font-size: 10px;
 }
 .mobile-feature-status .matrix-addon {
@@ -1061,20 +1057,17 @@ main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   max-width: 100%;
   min-width: 0;
 }
 .matrix-included-label {
   display: inline-block;
-  max-width: 82px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-light);
+  color: var(--accent);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 800;
   line-height: 1;
+  text-align: center;
 }
 .matrix-addon {
   display: inline-flex;
@@ -1166,7 +1159,6 @@ main {
     font-size: 13px;
   }
   .matrix-included-label {
-    max-width: 66px;
     font-size: 10px;
   }
   .matrix-addon {
@@ -2030,7 +2022,7 @@ function orderedTierKeys(tiers) {
 }
 
 const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
-const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 18;
+const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 16;
 const FEATURE_MATRIX_STATUS_LABELS = {
   included: 'Included',
   addon: 'Add-on',
@@ -2554,8 +2546,7 @@ function renderFeatureStatusCell(cell, context = {}) {
     if (!label) return check;
     return `
       <span class="matrix-included-cell" aria-label="Included: ${escapeAttr(label)}">
-        ${check}
-        <span class="matrix-included-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>
+        <span class="matrix-included-label">${escapeHtml(label)}</span>
       </span>
     `;
   }

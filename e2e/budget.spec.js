@@ -407,9 +407,15 @@ test.describe('Budget Planner', () => {
         includedNote: [...document.querySelectorAll('.comparison-table tbody tr')]
           .find(row => row.textContent.includes('Whole-home WiFi coverage'))
           ?.querySelector('td.selected-col .matrix-included-label')?.textContent.trim(),
+        includedNoteHasCheck: !![...document.querySelectorAll('.comparison-table tbody tr')]
+          .find(row => row.textContent.includes('Whole-home WiFi coverage'))
+          ?.querySelector('td.selected-col .matrix-check'),
         mobileIncludedNote: [...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card')]
           .find(card => card.textContent.includes('Whole-home WiFi coverage'))
           ?.querySelector('.mobile-feature-status.selected .matrix-included-label')?.textContent.trim(),
+        mobileIncludedNoteHasCheck: !![...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card')]
+          .find(card => card.textContent.includes('Whole-home WiFi coverage'))
+          ?.querySelector('.mobile-feature-status.selected .matrix-check'),
         mobileTooltipTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-desktop-panel .selected-col .comparison-tier-name')?.textContent.trim(),
@@ -442,7 +448,9 @@ test.describe('Budget Planner', () => {
     ]);
     expect(result.mobileMissingStatus).toBe('—');
     expect(result.includedNote).toBe('Upgraded');
+    expect(result.includedNoteHasCheck).toBe(false);
     expect(result.mobileIncludedNote).toBe('Upgraded');
+    expect(result.mobileIncludedNoteHasCheck).toBe(false);
     expect(result.mobileTooltipTitle).toContain('Reliable wireless coverage');
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
