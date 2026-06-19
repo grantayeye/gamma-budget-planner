@@ -962,8 +962,7 @@
       display: none;
     }
 
-    .fm-included-note input,
-    .fm-included-note select {
+    .fm-included-note input {
       color: var(--text);
       font-weight: 600;
     }
@@ -975,6 +974,45 @@
       color: var(--text-light);
       text-transform: uppercase;
       margin: 5px 0 3px;
+    }
+
+    .fm-included-note-size-buttons {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 3px;
+      padding: 2px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #FFFFFF;
+    }
+
+    .fm-included-note-size-btn {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-light);
+      font-weight: 800;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .fm-included-note-size-btn[data-size="small"] {
+      font-size: 11px;
+    }
+
+    .fm-included-note-size-btn[data-size="medium"] {
+      font-size: 14px;
+    }
+
+    .fm-included-note-size-btn[data-size="large"] {
+      font-size: 17px;
+    }
+
+    .fm-included-note-size-btn.is-selected {
+      background: var(--accent-bg);
+      color: var(--accent);
     }
 
     .fm-addon-price input {
@@ -3192,12 +3230,13 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
           <label class="fm-included-note" ${includedLabel ? '' : 'hidden'}>
             <span style="display:block;font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;margin:5px 0 3px;">Included note</span>
             <input type="text" class="fm-included-note-input" data-tier="${tierKey}" value="${escapeAttr(includedLabel)}" maxlength="${MATRIX_INCLUDED_LABEL_MAX_LENGTH}" placeholder="Upgraded">
-            <span class="fm-included-note-size-label">Size</span>
-            <select class="fm-included-note-size" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} included note size">
-              <option value="small" ${includedLabelSize === 'small' ? 'selected' : ''}>Small A</option>
-              <option value="medium" ${includedLabelSize === 'medium' ? 'selected' : ''}>Medium A</option>
-              <option value="large" ${includedLabelSize === 'large' ? 'selected' : ''}>Large A</option>
-            </select>
+            <span class="fm-included-note-size-label">Font size</span>
+            <input type="hidden" class="fm-included-note-size" data-tier="${tierKey}" value="${escapeAttr(includedLabelSize)}">
+            <div class="fm-included-note-size-buttons" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} included note font size">
+              <button type="button" class="fm-included-note-size-btn ${includedLabelSize === 'small' ? 'is-selected' : ''}" data-size="small" title="Small" onclick="setMatrixIncludedNoteSize(this, 'small')">A</button>
+              <button type="button" class="fm-included-note-size-btn ${includedLabelSize === 'medium' ? 'is-selected' : ''}" data-size="medium" title="Medium" onclick="setMatrixIncludedNoteSize(this, 'medium')">A</button>
+              <button type="button" class="fm-included-note-size-btn ${includedLabelSize === 'large' ? 'is-selected' : ''}" data-size="large" title="Large" onclick="setMatrixIncludedNoteSize(this, 'large')">A</button>
+            </div>
           </label>
           ${showAddonPricingControls ? `
             <label class="fm-addon-price ${canPriceAddon ? '' : 'is-locked'}" ${status === 'addon' ? '' : 'hidden'}>
@@ -3533,6 +3572,25 @@ function refreshMatrixTierSwapButtons(panel) {
   });
 }
 
+function updateMatrixIncludedNoteSizeButtons(scope) {
+  scope?.querySelectorAll?.('.fm-included-note-size-buttons[data-tier]').forEach(group => {
+    const value = group.closest('td')?.querySelector(`.fm-included-note-size[data-tier="${group.dataset.tier}"]`)?.value || 'small';
+    group.querySelectorAll('.fm-included-note-size-btn[data-size]').forEach(button => {
+      button.classList.toggle('is-selected', button.dataset.size === value);
+    });
+  });
+}
+
+function setMatrixIncludedNoteSize(button, size) {
+  const group = button.closest('.fm-included-note-size-buttons');
+  const input = group?.closest('td')?.querySelector(`.fm-included-note-size[data-tier="${group.dataset.tier}"]`);
+  if (!input || !MATRIX_INCLUDED_LABEL_SIZES.includes(size)) return;
+  input.value = size;
+  updateMatrixIncludedNoteSizeButtons(group.closest('td'));
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
 function applyMatrixStatusRight(button) {
   const row = button.closest('.feature-matrix-row');
   const sourceSelect = button.closest('.fm-status-wrap')?.querySelector('.fm-status[data-tier]');
@@ -3558,6 +3616,7 @@ function applyMatrixStatusRight(button) {
       if (targetPrice) targetPrice.value = sourceSelect.value === 'addon' ? sourcePrice : '';
       if (targetScale) targetScale.value = sourceSelect.value === 'addon' ? sourceScale : '';
       updateMatrixAddonPriceVisibility(select);
+      updateMatrixIncludedNoteSizeButtons(select.closest('td'));
     }
   });
   markCatDirty();
@@ -3578,6 +3637,7 @@ function updateMatrixAddonPriceVisibility(select) {
     if (includedNoteInput) includedNoteInput.value = '';
     if (includedNoteSize) includedNoteSize.value = 'small';
   }
+  updateMatrixIncludedNoteSizeButtons(cell);
   if (!priceWrap) return;
   const isAddon = select.value === 'addon';
   const canPriceAddon = matrixAddonPriceAllowedForControl(select);
@@ -3678,6 +3738,7 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
     if (currentIncludedNoteSize && nextIncludedNoteSize) {
       currentIncludedNoteSize.value = nextIncludedNoteSize.value || 'small';
       nextIncludedNoteSize.value = currentIncludedNoteSizeValue;
+      updateMatrixIncludedNoteSizeButtons(row);
     }
     if (currentPrice && nextPrice) {
       currentPrice.value = nextPrice.value || '';

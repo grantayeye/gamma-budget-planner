@@ -365,6 +365,12 @@ test.describe('Admin copy/customization tools', () => {
           .map(label => label.textContent.trim()),
         hasStandardStatusCells: !!card.querySelector('.fm-status[data-tier="standard"]'),
         includedNoteMaxLength: wifiRow.querySelector('.fm-included-note-input[data-tier="better"]')?.maxLength,
+        includedNoteSizeLabel: wifiRow.querySelector('.fm-included-note-size-label')?.textContent.trim(),
+        includedNoteSizeButtons: [...wifiRow.querySelector('td[data-tier-label="Better"]').querySelectorAll('.fm-included-note-size-btn[data-size]')].map(button => ({
+          size: button.dataset.size,
+          text: button.textContent.trim()
+        })),
+        hasIncludedNoteSizeSelect: !!wifiRow.querySelector('td[data-tier-label="Better"] select.fm-included-note-size'),
         bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim(),
         matrixLabels: cat.featureMatrix.map(feature => feature.label),
         goodUpsStatus: cat.featureMatrix.find(feature => feature.label === 'UPS backup')?.tierStatus.good,
@@ -383,6 +389,13 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.visibleTierLabels).toEqual(['Good', 'Better', 'Best']);
     expect(result.hasStandardStatusCells).toBe(false);
     expect(result.includedNoteMaxLength).toBe(18);
+    expect(result.includedNoteSizeLabel).toBe('Font size');
+    expect(result.includedNoteSizeButtons).toEqual([
+      { size: 'small', text: 'A' },
+      { size: 'medium', text: 'A' },
+      { size: 'large', text: 'A' }
+    ]);
+    expect(result.hasIncludedNoteSizeSelect).toBe(false);
     expect(result.bottomAddButton).toBe('+ Feature');
     expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);
     expect(result.goodUpsStatus).toBe('addon');
