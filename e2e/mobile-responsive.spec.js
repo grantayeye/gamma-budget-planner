@@ -109,7 +109,8 @@ test.describe('Mobile responsive layout', () => {
         featureRows: matrix.querySelectorAll('.mobile-feature-compare-card').length,
         missingStatus: missingRow.querySelector('.mobile-feature-status .matrix-empty')?.textContent.trim(),
         selectedCells: matrix.querySelectorAll('.mobile-feature-status.selected.good-col').length,
-        hasDottedTooltip: !!matrix.querySelector('.mobile-feature-compare-title.has-description[title]'),
+        hasCustomTooltipTrigger: !!matrix.querySelector('.mobile-feature-compare-title.has-description[data-description]'),
+        hasNativeTooltipTitle: !!matrix.querySelector('.mobile-feature-compare-title.has-description[title]'),
         stickyMobilePanel: getComputedStyle(panel).position,
         panelTopAfterScroll,
         stickyOffset
@@ -132,7 +133,8 @@ test.describe('Mobile responsive layout', () => {
     expect(result.featureRows).toBeGreaterThan(3);
     expect(result.missingStatus).toBe('—');
     expect(result.selectedCells).toBeGreaterThan(0);
-    expect(result.hasDottedTooltip).toBe(true);
+    expect(result.hasCustomTooltipTrigger).toBe(true);
+    expect(result.hasNativeTooltipTitle).toBe(false);
     expect(result.stickyMobilePanel).toBe('sticky');
     expect(Math.abs(result.panelTopAfterScroll - result.stickyOffset)).toBeLessThanOrEqual(2);
     expect(result.activeKickerAfterSwipe).toBe('standard');

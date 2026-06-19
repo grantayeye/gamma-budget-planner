@@ -2710,7 +2710,7 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
             <div class="mobile-feature-compare-header">
               <button type="button"
                 class="mobile-feature-compare-title ${feature.description ? 'has-description' : ''}"
-                ${feature.description ? `title="${escapeAttr(feature.description)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)"` : 'disabled'}>
+                ${feature.description ? `data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)"` : 'disabled'}>
                 ${escapeHtml(feature.label)}
               </button>
             </div>
@@ -2831,7 +2831,7 @@ function renderFeatureComparison(cat, selectedTier) {
             ${matrix.length ? matrix.map(feature => `
               <tr>
                 <td>
-                  <span class="matrix-feature-label ${feature.description ? 'has-description' : ''}" ${feature.description ? `tabindex="0" role="button" aria-label="${escapeAttr(`${feature.label}: ${feature.description}`)}" title="${escapeAttr(feature.description)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)" onmouseenter="showMatrixFeatureDescription(event, this)" onmouseleave="hideMatrixFeatureDescription()" onfocus="showMatrixFeatureDescription(event, this)" onblur="hideMatrixFeatureDescription()"` : ''}>
+                  <span class="matrix-feature-label ${feature.description ? 'has-description' : ''}" ${feature.description ? `tabindex="0" role="button" aria-label="${escapeAttr(`${feature.label}: ${feature.description}`)}" data-description="${escapeAttr(feature.description)}" onclick="showMatrixFeatureDescription(event, this)" onmouseenter="showMatrixFeatureDescription(event, this)" onmouseleave="hideMatrixFeatureDescription()" onfocus="showMatrixFeatureDescription(event, this)" onblur="hideMatrixFeatureDescription()"` : ''}>
                     ${escapeHtml(feature.label)}
                   </span>
                 </td>

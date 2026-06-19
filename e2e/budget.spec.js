@@ -422,7 +422,8 @@ test.describe('Budget Planner', () => {
         mobileIncludedNoteHasCheck: !![...document.querySelectorAll('.comparison-mobile-focus .mobile-feature-compare-card')]
           .find(card => card.textContent.includes('Whole-home WiFi coverage'))
           ?.querySelector('.mobile-feature-status.selected .matrix-check'),
-        mobileTooltipTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
+        mobileTooltipDescription: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('data-description'),
+        mobileTooltipNativeTitle: document.querySelector('.comparison-mobile-focus .mobile-feature-compare-title.has-description')?.getAttribute('title'),
         addOnCount: document.querySelectorAll('.matrix-addon').length,
         selectedHeader: document.querySelector('.comparison-desktop-panel .selected-col .comparison-tier-name')?.textContent.trim(),
         desktopHeaderSticky: getComputedStyle(stickyHeading).position,
@@ -431,7 +432,8 @@ test.describe('Budget Planner', () => {
         stickyOffset,
         mobilePanelSticky: getComputedStyle(document.querySelector('.comparison-mobile-panel')).position,
         legacyTierSelectorVisible: !!document.querySelector('#cat-networking .tier-selector'),
-        tooltip: document.querySelector('.matrix-feature-label.has-description')?.getAttribute('title'),
+        tooltipDescription: document.querySelector('.matrix-feature-label.has-description')?.getAttribute('data-description'),
+        tooltipNativeTitle: document.querySelector('.matrix-feature-label.has-description')?.getAttribute('title'),
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 4
       };
     });
@@ -459,7 +461,8 @@ test.describe('Budget Planner', () => {
     expect(result.mobileIncludedNote).toBe('TV');
     expect(result.mobileIncludedNoteClass).toContain('size-large');
     expect(result.mobileIncludedNoteHasCheck).toBe(false);
-    expect(result.mobileTooltipTitle).toContain('Reliable wireless coverage');
+    expect(result.mobileTooltipDescription).toContain('Reliable wireless coverage');
+    expect(result.mobileTooltipNativeTitle).toBe(null);
     expect(result.addOnCount).toBeGreaterThan(0);
     expect(result.selectedHeader).toBe('Better');
     if (result.desktopPanelDisplay !== 'none') {
@@ -468,7 +471,8 @@ test.describe('Budget Planner', () => {
     }
     expect(result.mobilePanelSticky).toBe('sticky');
     expect(result.legacyTierSelectorVisible).toBe(false);
-    expect(result.tooltip).toContain('Reliable wireless coverage');
+    expect(result.tooltipDescription).toContain('Reliable wireless coverage');
+    expect(result.tooltipNativeTitle).toBe(null);
     expect(result.overflow).toBe(false);
   });
 
