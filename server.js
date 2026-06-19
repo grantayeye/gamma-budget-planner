@@ -721,7 +721,7 @@ function loadStaticCategoryData() {
 
 const TIER_KEYS = ['good', 'standard', 'better', 'best'];
 const FEATURE_MATRIX_STATUSES = ['included', 'addon', 'not_included'];
-const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 16;
+const MATRIX_INCLUDED_LABEL_MAX_LENGTH = 18;
 const DEFAULT_CATEGORY_SNAPSHOT_KEY = '__defaultCategories';
 const DEFAULT_EXTRA_SNAPSHOT_KEY = '__defaultExtras';
 const DEFAULT_SECTION_SNAPSHOT_KEY = '__defaultSections';

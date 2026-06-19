@@ -381,7 +381,7 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.mode).toBe('matrix');
     expect(result.visibleTierLabels).toEqual(['Good', 'Better', 'Best']);
     expect(result.hasStandardStatusCells).toBe(false);
-    expect(result.includedNoteMaxLength).toBe(16);
+    expect(result.includedNoteMaxLength).toBe(18);
     expect(result.bottomAddButton).toBe('+ Feature');
     expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);
     expect(result.goodUpsStatus).toBe('addon');
