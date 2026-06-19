@@ -348,8 +348,30 @@ test.describe('Admin copy/customization tools', () => {
       const wifiBetterStatus = wifiRow.querySelector('.fm-status[data-tier="better"]');
       wifiBetterStatus.value = 'included_note';
       updateMatrixAddonPriceVisibility(wifiBetterStatus);
-      wifiRow.querySelector('.fm-included-note-input[data-tier="better"]').value = 'TV';
-      wifiRow.querySelector('.fm-included-note-size[data-tier="better"]').value = 'large';
+      const betterCell = wifiRow.querySelector('td[data-tier-label="Better"]');
+      const betterNoteInput = wifiRow.querySelector('.fm-included-note-input[data-tier="better"]');
+      const betterNoteSize = wifiRow.querySelector('.fm-included-note-size[data-tier="better"]');
+      const readBetterSizeState = () => ({
+        value: betterNoteSize.value,
+        buttons: [...betterCell.querySelectorAll('.fm-included-note-size-btn[data-size]')].map(button => ({
+          size: button.dataset.size,
+          disabled: button.disabled,
+          selected: button.classList.contains('is-selected')
+        }))
+      });
+      betterNoteInput.value = 'TV';
+      betterNoteSize.value = 'large';
+      updateMatrixIncludedNoteSizeButtons(betterCell);
+      const shortNoteSizeState = readBetterSizeState();
+      betterNoteInput.value = 'Premium';
+      syncMatrixIncludedNoteSizeFromInput(betterNoteInput);
+      const mediumNoteSizeState = readBetterSizeState();
+      betterNoteInput.value = 'Invisible Speaker';
+      syncMatrixIncludedNoteSizeFromInput(betterNoteInput);
+      const longNoteSizeState = readBetterSizeState();
+      betterNoteInput.value = 'TV';
+      betterNoteSize.value = 'large';
+      updateMatrixIncludedNoteSizeButtons(betterCell);
       const upsRow = [...card.querySelectorAll('.feature-matrix-row')]
         .find(row => row.querySelector('.fm-label')?.value === 'UPS backup');
       upsRow.querySelector('.fm-description').value = 'Keeps the network alive during short power outages.';
@@ -370,6 +392,9 @@ test.describe('Admin copy/customization tools', () => {
           size: button.dataset.size,
           text: button.textContent.trim()
         })),
+        shortNoteSizeState,
+        mediumNoteSizeState,
+        longNoteSizeState,
         hasIncludedNoteSizeSelect: !!wifiRow.querySelector('td[data-tier-label="Better"] select.fm-included-note-size'),
         bottomAddButton: card.querySelector('.feature-matrix-bottom-actions > button')?.textContent.trim(),
         matrixLabels: cat.featureMatrix.map(feature => feature.label),
@@ -395,6 +420,30 @@ test.describe('Admin copy/customization tools', () => {
       { size: 'medium', text: 'A' },
       { size: 'large', text: 'A' }
     ]);
+    expect(result.shortNoteSizeState).toEqual({
+      value: 'large',
+      buttons: [
+        { size: 'small', disabled: false, selected: false },
+        { size: 'medium', disabled: false, selected: false },
+        { size: 'large', disabled: false, selected: true }
+      ]
+    });
+    expect(result.mediumNoteSizeState).toEqual({
+      value: 'medium',
+      buttons: [
+        { size: 'small', disabled: false, selected: false },
+        { size: 'medium', disabled: false, selected: true },
+        { size: 'large', disabled: true, selected: false }
+      ]
+    });
+    expect(result.longNoteSizeState).toEqual({
+      value: 'small',
+      buttons: [
+        { size: 'small', disabled: false, selected: true },
+        { size: 'medium', disabled: true, selected: false },
+        { size: 'large', disabled: true, selected: false }
+      ]
+    });
     expect(result.hasIncludedNoteSizeSelect).toBe(false);
     expect(result.bottomAddButton).toBe('+ Feature');
     expect(result.matrixLabels).toEqual(['WiFi coverage', 'UPS backup', 'Enterprise switching']);

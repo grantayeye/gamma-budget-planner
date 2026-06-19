@@ -1015,6 +1015,11 @@
       color: var(--accent);
     }
 
+    .fm-included-note-size-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
     .fm-addon-price input {
       color: var(--accent);
       font-weight: 800;
@@ -3229,7 +3234,7 @@ function renderFeatureMatrixRows(matrix = [], tierKeys = TIER_ORDER, options = {
           </div>
           <label class="fm-included-note" ${includedLabel ? '' : 'hidden'}>
             <span style="display:block;font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;margin:5px 0 3px;">Included note</span>
-            <input type="text" class="fm-included-note-input" data-tier="${tierKey}" value="${escapeAttr(includedLabel)}" maxlength="${MATRIX_INCLUDED_LABEL_MAX_LENGTH}" placeholder="Upgraded">
+            <input type="text" class="fm-included-note-input" data-tier="${tierKey}" value="${escapeAttr(includedLabel)}" maxlength="${MATRIX_INCLUDED_LABEL_MAX_LENGTH}" placeholder="Upgraded" oninput="syncMatrixIncludedNoteSizeFromInput(this)">
             <span class="fm-included-note-size-label">Font size</span>
             <input type="hidden" class="fm-included-note-size" data-tier="${tierKey}" value="${escapeAttr(includedLabelSize)}">
             <div class="fm-included-note-size-buttons" data-tier="${tierKey}" aria-label="${TIER_NAMES[tierKey]} included note font size">
@@ -3574,19 +3579,43 @@ function refreshMatrixTierSwapButtons(panel) {
 
 function updateMatrixIncludedNoteSizeButtons(scope) {
   scope?.querySelectorAll?.('.fm-included-note-size-buttons[data-tier]').forEach(group => {
-    const value = group.closest('td')?.querySelector(`.fm-included-note-size[data-tier="${group.dataset.tier}"]`)?.value || 'small';
+    const cell = group.closest('td');
+    const input = cell?.querySelector(`.fm-included-note-input[data-tier="${group.dataset.tier}"]`);
+    const sizeInput = cell?.querySelector(`.fm-included-note-size[data-tier="${group.dataset.tier}"]`);
+    const value = normalizeMatrixIncludedLabelSize(input?.value || '', { labelSize: sizeInput?.value || 'small' });
+    if (sizeInput) sizeInput.value = value;
     group.querySelectorAll('.fm-included-note-size-btn[data-size]').forEach(button => {
+      const isAllowed = matrixIncludedNoteSizeAllowed(input?.value || '', button.dataset.size);
+      button.disabled = !isAllowed;
+      button.setAttribute('aria-disabled', String(!isAllowed));
       button.classList.toggle('is-selected', button.dataset.size === value);
     });
   });
 }
 
+function matrixIncludedNoteSizeAllowed(label, size) {
+  const length = cleanMatrixIncludedLabel(label).length;
+  if (!MATRIX_INCLUDED_LABEL_SIZES.includes(size)) return false;
+  if (!length) return true;
+  if (size === 'large') return length <= 3;
+  if (size === 'medium') return length <= 8;
+  return true;
+}
+
 function setMatrixIncludedNoteSize(button, size) {
   const group = button.closest('.fm-included-note-size-buttons');
-  const input = group?.closest('td')?.querySelector(`.fm-included-note-size[data-tier="${group.dataset.tier}"]`);
-  if (!input || !MATRIX_INCLUDED_LABEL_SIZES.includes(size)) return;
-  input.value = size;
+  const cell = group?.closest('td');
+  const input = cell?.querySelector(`.fm-included-note-input[data-tier="${group.dataset.tier}"]`);
+  const sizeInput = cell?.querySelector(`.fm-included-note-size[data-tier="${group.dataset.tier}"]`);
+  if (!sizeInput || !matrixIncludedNoteSizeAllowed(input?.value || '', size)) return;
+  sizeInput.value = size;
   updateMatrixIncludedNoteSizeButtons(group.closest('td'));
+  markCatDirty();
+  queueCustomizeDraftSave();
+}
+
+function syncMatrixIncludedNoteSizeFromInput(input) {
+  updateMatrixIncludedNoteSizeButtons(input.closest('td'));
   markCatDirty();
   queueCustomizeDraftSave();
 }
