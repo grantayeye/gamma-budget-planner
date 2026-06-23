@@ -6178,7 +6178,6 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
 }
 
 function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml = '') {
-  const isLocked = !!selectedTier;
   const allTiers = TIER_ORDER;
   const tierLabels = TIER_NAMES;
   const presentationMode = getCategoryPresentationMode(cc);
@@ -6200,7 +6199,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
         <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
         <button type="button" class="btn btn-secondary btn-small customize-clone-btn" onclick="cloneCustomCategory(${index})">Clone</button>
         <button type="button" class="btn btn-secondary btn-small customize-collapse-btn" onclick="toggleCustomizeEditorCollapsed(this)" aria-expanded="false">Edit</button>
-        <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})" ${isLocked ? 'disabled title="Has selection"' : ''}>Remove</button>
+        <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})">Remove</button>
       </div>
       <div class="customize-editor-body">
         <div class="customize-editor-mode-row">
@@ -6545,10 +6544,19 @@ function cloneCustomCategory(index) {
 function removeCustomCategory(index) {
   markCatDirty();
   const el = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
+  const customId = el?.dataset.ccId || '';
   const shell = el?.closest('.customize-layout-item');
   if (shell) shell.remove();
   else if (el) el.remove();
+  if (customId && customizeBudgetData?.currentState) {
+    if (customizeBudgetData.currentState.selections) delete customizeBudgetData.currentState.selections[customId];
+    if (customizeBudgetData.currentState.addOns) delete customizeBudgetData.currentState.addOns[customId];
+  }
+  const current = collectCustomizationData();
+  customizeBudgetData.categoryConfig = current.categoryConfig;
+  customizeBudgetData.customCategories = current.customCategories;
   queueCustomizeDraftSave();
+  showToast('✓ Custom category removed');
 }
 
 function collectCustomizationData() {

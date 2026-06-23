@@ -1620,4 +1620,49 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.after.goodDownDisabled).toBe(false);
     expect(result.after.standardUpDisabled).toBe(false);
   });
+
+  test('custom category remove works even when a tier is selected', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      customizeBudgetData = {
+        currentState: {
+          selections: { 'microphone-section': 'good' },
+          addOns: { 'microphone-section': { good: { wirelessMic: true } } }
+        },
+        categoryConfig: {},
+        customCategories: [{
+          id: 'microphone-section',
+          name: 'Microphone Section',
+          tiers: {
+            good: { enabled: true, label: 'Good', price: 1000 }
+          }
+        }]
+      };
+      host.innerHTML = renderCustomCategoryEditor(customizeBudgetData.customCategories[0], 12345, 'good');
+      const removeButton = host.querySelector('.custom-category-editor button[onclick^="removeCustomCategory"]');
+      const before = {
+        disabled: removeButton.disabled,
+        hasEditor: !!host.querySelector('.custom-category-editor'),
+        selection: customizeBudgetData.currentState.selections['microphone-section']
+      };
+      removeButton.click();
+      const after = {
+        hasEditor: !!document.querySelector('.custom-category-editor[data-cc-id="microphone-section"]'),
+        selection: customizeBudgetData.currentState.selections['microphone-section'],
+        addOns: customizeBudgetData.currentState.addOns['microphone-section'],
+        customCount: customizeBudgetData.customCategories.length
+      };
+      host.remove();
+      return { before, after };
+    });
+
+    expect(result.before.disabled).toBe(false);
+    expect(result.before.hasEditor).toBe(true);
+    expect(result.before.selection).toBe('good');
+    expect(result.after.hasEditor).toBe(false);
+    expect(result.after.selection).toBeUndefined();
+    expect(result.after.addOns).toBeUndefined();
+    expect(result.after.customCount).toBe(0);
+  });
 });
