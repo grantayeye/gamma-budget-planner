@@ -521,6 +521,66 @@ test.describe('Budget Planner', () => {
     await expect(page.locator('.matrix-feature-popover')).toContainText('Includes indoor and outdoor access points');
   });
 
+  test('comparison matrix selected tier background spans header and column', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+
+    const colorsByTier = await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [{
+          id: 'networking',
+          section: 'Infrastructure',
+          section_id: 'infrastructure',
+          name: 'Whole-Home WiFi & Networking',
+          icon: '📡',
+          desc: 'Enterprise-grade WiFi coverage',
+          sizeScale: 0,
+          presentationMode: 'matrix',
+          featureMatrix: [{
+            id: 'wifi-coverage',
+            label: 'Whole-home WiFi coverage',
+            tierStatus: { good: 'included', standard: 'included', better: 'included', best: 'included' }
+          }],
+          tiers: {
+            good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
+            standard: { price: 1500, label: 'Standard', tag: 'Standard', features: ['Whole-home WiFi coverage'], brands: 'Brand B' },
+            better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage'], brands: 'Brand C' },
+            best: { price: 3000, label: 'Best', tag: 'Best', features: ['Whole-home WiFi coverage'], brands: 'Brand D' }
+          }
+        }],
+        sections: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.catMods = { networking: { name: '', amount: 0 } };
+
+      const resolveBackground = value => {
+        const el = document.createElement('div');
+        el.style.background = value;
+        document.body.appendChild(el);
+        const background = getComputedStyle(el).backgroundColor;
+        el.remove();
+        return background;
+      };
+
+      return ['good', 'standard', 'better', 'best'].map(tierKey => {
+        state.selections = { networking: tierKey };
+        renderCategories();
+        document.getElementById('cat-networking').classList.add('open');
+        return {
+          tierKey,
+          expected: resolveBackground(`var(--${tierKey}-bg)`),
+          panelBackground: getComputedStyle(document.querySelector(`.comparison-desktop-panel .selected-col.${tierKey}-col`)).backgroundColor,
+          cellBackground: getComputedStyle(document.querySelector(`.comparison-table td.selected-col.${tierKey}-col`)).backgroundColor
+        };
+      });
+    });
+
+    for (const result of colorsByTier) {
+      expect(result.panelBackground, `${result.tierKey} sticky header background`).toBe(result.expected);
+      expect(result.cellBackground, `${result.tierKey} table cell background`).toBe(result.expected);
+    }
+  });
+
   test('priced comparison add-ons can be toggled and saved in state', async ({ page }) => {
     const result = await page.evaluate(() => {
       CONFIGS.residential = {
