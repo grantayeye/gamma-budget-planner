@@ -115,6 +115,88 @@ test.describe('Budget Planner', () => {
     expect(newTotal).not.toBe(initialTotal);
   });
 
+  test('collapsed selected category cards keep tier background visible', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [
+          {
+            id: 'networking',
+            section: 'Infrastructure',
+            section_id: 'infrastructure',
+            name: 'Whole-Home WiFi & Networking',
+            icon: '📡',
+            desc: 'Enterprise-grade WiFi coverage',
+            sizeScale: 0,
+            presentationMode: 'matrix',
+            featureMatrix: [{
+              id: 'wifi-coverage',
+              label: 'Whole-home WiFi coverage',
+              tierStatus: { good: 'included', standard: 'included', better: 'included', best: 'included' }
+            }],
+            tiers: {
+              good: { price: 1000, label: 'Good', tag: 'Good', features: ['Whole-home WiFi coverage'], brands: 'Brand A' },
+              standard: { price: 1500, label: 'Standard', tag: 'Standard', features: ['Whole-home WiFi coverage'], brands: 'Brand B' },
+              better: { price: 2000, label: 'Better', tag: 'Better', features: ['Whole-home WiFi coverage'], brands: 'Brand C' },
+              best: { price: 3000, label: 'Best', tag: 'Best', features: ['Whole-home WiFi coverage'], brands: 'Brand D' }
+            }
+          },
+          {
+            id: 'security',
+            section: 'Security',
+            section_id: 'security',
+            name: 'Security & Alarm System',
+            icon: '🔒',
+            desc: 'Intrusion detection',
+            sizeScale: 0,
+            tiers: {
+              good: { price: 800, label: 'Good', tag: 'Good', features: ['Sensors'], brands: 'Brand A' }
+            }
+          }
+        ],
+        sections: [
+          { id: 'infrastructure', name: 'Infrastructure', order: 0 },
+          { id: 'security', name: 'Security', order: 1 }
+        ],
+        extras: []
+      };
+      state.propertyType = 'residential';
+      state.selections = { networking: 'standard', security: null };
+      state.catMods = {
+        networking: { name: '', amount: 0 },
+        security: { name: '', amount: 0 }
+      };
+      renderCategories();
+
+      const resolveBackground = value => {
+        const el = document.createElement('div');
+        el.style.background = value;
+        document.body.appendChild(el);
+        const background = getComputedStyle(el).backgroundColor;
+        el.remove();
+        return background;
+      };
+      const selectedCard = document.getElementById('cat-networking');
+      const emptyCard = document.getElementById('cat-security');
+      return {
+        selectedOpen: selectedCard.classList.contains('open'),
+        selectedPrice: selectedCard.querySelector('.category-price')?.textContent.trim(),
+        selectedHeaderBackground: getComputedStyle(selectedCard.querySelector('.category-header')).backgroundColor,
+        expectedStandardBackground: resolveBackground('var(--standard-bg)'),
+        selectedPriceColor: getComputedStyle(selectedCard.querySelector('.category-price')).color,
+        expectedStandardColor: resolveBackground('var(--standard)'),
+        emptyHeaderBackground: getComputedStyle(emptyCard.querySelector('.category-header')).backgroundColor,
+        emptyPrice: emptyCard.querySelector('.category-price')?.textContent.trim()
+      };
+    });
+
+    expect(result.selectedOpen).toBe(false);
+    expect(result.selectedPrice).toBe('$1,500');
+    expect(result.selectedHeaderBackground).toBe(result.expectedStandardBackground);
+    expect(result.selectedPriceColor).toBe(result.expectedStandardColor);
+    expect(result.emptyHeaderBackground).toBe('rgba(0, 0, 0, 0)');
+    expect(result.emptyPrice).toBe('Not selected');
+  });
+
   test('customer ignores template tiers marked disabled but preserves their data server-side', async ({ page }) => {
     const result = await page.evaluate(() => {
       CONFIGS.residential = {

@@ -365,6 +365,14 @@ main {
 .category-card.tier-standard { border-color: var(--standard-border); }
 .category-card.tier-better { border-color: var(--better-border); }
 .category-card.tier-best { border-color: var(--best-border); }
+.category-card.tier-good:not(.open) .category-header { background: var(--good-bg); }
+.category-card.tier-standard:not(.open) .category-header { background: var(--standard-bg); }
+.category-card.tier-better:not(.open) .category-header { background: var(--better-bg); }
+.category-card.tier-best:not(.open) .category-header { background: var(--best-bg); }
+.category-card.tier-good .category-price { color: var(--good); }
+.category-card.tier-standard .category-price { color: var(--standard); }
+.category-card.tier-better .category-price { color: var(--better); }
+.category-card.tier-best .category-price { color: var(--best); }
 .category-card.disabled {
   opacity: 0.5;
   pointer-events: none;
