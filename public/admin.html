@@ -6494,10 +6494,11 @@ function addCustomCategory() {
     ...current.categoryConfig,
     __layout: { sections: layout.sections }
   };
+  const newCustomId = `custom-${Date.now()}`;
   customizeBudgetData.customCategories = [
     ...(current.customCategories || []),
     {
-      id: `custom-${Date.now()}`,
+      id: newCustomId,
       icon: '📦',
       name: 'New Custom Section',
       section_id: customSection.id,
@@ -6511,6 +6512,7 @@ function addCustomCategory() {
     }
   ];
   renderCustomizeEditor();
+  requestAnimationFrame(() => scrollCustomizeItemIntoView('custom', newCustomId));
   queueCustomizeDraftSave();
 }
 
@@ -6559,6 +6561,15 @@ function removeCustomCategory(index) {
   showToast('✓ Custom category removed');
 }
 
+function scrollCustomizeItemIntoView(type, id) {
+  const scrollArea = document.querySelector('#customizeBody .customize-scroll-area');
+  const item = document.querySelector(`.customize-layout-item[data-item-type="${CSS.escape(type)}"][data-item-id="${CSS.escape(id)}"]`);
+  if (!scrollArea || !item) return;
+  const scrollRect = scrollArea.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  scrollArea.scrollTop += itemRect.top - scrollRect.top - 24;
+}
+
 function collectCustomizationData() {
   const categoryConfig = {};
   const customCategories = [];
@@ -6588,7 +6599,7 @@ function collectCustomizationData() {
 
   document.querySelectorAll('.custom-category-editor').forEach(editor => {
     const customCat = readCustomCategoryEditorData(editor);
-    if (customCat?.name && Object.keys(customCat.tiers || {}).length > 0) {
+    if (customCat?.name) {
       customCategories.push(customCat);
     }
   });

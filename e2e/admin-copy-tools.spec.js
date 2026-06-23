@@ -1665,4 +1665,63 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.after.addOns).toBeUndefined();
     expect(result.after.customCount).toBe(0);
   });
+
+  test('draft custom categories survive layout changes before tiers are added', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      customizeBudgetData = { currentState: { selections: {} }, categoryConfig: {}, customCategories: [] };
+      host.innerHTML = renderCustomCategoryEditor({
+        id: 'draft-microphone',
+        name: 'Microphone Section',
+        section_id: 'custom',
+        sectionId: 'custom',
+        section: 'Custom',
+        tiers: {}
+      }, 54321, null);
+
+      const collected = collectCustomizationData();
+      host.remove();
+      return {
+        customCount: collected.customCategories.length,
+        customName: collected.customCategories[0]?.name,
+        customTierCount: Object.keys(collected.customCategories[0]?.tiers || {}).length
+      };
+    });
+
+    expect(result.customCount).toBe(1);
+    expect(result.customName).toBe('Microphone Section');
+    expect(result.customTierCount).toBe(0);
+  });
+
+  test('adding a custom category scrolls back to the new editor', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const body = document.createElement('div');
+      body.id = 'customizeBody';
+      document.body.appendChild(body);
+      customizeBudgetData = {
+        isCustomized: true,
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {} },
+        categoryConfig: {},
+        customCategories: []
+      };
+      const seen = [];
+      const originalScroll = scrollCustomizeItemIntoView;
+      scrollCustomizeItemIntoView = (type, id) => seen.push({ type, id });
+      renderCustomizeEditor();
+      addCustomCategory();
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const added = customizeBudgetData.customCategories[0];
+      scrollCustomizeItemIntoView = originalScroll;
+      body.remove();
+      return {
+        seen,
+        addedId: added?.id,
+        customCount: customizeBudgetData.customCategories.length
+      };
+    });
+
+    expect(result.customCount).toBe(1);
+    expect(result.seen).toEqual([{ type: 'custom', id: result.addedId }]);
+  });
 });
