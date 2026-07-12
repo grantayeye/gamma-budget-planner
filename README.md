@@ -30,6 +30,7 @@ Create `.env` file:
 
 ```
 RESEND_API_KEY=your_resend_api_key
+BUDGET_EDIT_SECRET=long_random_secret_for_editable_budget_links
 SESSION_SECRET=generate_a_random_secret
 PORT=3000
 NODE_ENV=production  # for production

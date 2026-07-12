@@ -69,6 +69,31 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.sameVerticalBand).toBe(true);
   });
 
+  test('budget list escapes stored customer HTML', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__storedXssExecuted = false;
+      budgets = [{
+        id: 'safe123',
+        clientName: '<img src=x onerror="window.__storedXssExecuted=true">',
+        builder: '<svg onload="window.__storedXssExecuted=true">',
+        status: 'active',
+        currentTotal: 12000,
+        created: new Date().toISOString(),
+        clientViews: 0,
+        internalViews: 0,
+        activeBrowserCount: 0,
+        versionCount: 1,
+        lastClientActivity: null
+      }];
+      renderBudgets();
+    });
+
+    await page.waitForTimeout(50);
+    expect(await page.evaluate(() => window.__storedXssExecuted)).toBe(false);
+    await expect(page.locator('#budgetTableBody img, #budgetTableBody svg')).toHaveCount(0);
+    await expect(page.locator('#budgetTableBody')).toContainText('<img src=x');
+  });
+
   test('budget details can edit builder and salesperson owner', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const calls = [];

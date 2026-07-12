@@ -1,5 +1,7 @@
 // @ts-check
 const { defineConfig, devices } = require('@playwright/test');
+const testPort = Number(process.env.TEST_PORT || 3000);
+const testBaseUrl = `http://localhost:${testPort}`;
 
 module.exports = defineConfig({
   testDir: './e2e',
@@ -9,7 +11,7 @@ module.exports = defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: testBaseUrl,
     trace: 'on-first-retry',
   },
   projects: [
@@ -23,8 +25,8 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: 'npm start',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    command: `PORT=${testPort} APP_URL=${testBaseUrl} npm start`,
+    url: testBaseUrl,
+    reuseExistingServer: !process.env.CI && testPort === 3000,
   },
 });

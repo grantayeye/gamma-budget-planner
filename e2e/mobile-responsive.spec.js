@@ -17,7 +17,7 @@ test.describe('Mobile responsive layout', () => {
     const overflow = await horizontalOverflow(page, 'body');
     expect(overflow.overflow).toBe(false);
 
-    const actionMetrics = await page.locator('.summary-actions .btn').evaluateAll(buttons => buttons.map(btn => {
+    const actionMetrics = await page.locator('.summary-actions .btn:visible').evaluateAll(buttons => buttons.map(btn => {
       const rect = btn.getBoundingClientRect();
       return { text: btn.textContent.trim(), width: rect.width, height: rect.height };
     }));

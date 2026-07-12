@@ -2139,7 +2139,7 @@
   <nav class="tab-bar">
     <button class="tab-btn active" data-tab="budgets" onclick="switchTab('budgets')">Budgets</button>
     <button class="tab-btn" data-tab="categories" onclick="switchTab('categories')">Categories & Pricing</button>
-    <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Users</button>
+    <button class="tab-btn" id="usersTabButton" data-tab="users" onclick="switchTab('users')">Users</button>
   </nav>
   
   <div class="content">
@@ -2472,7 +2472,9 @@ function showDashboard() {
   document.getElementById('dashboard').classList.add('active');
   document.getElementById('userInfo').textContent = `👤 ${currentUser.name}`;
   loadBudgets();
-  loadUsers();
+  const canManageUsers = !!currentUser.canManageUsers;
+  document.getElementById('usersTabButton').style.display = canManageUsers ? '' : 'none';
+  if (canManageUsers) loadUsers();
   loadCategoryData();
 }
 
@@ -2885,12 +2887,12 @@ function renderBudgets() {
     <tr>
       <td>
         <a href="${BASE_PATH}/b/${b.id}" target="_blank" class="budget-link">
-          ${b.clientName || 'Unnamed'}
+          ${escapeAttr(b.clientName || 'Unnamed')}
         </a>
         <div style="font-size:11px;color:var(--text-light);">
-          ${b.id}
-          ${b.builder ? ` • ${b.builder}` : ''}
-          ${b.createdByEmail ? ` • 👤 ${b.createdByEmail.split('@')[0]}` : ''}
+          ${escapeAttr(b.id)}
+          ${b.builder ? ` • ${escapeAttr(b.builder)}` : ''}
+          ${b.createdByEmail ? ` • 👤 ${escapeAttr(b.createdByEmail.split('@')[0])}` : ''}
           ${b.isCustomized ? ' <span style="color:#F57C00;">⚙️ Custom</span>' : ''}
           ${b.expiresAt ? ` • Expires ${formatDate(b.expiresAt)}` : ''}
           ${overdue ? ' <span style="color:#C62828;" title="No customer activity in 7+ days or overdue follow-up">⏰</span>' : ''}
@@ -2919,9 +2921,9 @@ function renderBudgets() {
         <div class="budget-mobile-card">
           <div class="budget-mobile-card-head">
             <div class="budget-mobile-title">
-              <a href="${BASE_PATH}/b/${b.id}" target="_blank" class="budget-link">${b.clientName || 'Unnamed'}</a>
+              <a href="${BASE_PATH}/b/${b.id}" target="_blank" class="budget-link">${escapeAttr(b.clientName || 'Unnamed')}</a>
               <div class="budget-mobile-meta">
-                ${b.id}${b.builder ? ` • ${b.builder}` : ''}${b.createdByEmail ? ` • ${b.createdByEmail.split('@')[0]}` : ''}
+                ${escapeAttr(b.id)}${b.builder ? ` • ${escapeAttr(b.builder)}` : ''}${b.createdByEmail ? ` • ${escapeAttr(b.createdByEmail.split('@')[0])}` : ''}
               </div>
               <div class="budget-mobile-submeta">
                 ${b.isCustomized ? '<span style="color:#F57C00;">Custom</span>' : 'Standard'}
@@ -4399,7 +4401,7 @@ function showBudgetModal(budget) {
     </div>
     <div style="margin-bottom:16px;">
       <label class="detail-form-label">Notes</label>
-      <textarea id="metaNotes" rows="3" placeholder="Called Tuesday, waiting on builder…" onblur="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;">${notes.replace(/</g,'&lt;')}</textarea>
+      <textarea id="metaNotes" rows="3" placeholder="Called Tuesday, waiting on builder…" onblur="saveBudgetMeta('${budget.id}')" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;">${escapeAttr(notes)}</textarea>
       <div id="metaSaveStatus" style="font-size:11px;color:var(--text-light);margin-top:3px;min-height:14px;"></div>
     </div>
 
@@ -4445,7 +4447,7 @@ function showBudgetModal(budget) {
                 <span class="version-num">v${v.version}</span>
                 ${v.pinned ? '<span style="color:#F57C00;font-size:11px;margin-left:4px;">📌</span>' : '<span style="color:#9E9E9E;font-size:10px;margin-left:4px;">(auto)</span>'}
                 — <span>${formatDateTime(v.timestamp)}</span>
-                <div class="version-note">${v.note || 'No note'} • ${formatCurrency(v.state?.total || 0)}</div>
+                <div class="version-note">${escapeAttr(v.note || 'No note')} • ${formatCurrency(v.state?.total || 0)}</div>
               </div>
               ${v.version < budget.versions.length ? `
                 <button class="btn btn-secondary btn-small" onclick="restoreVersion('${budget.id}', ${v.version})">Restore</button>
@@ -4747,13 +4749,20 @@ async function deleteBudget(id) {
   }
 }
 
-function copyBudgetLink(id) {
-  const url = window.location.origin + BASE_PATH + '/b/' + id;
-  navigator.clipboard.writeText(url).then(() => {
+async function copyBudgetLink(id) {
+  try {
+    const response = await fetch(api(`/api/admin/budgets/${id}/edit-link`), {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Failed to create editable link');
+    const url = window.location.origin + BASE_PATH + result.url;
+    await navigator.clipboard.writeText(url);
     showToast('🔗 Link copied!');
-  }).catch(() => {
+  } catch (_) {
     showToast('Failed to copy');
-  });
+  }
 }
 
 async function cloneBudget(id) {
@@ -6702,8 +6711,8 @@ function renderUsers() {
   
   tbody.innerHTML = users.map(u => `
     <tr>
-      <td><strong>${u.username}</strong></td>
-      <td>${u.name}</td>
+      <td><strong>${escapeAttr(u.username)}</strong></td>
+      <td>${escapeAttr(u.name)}</td>
       <td>${formatDate(u.created)}</td>
       <td class="actions-cell">
         <button class="btn btn-secondary btn-small" onclick="editUser('${u.id}')">Edit</button>

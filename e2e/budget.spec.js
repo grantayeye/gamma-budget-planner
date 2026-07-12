@@ -115,6 +115,61 @@ test.describe('Budget Planner', () => {
     expect(newTotal).not.toBe(initialTotal);
   });
 
+  test('customer fields and modifiers render as text, not executable HTML', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__customerXssExecuted = false;
+      document.getElementById('clientName').value = '<img src=x onerror="window.__customerXssExecuted=true">';
+      document.getElementById('builder').value = '<svg onload="window.__customerXssExecuted=true">';
+      state.modifiers = [{
+        id: 1,
+        name: '"><img src=x onerror="window.__customerXssExecuted=true">',
+        amount: 100
+      }];
+      renderModifiers();
+      showSummary();
+    });
+
+    await page.waitForTimeout(50);
+    expect(await page.evaluate(() => window.__customerXssExecuted)).toBe(false);
+    await expect(page.locator('#modifiersContainer img, #summaryBody img')).toHaveCount(0);
+    await expect(page.locator('#summaryBody')).toContainText('<img src=x');
+  });
+
+  test('proposal payload includes scaled extras in subtotal and total', async ({ page }) => {
+    let proposalPayload = null;
+    await page.route('**/api/budgets', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, id: 'email123', url: '/b/email123?edit=test-token' })
+      });
+    });
+    await page.route('**/api/send-proposal', async route => {
+      proposalPayload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true })
+      });
+    });
+
+    const expected = await page.evaluate(async () => {
+      window.__isAdmin = true;
+      currentBudgetId = null;
+      const extra = EXTRAS()[0];
+      state.extras[extra.id] = true;
+      document.getElementById('emailRecipientEmail').value = 'client@example.com';
+      const price = getExtraPrice(extra);
+      await sendProposalEmail();
+      return { price, name: extra.name };
+    });
+
+    await expect.poll(() => proposalPayload).not.toBeNull();
+    expect(proposalPayload.proposalData.extras).toContainEqual({ name: expected.name, price: expected.price });
+    expect(proposalPayload.proposalData.subtotal).toBe(expected.price);
+    expect(proposalPayload.proposalData.total).toBe(Math.round(expected.price * 1.06));
+  });
+
   test('collapsed selected category cards keep tier background visible', async ({ page }) => {
     const result = await page.evaluate(() => {
       CONFIGS.residential = {

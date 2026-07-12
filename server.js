@@ -6,8 +6,15 @@ const crypto = require('crypto');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
+const helmet = require('helmet');
 const { z } = require('zod');
 const { createClient } = require('@supabase/supabase-js');
+const {
+  canonicalize,
+  createBudgetEditToken: signBudgetEditToken,
+  escapeHtml,
+  verifyBudgetEditToken
+} = require('./src/utils/security');
 
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION:', err);
@@ -24,6 +31,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = 'BudgetPlanner@gamma.tech';
 const FROM_NAME = 'Gamma Tech Budget Planner';
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+const BUDGET_EDIT_SECRET = process.env.BUDGET_EDIT_SECRET || process.env.SUPABASE_SERVICE_KEY;
 
 // ============================================================
 // SUPABASE SETUP
@@ -66,8 +74,36 @@ const limits = {
 // ============================================================
 // CORS
 // ============================================================
+const allowedOrigins = new Set();
+try {
+  allowedOrigins.add(new URL(APP_URL).origin);
+} catch (_) {}
+app.disable('x-powered-by');
+app.use(helmet({
+  // The current UI uses inline styles and event handlers. Apply the CSP
+  // directives that are safe today without silently breaking the app.
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      baseUri: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
 app.use(cors({
-  origin: true,
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(null, false);
+  },
   credentials: true
 }));
 
@@ -90,7 +126,7 @@ app.use((req, res, next) => {
 // MIDDLEWARE
 // ============================================================
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
 // ============================================================
@@ -122,6 +158,19 @@ function generateCode(length = 6) {
     code += chars[bytes[i] % chars.length];
   }
   return code;
+}
+
+function createBudgetEditToken(budgetId) {
+  return signBudgetEditToken(BUDGET_EDIT_SECRET, budgetId);
+}
+
+function hasValidBudgetEditToken(req, budgetId) {
+  const supplied = String(req.get('X-Budget-Edit-Token') || req.query.edit || '');
+  return verifyBudgetEditToken(BUDGET_EDIT_SECRET, budgetId, supplied);
+}
+
+function budgetEditUrl(budgetId) {
+  return `/b/${encodeURIComponent(budgetId)}?edit=${encodeURIComponent(createBudgetEditToken(budgetId))}`;
 }
 
 function formatDateOnly(date) {
@@ -580,8 +629,8 @@ const formatCurrencyPlain = (num) => new Intl.NumberFormat('en-US', { style: 'cu
 
 async function sendChangeNotification(budget, newState) {
   if (!budget.createdByEmail) return;
-  const clientName = budget.clientName || 'A client';
-  const budgetUrl = `${APP_URL}/b/${budget.id}`;
+  const clientName = escapeHtml(budget.clientName || 'A client');
+  const budgetUrl = `${APP_URL}/b/${encodeURIComponent(budget.id)}`;
   const oldTotal = budget.currentState?.total || 0;
   const newTotal = newState?.total || 0;
   const totalChanged = oldTotal !== newTotal;
@@ -603,8 +652,8 @@ async function sendChangeNotification(budget, newState) {
 
 async function sendViewNotification(budget) {
   if (!budget.createdByEmail) return;
-  const clientName = budget.clientName || 'Someone';
-  const budgetUrl = `${APP_URL}/b/${budget.id}`;
+  const clientName = escapeHtml(budget.clientName || 'Someone');
+  const budgetUrl = `${APP_URL}/b/${encodeURIComponent(budget.id)}`;
 
   const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden"><tr><td style="background:#0F2F44;padding:20px 32px"><h2 style="margin:0;color:#FFFFFF;font-size:18px">Budget Viewed</h2></td></tr><tr><td style="padding:32px"><p style="margin:0 0 16px;color:#393939;font-size:15px;line-height:1.6"><strong>${clientName}</strong> just opened their budget.</p>${budget.currentState?.total ? `<p style="margin:0 0 16px;color:#393939;font-size:15px">Current total: <strong>${formatCurrencyPlain(budget.currentState.total)}</strong></p>` : ''}<table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0"><tr><td align="center"><a href="${budgetUrl}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Budget</a></td></tr></table><p style="margin:0;color:#999;font-size:12px">You're receiving this because you created this budget on Gamma Tech Budget Planner.</p></td></tr></table></td></tr></table></body></html>`;
 
@@ -632,6 +681,18 @@ async function requireAuth(req, res, next) {
   next();
 }
 
+function isSuperAdmin(user) {
+  return user?.app_metadata?.role === 'superadmin';
+}
+
+async function requireSuperAdmin(req, res, next) {
+  const user = await getRequestUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isSuperAdmin(user)) return res.status(403).json({ error: 'Superadmin access required' });
+  req.user = user;
+  next();
+}
+
 // ============================================================
 // VALIDATION SCHEMAS (Zod)
 // ============================================================
@@ -654,12 +715,48 @@ const schemas = {
   }),
 
   createBudget: z.object({
-    state: z.any(),
+    state: z.object({
+      selections: z.record(z.string(), z.enum(['good', 'standard', 'better', 'best']).nullable()).optional(),
+      extras: z.record(z.string(), z.boolean()).optional(),
+      modifiers: z.array(z.object({
+        id: z.number().int().finite().optional(),
+        name: z.string().max(200).optional(),
+        amount: z.number().finite().min(-100000000).max(100000000).optional()
+      }).passthrough()).max(100).optional(),
+      catMods: z.record(z.string(), z.object({
+        name: z.string().max(200).optional(),
+        amount: z.number().finite().min(-100000000).max(100000000).optional()
+      }).passthrough()).optional(),
+      addOns: z.record(z.string(), z.record(z.string(), z.boolean())).optional(),
+      homeSize: z.number().int().min(500).max(50000).optional(),
+      propertyType: z.enum(['residential', 'condo']).optional(),
+      clientName: z.string().max(200).optional().nullable(),
+      builder: z.string().max(200).optional().nullable(),
+      total: z.number().finite().min(-100000000).max(100000000).optional()
+    }).passthrough(),
     clientName: z.string().max(200).optional().nullable()
   }),
 
   updateBudget: z.object({
-    state: z.any(),
+    state: z.object({
+      selections: z.record(z.string(), z.enum(['good', 'standard', 'better', 'best']).nullable()).optional(),
+      extras: z.record(z.string(), z.boolean()).optional(),
+      modifiers: z.array(z.object({
+        id: z.number().int().finite().optional(),
+        name: z.string().max(200).optional(),
+        amount: z.number().finite().min(-100000000).max(100000000).optional()
+      }).passthrough()).max(100).optional(),
+      catMods: z.record(z.string(), z.object({
+        name: z.string().max(200).optional(),
+        amount: z.number().finite().min(-100000000).max(100000000).optional()
+      }).passthrough()).optional(),
+      addOns: z.record(z.string(), z.record(z.string(), z.boolean())).optional(),
+      homeSize: z.number().int().min(500).max(50000).optional(),
+      propertyType: z.enum(['residential', 'condo']).optional(),
+      clientName: z.string().max(200).optional().nullable(),
+      builder: z.string().max(200).optional().nullable(),
+      total: z.number().finite().min(-100000000).max(100000000).optional()
+    }).passthrough(),
     note: z.string().max(500).optional(),
     pin: z.boolean().optional()
   }),
@@ -692,9 +789,36 @@ const schemas = {
     recipientEmail: z.string().email().max(254),
     recipientName: z.string().max(200).optional(),
     subject: z.string().max(200).optional(),
-    htmlContent: z.string().max(50000).optional(),
-    proposalData: z.any().optional()
-  })
+    proposalData: z.object({
+      categories: z.array(z.object({
+        name: z.string().max(200),
+        tier: z.string().max(50),
+        price: z.number().finite().min(-100000000).max(100000000)
+      })).max(100).default([]),
+      extras: z.array(z.object({
+        name: z.string().max(200),
+        price: z.number().finite().min(-100000000).max(100000000)
+      })).max(100).default([]),
+      catMods: z.array(z.object({
+        categoryName: z.string().max(200),
+        name: z.string().max(200),
+        amount: z.number().finite().min(-100000000).max(100000000)
+      })).max(100).default([]),
+      modifiers: z.array(z.object({
+        name: z.string().max(200),
+        amount: z.number().finite().min(-100000000).max(100000000)
+      })).max(100).default([]),
+      subtotal: z.number().finite().min(-100000000).max(100000000),
+      tax: z.number().finite().min(-100000000).max(100000000),
+      total: z.number().finite().min(-100000000).max(100000000),
+      tierLabel: z.string().max(100).optional(),
+      clientName: z.string().max(200).optional(),
+      builder: z.string().max(200).optional(),
+      homeSize: z.number().int().min(500).max(50000).optional(),
+      propertyType: z.enum(['residential', 'condo']).optional(),
+      budgetUrl: z.string().url().max(1000).optional().nullable()
+    }).strict()
+  }).strict()
 };
 
 // ============================================================
@@ -753,6 +877,14 @@ function slugifyFeatureId(value) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
   return slug || 'feature';
+}
+
+function sanitizeIdentifier(value, fallback = 'item') {
+  const id = String(value || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return id || fallback;
 }
 
 function cleanMatrixIncludedLabel(value) {
@@ -967,8 +1099,13 @@ function mergeCategoryConfigPayload(baseConfig = {}, incomingConfig = {}) {
 }
 
 function normalizeCustomCategoriesPayload(customCategories = []) {
+  const usedIds = new Set();
   return (Array.isArray(customCategories) ? customCategories : [])
-    .map(category => normalizePresentationPayload(category))
+    .map(category => {
+      const normalized = normalizePresentationPayload(category);
+      normalized.id = uniqueSectionId(sanitizeIdentifier(normalized.id || normalized.name, 'custom-category'), usedIds);
+      return normalized;
+    })
     .filter(category => category.id && category.name && Object.keys(category.tiers || {}).length > 0);
 }
 
@@ -1050,9 +1187,11 @@ function normalizeCategoryList(categories = [], sections = []) {
   const byName = new Map(normalizedSections.map(section => [section.name.toLowerCase(), section]));
   const byId = new Map(normalizedSections.map(section => [section.id, section]));
   const nextOrderBySection = new Map();
+  const usedCategoryIds = new Set();
 
   const normalizedCategories = (categories || []).map((cat, index) => {
     const copy = normalizePresentationPayload(deepClone(cat) || {});
+    copy.id = uniqueSectionId(sanitizeIdentifier(copy.id || copy.name, `category-${index + 1}`), usedCategoryIds);
     let section = byId.get(copy.section_id || copy.sectionId);
     if (!section) {
       const name = String(copy.section || copy.sectionName || 'Other').trim() || 'Other';
@@ -1596,7 +1735,8 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
       user: { 
         id: data.user.id, 
         email: data.user.email, 
-        name: data.user.user_metadata?.name || data.user.email 
+        name: data.user.user_metadata?.name || data.user.email,
+        canManageUsers: isSuperAdmin(data.user)
       } 
     });
     
@@ -1700,7 +1840,8 @@ app.get('/api/auth/me', async (req, res) => {
       id: user.id, 
       email: user.email, 
       name: user.user_metadata?.name || user.email,
-      username: user.email
+      username: user.email,
+      canManageUsers: isSuperAdmin(user)
     } 
   });
 });
@@ -1708,7 +1849,7 @@ app.get('/api/auth/me', async (req, res) => {
 // ============================================================
 // ADMIN USER ROUTES (via Supabase Auth Admin)
 // ============================================================
-app.get('/api/admin/users', requireAuth, async (req, res) => {
+app.get('/api/admin/users', requireSuperAdmin, async (req, res) => {
   try {
     const { data: { users }, error } = await supabase.auth.admin.listUsers();
     if (error) throw error;
@@ -1726,7 +1867,7 @@ app.get('/api/admin/users', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/auth/users', requireAuth, async (req, res) => {
+app.post('/api/auth/users', requireSuperAdmin, async (req, res) => {
   try {
     const { email, password, name } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -1750,7 +1891,7 @@ app.post('/api/auth/users', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
+app.put('/api/admin/users/:id', requireSuperAdmin, async (req, res) => {
   try {
     const { email, password, name } = req.body;
     const updates = {};
@@ -1771,7 +1912,7 @@ app.put('/api/admin/users/:id', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/users/:id', requireAuth, async (req, res) => {
+app.delete('/api/admin/users/:id', requireSuperAdmin, async (req, res) => {
   try {
     if (req.params.id === req.user.id) {
       return res.status(400).json({ error: 'Cannot delete your own account' });
@@ -1835,7 +1976,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     await saveBudget(budget);
     await addVersion(id, 1, initialState, 'Initial budget', true, buildVersionMeta(req, createdByEmail ? { email: createdByEmail } : null));
 
-    res.json({ success: true, id, url: `/b/${id}` });
+    res.json({ success: true, id, url: budgetEditUrl(id) });
     
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -1853,6 +1994,7 @@ app.get('/api/budgets/:id', limits.publicRead, async (req, res) => {
 
     const user = await getRequestUser(req, res);
     const isAuthenticatedViewer = !!user;
+    const canEdit = isAuthenticatedViewer || hasValidBudgetEditToken(req, budget.id);
     if (budget.isExpired && !isAuthenticatedViewer) {
       return res.status(410).json({ error: 'This budget link has expired.', expired: true });
     }
@@ -1887,6 +2029,7 @@ app.get('/api/budgets/:id', limits.publicRead, async (req, res) => {
       expiresAt: budget.expiresAt,
       expiredAt: budget.expiredAt,
       isExpired: budget.isExpired,
+      canEdit,
       activeBrowserCount: getActiveBudgetBrowsers(budget.id).length
     });
     
@@ -1907,6 +2050,9 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     // Determine viewer identity (validates token, not just presence)
     const user = await getRequestUser(req, res);
     const viewerEmail = user?.email || null;
+    if (!user && !hasValidBudgetEditToken(req, req.params.id)) {
+      return res.status(403).json({ error: 'This is a read-only budget link.' });
+    }
     if (budget.isExpired && !viewerEmail) {
       return res.status(410).json({ error: 'This budget link has expired.', expired: true });
     }
@@ -1919,7 +2065,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     
     const normalizeState = (s) => {
       const { timestamp, ...rest } = s || {};
-      return JSON.stringify(rest, Object.keys(rest).sort());
+      return JSON.stringify(canonicalize(rest));
     };
     
     if (normalizeState(lastVersion.state) === normalizeState(data.state)) {
@@ -1954,6 +2100,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
       await addVersion(req.params.id, newVersionNum, data.state, data.pin ? (data.note || 'Shared/Emailed') : 'Auto-save', !!data.pin, versionMeta);
     }
 
+    const previousState = budget.currentState;
     budget.currentState = data.state;
     if (data.state.clientName) budget.clientName = data.state.clientName;
     if (data.state.builder !== undefined) budget.builder = data.state.builder || null;
@@ -1973,7 +2120,7 @@ app.put('/api/budgets/:id', limits.api, async (req, res) => {
     if (isNewVersion && budget.createdByEmail && !data.pin) {
       const isCreatorOrAdmin = !!viewerEmail;
       if (!isCreatorOrAdmin) {
-        sendChangeNotification(budget, data.state).catch(err =>
+        sendChangeNotification({ ...budget, currentState: previousState }, data.state).catch(err =>
           console.error('Change notification failed:', err)
         );
       }
@@ -2036,6 +2183,12 @@ app.get('/api/admin/budgets/:id', requireAuth, async (req, res) => {
   const budget = await loadBudget(req.params.id);
   if (!budget) return res.status(404).json({ error: 'Budget not found' });
   res.json(budget);
+});
+
+app.post('/api/admin/budgets/:id/edit-link', requireAuth, async (req, res) => {
+  const budget = await loadBudget(req.params.id);
+  if (!budget) return res.status(404).json({ error: 'Budget not found' });
+  res.json({ success: true, url: budgetEditUrl(req.params.id) });
 });
 
 // Reclassify a single view as internal (team) or external (client)
@@ -2328,7 +2481,7 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
     await saveBudget(budget);
     await addVersion(id, 1, state, 'Initial blank budget', true, buildVersionMeta(req, req.user));
     
-    res.json({ success: true, id, url: `/b/${id}` });
+    res.json({ success: true, id, url: budgetEditUrl(id) });
     
   } catch (err) {
     console.error('Create admin budget error:', err);
@@ -2375,7 +2528,7 @@ app.post('/api/admin/budgets/:id/clone', requireAuth, async (req, res) => {
     await addVersion(id, 1, state, `Cloned from ${source.clientName || source.id}`, true, buildVersionMeta(req, req.user));
 
     const cloned = await loadBudget(id);
-    res.json({ success: true, id, url: `/b/${id}`, budget: cloned });
+    res.json({ success: true, id, url: budgetEditUrl(id), budget: cloned });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid input', details: err.issues || err.errors });
@@ -2498,11 +2651,10 @@ app.get('/api/links', requireAuth, async (req, res) => {
 // ============================================================
 // EMAIL API
 // ============================================================
-app.post('/api/send-proposal', limits.email, async (req, res) => {
+app.post('/api/send-proposal', limits.email, requireAuth, async (req, res) => {
   try {
     const data = schemas.sendEmail.parse(req.body);
-    
-    const emailHtml = data.htmlContent || buildProposalEmail(data.proposalData, data.recipientName);
+    const emailHtml = buildProposalEmail(data.proposalData, data.recipientName);
     
     const { data: sendData, error } = await resend.emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
@@ -2529,7 +2681,7 @@ app.post('/api/send-proposal', limits.email, async (req, res) => {
 });
 
 function buildProposalEmail(data, recipientName) {
-  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
+  const greeting = recipientName ? `Hi ${escapeHtml(recipientName)},` : 'Hi,';
   const formatCurrency = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num || 0);
   const rowStyle = 'padding:12px 16px;border-bottom:1px solid #E0E0E0';
 
@@ -2537,7 +2689,7 @@ function buildProposalEmail(data, recipientName) {
   if (data.categories?.length) {
     data.categories.forEach(cat => {
       if (cat.tier && cat.tier !== 'none') {
-        tableRows += `<tr><td style="${rowStyle};font-weight:500">${cat.name}</td><td style="${rowStyle};text-transform:capitalize">${cat.tier}</td><td style="${rowStyle};text-align:right">${formatCurrency(cat.price)}</td></tr>`;
+        tableRows += `<tr><td style="${rowStyle};font-weight:500">${escapeHtml(cat.name)}</td><td style="${rowStyle};text-transform:capitalize">${escapeHtml(cat.tier)}</td><td style="${rowStyle};text-align:right">${formatCurrency(cat.price)}</td></tr>`;
       }
     });
   }
@@ -2545,7 +2697,7 @@ function buildProposalEmail(data, recipientName) {
   // Per-category adjustments
   if (data.catMods?.length) {
     data.catMods.forEach(m => {
-      tableRows += `<tr><td style="${rowStyle};font-weight:500;color:#5A5A5A">&nbsp;&nbsp;↳ ${m.categoryName}: ${m.name}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right;color:${m.amount >= 0 ? '#2E7D32' : '#C62828'}">${m.amount >= 0 ? '+' : ''}${formatCurrency(m.amount)}</td></tr>`;
+      tableRows += `<tr><td style="${rowStyle};font-weight:500;color:#5A5A5A">&nbsp;&nbsp;↳ ${escapeHtml(m.categoryName)}: ${escapeHtml(m.name)}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right;color:${m.amount >= 0 ? '#2E7D32' : '#C62828'}">${m.amount >= 0 ? '+' : ''}${formatCurrency(m.amount)}</td></tr>`;
     });
   }
 
@@ -2553,7 +2705,7 @@ function buildProposalEmail(data, recipientName) {
   if (data.extras?.length) {
     tableRows += `<tr><td colspan="3" style="${rowStyle};font-weight:600;background:#F9F9F9;color:#393939">Add-Ons</td></tr>`;
     data.extras.forEach(e => {
-      tableRows += `<tr><td style="${rowStyle};font-weight:500">${e.name}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right">${formatCurrency(e.price)}</td></tr>`;
+      tableRows += `<tr><td style="${rowStyle};font-weight:500">${escapeHtml(e.name)}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right">${formatCurrency(e.price)}</td></tr>`;
     });
   }
 
@@ -2561,7 +2713,7 @@ function buildProposalEmail(data, recipientName) {
   if (data.modifiers?.length) {
     tableRows += `<tr><td colspan="3" style="${rowStyle};font-weight:600;background:#F9F9F9;color:#393939">Custom Items</td></tr>`;
     data.modifiers.forEach(m => {
-      tableRows += `<tr><td style="${rowStyle};font-weight:500">${m.name}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right;color:${m.amount >= 0 ? '#2E7D32' : '#C62828'}">${m.amount >= 0 ? '+' : ''}${formatCurrency(m.amount)}</td></tr>`;
+      tableRows += `<tr><td style="${rowStyle};font-weight:500">${escapeHtml(m.name)}</td><td style="${rowStyle}"></td><td style="${rowStyle};text-align:right;color:${m.amount >= 0 ? '#2E7D32' : '#C62828'}">${m.amount >= 0 ? '+' : ''}${formatCurrency(m.amount)}</td></tr>`;
     });
   }
 
@@ -2573,7 +2725,7 @@ function buildProposalEmail(data, recipientName) {
 
   const tableHtml = tableRows ? `<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E0E0E0;border-radius:12px;overflow:hidden;margin-bottom:16px"><tr style="background:#F5F5F5"><th style="padding:14px 16px;text-align:left;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Category</th><th style="padding:14px 16px;text-align:left;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Tier</th><th style="padding:14px 16px;text-align:right;font-weight:600;color:#393939;border-bottom:1px solid #E0E0E0">Estimate</th></tr>${tableRows}</table>${totalsHtml}` : '';
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;box-shadow:0 2px 16px rgba(15,47,68,0.06);overflow:hidden"><tr><td style="background:linear-gradient(135deg,#0F2F44 0%,#133F5C 100%);padding:32px 40px;text-align:center"><h1 style="margin:0;color:#FFFFFF;font-size:24px;font-weight:600">Gamma Tech Services</h1><p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px">Residential Technology Budget</p></td></tr><tr><td style="padding:40px"><p style="margin:0 0 24px;color:#393939;font-size:16px;line-height:1.6">${greeting}</p><p style="margin:0 0 32px;color:#393939;font-size:16px;line-height:1.6">Thank you for your interest in Gamma Tech Services. Below is your personalized technology budget.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#EEF8FE 0%,#E8F1F8 100%);border-radius:12px;margin-bottom:32px"><tr><td style="padding:24px;text-align:center"><p style="margin:0;color:#5A5A5A;font-size:14px;text-transform:uppercase;letter-spacing:1px">Estimated Investment</p><p style="margin:8px 0 0;color:#0F2F44;font-size:36px;font-weight:700">${formatCurrency(data.total)}</p>${data.tierLabel ? `<p style="margin:8px 0 0;color:#017ED7;font-size:14px;font-weight:500">${data.tierLabel}</p>` : ''}</td></tr></table>${tableHtml}${data.budgetUrl ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr><td align="center"><a href="${data.budgetUrl}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View & Customize Your Budget</a></td></tr></table>` : ''}<p style="margin:0 0 16px;color:#5A5A5A;font-size:14px;line-height:1.6">This is a preliminary budget estimate. Final pricing may vary based on site conditions and requirements.</p><p style="margin:0;color:#393939;font-size:16px;line-height:1.6">Ready to move forward? Reply to this email or call us at <strong>(239) 330-4939</strong>.</p></td></tr><tr><td style="background:#F5F5F5;padding:24px 40px;text-align:center;border-top:1px solid #E0E0E0"><p style="margin:0;color:#5A5A5A;font-size:14px"><strong>Gamma Tech Services</strong><br>3106 Horseshoe Dr S, Naples, FL 34104<br>(239) 330-4939 • gamma.tech</p></td></tr></table></td></tr></table></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:0;background:#FAFAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAFA;padding:40px 20px"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;box-shadow:0 2px 16px rgba(15,47,68,0.06);overflow:hidden"><tr><td style="background:linear-gradient(135deg,#0F2F44 0%,#133F5C 100%);padding:32px 40px;text-align:center"><h1 style="margin:0;color:#FFFFFF;font-size:24px;font-weight:600">Gamma Tech Services</h1><p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px">Residential Technology Budget</p></td></tr><tr><td style="padding:40px"><p style="margin:0 0 24px;color:#393939;font-size:16px;line-height:1.6">${greeting}</p><p style="margin:0 0 32px;color:#393939;font-size:16px;line-height:1.6">Thank you for your interest in Gamma Tech Services. Below is your personalized technology budget.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#EEF8FE 0%,#E8F1F8 100%);border-radius:12px;margin-bottom:32px"><tr><td style="padding:24px;text-align:center"><p style="margin:0;color:#5A5A5A;font-size:14px;text-transform:uppercase;letter-spacing:1px">Estimated Investment</p><p style="margin:8px 0 0;color:#0F2F44;font-size:36px;font-weight:700">${formatCurrency(data.total)}</p>${data.tierLabel ? `<p style="margin:8px 0 0;color:#017ED7;font-size:14px;font-weight:500">${escapeHtml(data.tierLabel)}</p>` : ''}</td></tr></table>${tableHtml}${data.budgetUrl ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr><td align="center"><a href="${escapeHtml(data.budgetUrl)}" style="display:inline-block;background:#017ED7;color:#FFFFFF;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View & Customize Your Budget</a></td></tr></table>` : ''}<p style="margin:0 0 16px;color:#5A5A5A;font-size:14px;line-height:1.6">This is a preliminary budget estimate. Final pricing may vary based on site conditions and requirements.</p><p style="margin:0;color:#393939;font-size:16px;line-height:1.6">Ready to move forward? Reply to this email or call us at <strong>(239) 330-4939</strong>.</p></td></tr><tr><td style="background:#F5F5F5;padding:24px 40px;text-align:center;border-top:1px solid #E0E0E0"><p style="margin:0;color:#5A5A5A;font-size:14px"><strong>Gamma Tech Services</strong><br>3106 Horseshoe Dr S, Naples, FL 34104<br>(239) 330-4939 • gamma.tech</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 // ============================================================
