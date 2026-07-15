@@ -1175,14 +1175,24 @@
     .customize-editor-mode-row {
       display: flex;
       justify-content: flex-end;
+      gap: 10px;
       margin-bottom: 12px;
     }
 
-    .customize-editor-mode-row .customize-view-control {
+    .customize-editor-mode-row .customize-view-control,
+    .customize-editor-mode-row .customize-required-control {
       background: white;
       border: 1px solid var(--border);
       border-radius: 6px;
       padding: 8px 10px;
+    }
+
+    .customize-required-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-light);
     }
 
     .customize-item-move-buttons {
@@ -5521,6 +5531,7 @@ function buildCategoryOverrideFromBudget(budget, catId) {
   }
   return {
     hidden: override.hidden === true,
+    required: override.required === true,
     tiers,
     presentationMode,
     ...(featureMatrix.length ? { featureMatrix } : {})
@@ -5641,6 +5652,7 @@ function readStandardCategoryEditorPayload(editor, extra = {}) {
   applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode);
   return withPresentationPayload({
     hidden: isHidden,
+    required: editor.querySelector('.category-required')?.checked === true,
     tiers,
     ...extra
   }, presentationMode, featureMatrix);
@@ -5669,6 +5681,7 @@ function readCustomCategoryEditorPayload(editor, options = {}) {
     name: editor.querySelector('.cc-name')?.value || '',
     icon: editor.querySelector('.cc-icon')?.value || '📦',
     desc: '',
+    required: editor.querySelector('.category-required')?.checked === true,
     ...layout,
     tiers
   }, presentationMode, featureMatrix);
@@ -6119,6 +6132,10 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
       </div>
       <div class="customize-editor-body">
         <div class="customize-editor-mode-row">
+          <label class="customize-required-control" title="Hide Skip and require the customer to choose an option. The selection can still be cleared back to unanswered.">
+            <input type="checkbox" class="category-required" ${override.required === true ? 'checked' : ''} onchange="markCatDirty(); queueCustomizeDraftSave();">
+            Require a selection
+          </label>
           ${renderPresentationModeControl(presentationMode, cat.id, 'padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;')}
         </div>
         <div class="tier-editors" style="display:${isHidden || presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">
@@ -6212,6 +6229,10 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
       </div>
       <div class="customize-editor-body">
         <div class="customize-editor-mode-row">
+          <label class="customize-required-control" title="Hide Skip and require the customer to choose an option. The selection can still be cleared back to unanswered.">
+            <input type="checkbox" class="category-required" ${cc.required === true ? 'checked' : ''} onchange="markCatDirty(); queueCustomizeDraftSave();">
+            Require a selection
+          </label>
           ${renderPresentationModeControl(presentationMode, cc.id || `custom-${index}`)}
         </div>
         <div class="cc-tiers" style="display:${presentationMode === 'matrix' ? 'none' : 'grid'};gap:8px;">

@@ -408,6 +408,20 @@ main {
   color: var(--text);
   letter-spacing: -0.5px;
 }
+.required-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #FFF3E0;
+  color: #9A5B00;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
 .category-desc {
   font-size: 13px;
   color: var(--text-light);
@@ -441,6 +455,30 @@ main {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
   margin-bottom: 16px;
+}
+.required-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: #FFF8ED;
+  color: #80501A;
+  font-size: 12px;
+  font-weight: 600;
+}
+.clear-selection-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
 }
 @media (max-width: 768px) {
   .tier-selector {
@@ -2274,6 +2312,7 @@ function CATEGORIES() {
     }
     if (override?.section) customCat.section = override.section;
     if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
+    if (override?.required !== undefined) customCat.required = override.required === true;
     if (override?.presentationMode) customCat.presentationMode = override.presentationMode;
     if (override?.featureMatrix) customCat.featureMatrix = override.featureMatrix;
     
@@ -2345,6 +2384,7 @@ function CATEGORIES() {
         sizeScale: 0, // No scaling for custom
         isCustomized: true,
         sortOrder: cc.sortOrder,
+        required: cc.required === true,
         presentationMode: cc.presentationMode,
         featureMatrix: cc.featureMatrix,
         tiers
@@ -2528,7 +2568,7 @@ function renderCategories() {
         <div class="category-header" onclick="toggleCategory('${cat.id}')">
           <div class="category-icon">${escapeHtml(cat.icon)}</div>
           <div class="category-info">
-            <div class="category-name">${escapeHtml(cat.name)}</div>
+            <div class="category-name">${escapeHtml(cat.name)}${cat.required ? '<span class="required-badge">Required</span>' : ''}</div>
             <div class="category-desc">${escapeHtml(cat.desc)}</div>
           </div>
           <div class="category-price ${!selected ? 'no-selection' : ''}">
@@ -2536,13 +2576,19 @@ function renderCategories() {
           </div>
         </div>
         <div class="category-body">
+          ${cat.required ? `
+          <div class="required-selection-bar">
+            <span>${selected ? 'A selection is required for this section.' : 'Choose one option for this section.'}</span>
+            ${selected ? `<button type="button" class="clear-selection-btn" onclick="clearTierSelection(event, '${cat.id}')">Clear selection</button>` : ''}
+          </div>
+          ` : ''}
           ${isMatrixMode ? '' : `
           <div class="tier-selector">
-            <div class="tier-btn none-btn ${!selected ? 'selected' : ''}" onclick="selectTier('${cat.id}', null)">
+            ${cat.required ? '' : `<div class="tier-btn none-btn ${!selected ? 'selected' : ''}" onclick="selectTier('${cat.id}', null)">
               <div class="tier-label">Skip</div>
               <div class="tier-price">—</div>
               <div class="tier-tag">Not included</div>
-            </div>
+            </div>`}
             ${orderedTierKeys(cat.tiers).map(t => {
               const tp = getCategoryPrice(cat, t);
               // Check if this tier should be disabled
@@ -2685,9 +2731,11 @@ function comparisonTierDisplay(cat, tierKey) {
 }
 
 function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) {
-  const selectedKey = selectedTier || 'skip';
-  const selectedIndex = Math.max(0, tableColumns.indexOf(selectedKey));
-  const activeTier = comparisonTierDisplay(cat, selectedKey);
+  const selectedKey = selectedTier || (cat.required ? '' : 'skip');
+  const selectedIndex = tableColumns.indexOf(selectedKey);
+  const activeTier = selectedKey
+    ? comparisonTierDisplay(cat, selectedKey)
+    : { kicker: 'Required', name: 'Choose an option', price: '' };
   const tierList = tableColumns.join(',');
   const mobileCompareAttrs = `data-cat-id="${escapeAttr(cat.id)}" data-tier-list="${escapeAttr(tierList)}" data-active-tier="${escapeAttr(selectedKey)}"`;
   return `
@@ -2705,7 +2753,7 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
           </button>
         `).join('')}
       </div>
-      <div class="comparison-mobile-active-tier ${selectedKey}">
+      <div class="comparison-mobile-active-tier ${selectedKey || 'unselected'}">
         <div class="comparison-mobile-active-kicker">${escapeHtml(activeTier.kicker)}</div>
         <div class="comparison-mobile-active-name">${escapeHtml(activeTier.name)}</div>
         ${activeTier.price ? `<div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>` : ''}
@@ -2729,9 +2777,9 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
                 ${escapeHtml(feature.label)}
               </button>
             </div>
-            <div class="mobile-feature-status selected ${selectedKey}-col">
-              <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, selectedKey))}</span>
-              ${selectedKey === 'skip'
+            <div class="mobile-feature-status ${selectedKey ? 'selected' : 'unselected'} ${selectedKey ? `${selectedKey}-col` : ''}">
+              <span class="mobile-feature-tier-label">${selectedKey ? escapeHtml(mobileTierLabel(cat, selectedKey)) : 'Choose an option'}</span>
+              ${!selectedKey || selectedKey === 'skip'
                 ? renderFeatureStatusCell('not_included')
                 : renderFeatureStatusCell(featureCellForTier(feature, selectedKey), {
                     selectable: selectedTier === selectedKey,
@@ -2757,9 +2805,11 @@ function selectMobileComparisonTier(root, direction) {
   const mobile = root?.closest?.('.comparison-mobile-focus') || root;
   if (!mobile) return;
   const tiers = String(mobile.dataset.tierList || '').split(',').filter(Boolean);
-  const active = mobile.dataset.activeTier || 'skip';
-  const currentIndex = Math.max(0, tiers.indexOf(active));
-  const nextIndex = Math.min(tiers.length - 1, Math.max(0, currentIndex + direction));
+  const active = mobile.dataset.activeTier || '';
+  const currentIndex = tiers.indexOf(active);
+  const nextIndex = currentIndex < 0
+    ? 0
+    : Math.min(tiers.length - 1, Math.max(0, currentIndex + direction));
   if (nextIndex === currentIndex) return;
   const nextTier = tiers[nextIndex];
   selectTier(mobile.dataset.catId, nextTier === 'skip' ? null : nextTier);
@@ -2811,7 +2861,7 @@ function hideMatrixFeatureDescription() {
 function renderFeatureComparison(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
   const tiers = orderedTierKeys(cat.tiers);
-  const tableColumns = ['skip', ...tiers];
+  const tableColumns = cat.required ? tiers : ['skip', ...tiers];
   const selectedLabel = selectedTier && cat.tiers[selectedTier]?.label
     ? `${cat.tiers[selectedTier].label} selected`
     : 'Choose an option';
@@ -3004,6 +3054,12 @@ function selectTier(catId, tier) {
   document.getElementById('cat-' + catId)?.classList.add('open');
   // Restore scroll after browser layout
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
+}
+
+function clearTierSelection(event, catId) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  selectTier(catId, null);
 }
 
 function toggleMatrixAddOn(event, catId, tierKey, featureId) {

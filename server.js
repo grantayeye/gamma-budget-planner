@@ -1025,6 +1025,7 @@ function normalizeTierPayload(tier = {}) {
 
 function normalizePresentationPayload(payload = {}) {
   const normalized = deepClone(payload || {}) || {};
+  normalized.required = normalized.required === true;
   const dependencyWasProvided = Object.prototype.hasOwnProperty.call(normalized, 'dependsOn') ||
     Object.prototype.hasOwnProperty.call(normalized, 'visibilityDependency');
   const dependency = normalizeCategoryDependencyPayload(

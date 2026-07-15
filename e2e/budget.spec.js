@@ -115,6 +115,88 @@ test.describe('Budget Planner', () => {
     expect(newTotal).not.toBe(initialTotal);
   });
 
+  test('required budget sections hide Skip and can be cleared back to unanswered', async ({ page }) => {
+    const initial = await page.evaluate(() => {
+      CONFIGS.residential = {
+        categories: [],
+        sections: [{ id: 'custom', name: 'Custom', order: 0 }],
+        extras: []
+      };
+      isCustomizedBudget = true;
+      customCategoryConfig = { __layout: { sections: [{ id: 'custom', name: 'Custom', order: 0 }] } };
+      customCategories = [
+        {
+          id: 'required-list',
+          section: 'Custom',
+          section_id: 'custom',
+          name: 'Required List',
+          required: true,
+          tiers: {
+            good: { enabled: true, price: 1000, label: 'Essential', features: ['Base system'] },
+            better: { enabled: true, price: 2000, label: 'Enhanced', features: ['Base system', 'Upgrade'] }
+          }
+        },
+        {
+          id: 'required-matrix',
+          section: 'Custom',
+          section_id: 'custom',
+          name: 'Required Matrix',
+          required: true,
+          presentationMode: 'matrix',
+          featureMatrix: [{
+            id: 'coverage',
+            label: 'Coverage',
+            tierStatus: { good: 'included', better: 'included' }
+          }],
+          tiers: {
+            good: { enabled: true, price: 1500, label: 'Essential', features: ['Coverage'] },
+            better: { enabled: true, price: 2500, label: 'Enhanced', features: ['Coverage'] }
+          }
+        }
+      ];
+      state.propertyType = 'residential';
+      state.selections = { 'required-list': null, 'required-matrix': null };
+      state.catMods = {
+        'required-list': { name: '', amount: 0 },
+        'required-matrix': { name: '', amount: 0 }
+      };
+      state.addOns = {};
+      renderCategories();
+      updateTotals();
+      document.querySelectorAll('.category-card').forEach(card => card.classList.add('open'));
+      return {
+        selections: { ...state.selections },
+        requiredBadges: document.querySelectorAll('.required-badge').length,
+        listSkipCount: document.querySelectorAll('#cat-required-list .none-btn').length,
+        matrixTierNames: [...document.querySelectorAll('#cat-required-matrix .comparison-desktop-panel .comparison-tier-name')].map(el => el.textContent.trim()),
+        matrixMobileTabs: [...document.querySelectorAll('#cat-required-matrix .comparison-mobile-tab')].map(el => el.textContent.trim()),
+        matrixPrompt: document.querySelector('#cat-required-matrix .comparison-mobile-active-name')?.textContent.trim(),
+        clearButtons: document.querySelectorAll('.clear-selection-btn').length,
+        total: document.getElementById('headerTotal').textContent
+      };
+    });
+
+    expect(initial.selections).toEqual({ 'required-list': null, 'required-matrix': null });
+    expect(initial.requiredBadges).toBe(2);
+    expect(initial.listSkipCount).toBe(0);
+    expect(initial.matrixTierNames).toEqual(['Good', 'Better']);
+    expect(initial.matrixMobileTabs).toEqual(['Good', 'Better']);
+    expect(initial.matrixPrompt).toBe('Choose an option');
+    expect(initial.clearButtons).toBe(0);
+    expect(initial.total).toBe('$0');
+
+    await page.locator('#cat-required-list .good-btn').click();
+    await expect(page.locator('#cat-required-list .clear-selection-btn')).toBeVisible();
+    expect(await page.evaluate(() => state.selections['required-list'])).toBe('good');
+    expect(await page.locator('#headerTotal').textContent()).toBe('$1,060');
+
+    await page.locator('#cat-required-list .clear-selection-btn').click();
+    expect(await page.evaluate(() => state.selections['required-list'])).toBeNull();
+    expect(await page.locator('#headerTotal').textContent()).toBe('$0');
+    await expect(page.locator('#cat-required-list .clear-selection-btn')).toHaveCount(0);
+    await expect(page.locator('#cat-required-list .none-btn')).toHaveCount(0);
+  });
+
   test('customer fields and modifiers render as text, not executable HTML', async ({ page }) => {
     await page.evaluate(() => {
       window.__customerXssExecuted = false;
