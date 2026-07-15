@@ -802,7 +802,8 @@
     }
 
     .ai-review-grid label,
-    .library-editor-grid label {
+    .library-editor-grid label,
+    .library-tier-editor > label:not(.library-tier-toggle) {
       display: grid;
       gap: 4px;
       font-size: 11px;
@@ -813,7 +814,10 @@
     .ai-review-grid select,
     .library-editor-grid input,
     .library-editor-grid select,
-    .library-editor-grid textarea {
+    .library-editor-grid textarea,
+    .library-tier-editor input[type="text"],
+    .library-tier-editor input[type="number"],
+    .library-tier-editor textarea {
       width: 100%;
       padding: 8px 9px;
       border: 1px solid var(--border);
@@ -875,6 +879,20 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       margin-top: 8px;
+    }
+
+    .library-tier-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .library-tier-editor.is-disabled > label:not(.library-tier-toggle) {
+      opacity: 0.48;
     }
 
     .copy-section-card {
@@ -5585,13 +5603,24 @@ function renderLibraryTierEditors(payload = {}) {
   document.getElementById('libraryTierEditors').innerHTML = TIER_ORDER.map(key => {
     const tier = payload.tiers?.[key] || {};
     const enabled = !!(payload.tiers?.[key] && tier.enabled !== false);
-    return `<div class="library-tier-editor" data-tier="${key}">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" class="library-tier-enabled" ${enabled ? 'checked' : ''}> ${escapeAttr(tierDisplayName(key))}</label>
-      <label>Option label<input type="text" class="library-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${escapeAttr(tierDisplayName(key))}"></label>
-      <label>Allowance<input type="number" class="library-tier-price" min="0" max="10000000" step="100" value="${Number(tier.price || 0)}"></label>
-      <label>Features<textarea class="library-tier-features" rows="2" placeholder="One feature per line">${escapeAttr((tier.features || []).join('\n'))}</textarea></label>
+    const disabled = enabled ? '' : 'disabled';
+    return `<div class="library-tier-editor ${enabled ? '' : 'is-disabled'}" data-tier="${key}">
+      <label class="library-tier-toggle"><input type="checkbox" class="library-tier-enabled" ${enabled ? 'checked' : ''} onchange="syncLibraryTierEditorState(this.closest('.library-tier-editor'))"> ${escapeAttr(tierDisplayName(key))}</label>
+      <label>Option label<input type="text" class="library-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${escapeAttr(tierDisplayName(key))}" ${disabled}></label>
+      <label>Allowance<input type="number" class="library-tier-price" min="0" max="10000000" step="100" value="${Number(tier.price || 0)}" ${disabled}></label>
+      <label>Features<textarea class="library-tier-features" rows="2" placeholder="One feature per line" ${disabled}>${escapeAttr((tier.features || []).join('\n'))}</textarea></label>
     </div>`;
   }).join('');
+}
+
+function syncLibraryTierEditorState(row) {
+  if (!row) return;
+  const enabled = row.querySelector('.library-tier-enabled')?.checked === true;
+  row.classList.toggle('is-disabled', !enabled);
+  row.querySelectorAll('input:not(.library-tier-enabled), textarea').forEach(field => {
+    field.disabled = !enabled;
+  });
+  if (enabled) row.querySelector('.library-tier-label')?.focus();
 }
 
 function openLibraryEditorModal(id = '', payloadOverride = null) {
