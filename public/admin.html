@@ -653,6 +653,66 @@
       box-shadow: 0 -8px 20px rgba(15,47,68,0.08);
     }
 
+    .customize-accelerators {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+      padding: 14px;
+      border: 1px solid #CFE5F5;
+      border-radius: 10px;
+      background: #F4FAFE;
+    }
+
+    .section-library-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .section-library-card,
+    .ai-draft-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      background: white;
+    }
+
+    .section-library-tier-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .section-library-tier-list span {
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: var(--bg);
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
+    .ai-draft-summary {
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      background: #EEF8FE;
+      line-height: 1.5;
+    }
+
+    .ai-draft-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .ai-draft-meta {
+      color: var(--text-light);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
     .copy-section-card {
       background: #F7FAFC;
       border: 1px solid var(--border-light);
@@ -2330,6 +2390,39 @@
     </div>
     <div class="modal-body" id="customizeBody">
       <!-- Content loaded dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- REUSABLE SECTION LIBRARY MODAL -->
+<div class="modal-overlay" id="sectionLibraryModal">
+  <div class="modal" style="max-width:820px;max-height:88vh;">
+    <div class="modal-header">
+      <h2>📚 Reusable Section Library</h2>
+      <button class="modal-close" onclick="closeSectionLibraryModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="color:var(--text-light);font-size:13px;margin-bottom:16px;">Add proven one-off sections to this budget. Save sections from the Customize editor to make them available to the whole team.</div>
+      <div id="sectionLibraryBody">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- AI BUDGET DRAFT MODAL -->
+<div class="modal-overlay" id="aiBudgetDraftModal">
+  <div class="modal" style="max-width:840px;max-height:90vh;">
+    <div class="modal-header">
+      <h2>✨ AI Budget Draft</h2>
+      <button class="modal-close" onclick="closeAiBudgetDraftModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text-light);line-height:1.5;margin-bottom:12px;">Paste meeting notes, a transcript, or describe the one-off project. AI will use approved template categories and your reusable section library first. Review is required before anything changes.</div>
+      <textarea id="aiBudgetPrompt" rows="7" maxlength="15000" placeholder="Example: 6,500 sq ft home. Client wants a golf simulator, premium outdoor entertaining, strong WiFi, lighting control, and cameras. Give them useful options without turning this into a proposal." style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0;">
+        <button type="button" class="btn btn-primary" id="generateAiDraftBtn" onclick="generateAiBudgetDraft()">Generate Draft</button>
+        <span id="aiBudgetStatus" style="font-size:12px;color:var(--text-light);"></span>
+      </div>
+      <div id="aiBudgetResult"></div>
     </div>
   </div>
 </div>
@@ -4859,6 +4952,8 @@ let customizeDraftTimer = null;
 let customizeDirty = false;
 let copySectionSourceBudget = null;
 let copyToPayload = null;
+let sectionLibraryItems = [];
+let activeAiBudgetDraft = null;
 
 async function openCustomizeModal(budgetId) {
   customizeBudgetId = budgetId;
@@ -5075,6 +5170,12 @@ function renderCustomizeEditor() {
         • Saving will ${budget.isCustomized ? 'update' : 'lock sqft and wipe all'} versions<br>
       </div>
 
+      <div class="customize-accelerators">
+        <button type="button" class="btn btn-primary" onclick="openAiBudgetDraftModal()">✨ AI Budget Draft</button>
+        <button type="button" class="btn btn-secondary" onclick="openSectionLibraryModal()">📚 Section Library</button>
+        <span>Build from notes or reuse a proven one-off section. Nothing changes until you apply it.</span>
+      </div>
+
       ${renderCopySectionControls()}
       <div id="categoryEditors" data-sqft="${sqft}">
         ${renderCustomizeGroupedEditors(defaultCategories, existingCustom, existingConfig, selections, sqft)}
@@ -5099,6 +5200,243 @@ function renderCustomizeEditor() {
   body.oninput = queueCustomizeDraftSave;
   body.onchange = queueCustomizeDraftSave;
   syncCustomizeLayoutSelects();
+}
+
+function closeSectionLibraryModal() {
+  document.getElementById('sectionLibraryModal').classList.remove('active');
+}
+
+async function openSectionLibraryModal() {
+  if (!customizeBudgetId) return;
+  const modal = document.getElementById('sectionLibraryModal');
+  const body = document.getElementById('sectionLibraryBody');
+  modal.classList.add('active');
+  body.innerHTML = '<div style="color:var(--text-light);">Loading section library…</div>';
+  try {
+    const res = await fetch(api('/api/admin/section-library'), { credentials: 'include' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load section library');
+    sectionLibraryItems = Array.isArray(data.items) ? data.items : [];
+    renderSectionLibraryItems();
+  } catch (err) {
+    console.error('Load section library error:', err);
+    body.innerHTML = `<div style="color:#C62828;">${escapeAttr(err.message || 'Failed to load section library')}</div>`;
+  }
+}
+
+function renderSectionLibraryItems() {
+  const body = document.getElementById('sectionLibraryBody');
+  if (!sectionLibraryItems.length) {
+    body.innerHTML = '<div style="padding:24px;text-align:center;background:var(--bg);border-radius:8px;color:var(--text-light);">No reusable sections yet. Use “Save to Library” on any category in the Customize editor.</div>';
+    return;
+  }
+  body.innerHTML = `<div class="section-library-grid">${sectionLibraryItems.map(item => {
+    const payload = item.payload || {};
+    const tiers = TIER_ORDER.filter(key => payload.tiers?.[key] && payload.tiers[key].enabled !== false);
+    return `
+      <div class="section-library-card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <strong>${escapeAttr(payload.icon || '📦')} ${escapeAttr(item.name)}</strong>
+            <div class="ai-draft-meta">${escapeAttr(payload.section || 'Custom')}</div>
+          </div>
+          ${payload.required ? '<span class="required-badge">Required</span>' : ''}
+        </div>
+        ${item.description ? `<div style="font-size:13px;color:var(--text-light);">${escapeAttr(item.description)}</div>` : ''}
+        <div class="section-library-tier-list">${tiers.map(key => `<span>${escapeAttr(payload.tiers[key].label || tierDisplayName(key))}: ${formatCurrency(payload.tiers[key].price)}</span>`).join('')}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary btn-small" onclick="addLibrarySectionToBudget('${escapeAttr(item.id)}')">Add to Budget</button>
+          <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteSectionLibraryItem('${escapeAttr(item.id)}')">Delete</button>
+        </div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+async function saveEditorToSectionLibrary(type, idOrIndex) {
+  if (!customizeBudgetData) return;
+  let payload;
+  if (type === 'default') {
+    const editor = document.querySelector(`.category-editor[data-cat-id="${CSS.escape(String(idOrIndex))}"]`);
+    const propertyType = customizeBudgetData.propertyTypeLocked || customizeBudgetData.currentState?.propertyType || 'residential';
+    const base = getBudgetDefaultCategories(customizeBudgetData, propertyType).find(category => category.id === idOrIndex);
+    if (!editor || !base) return showToast('Could not read that section');
+    const layout = collectCustomizeLayoutData().itemLayout[idOrIndex] || {};
+    const override = readStandardCategoryEditorPayload(editor, layout);
+    payload = {
+      ...base,
+      ...override,
+      id: `library-${slugifySectionId(base.name)}`,
+      name: base.name,
+      icon: base.icon || '📦',
+      desc: base.desc || '',
+      section: layout.section || base.section || 'Custom',
+      tiers: override.tiers
+    };
+    delete payload.hidden;
+  } else {
+    const editor = document.querySelector(`.custom-category-editor[data-index="${Number(idOrIndex)}"]`);
+    payload = readCustomCategoryEditorData(editor, { newId: true });
+  }
+  if (!payload?.name || !Object.keys(payload.tiers || {}).length) return showToast('Add a name and at least one option first');
+  const name = prompt('Library name', payload.name);
+  if (!name?.trim()) return;
+  try {
+    const res = await fetch(api('/api/admin/section-library'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), description: payload.desc || '', payload: { ...payload, name: name.trim() } })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save section');
+    const existing = sectionLibraryItems.findIndex(item => item.id === data.item.id);
+    if (existing >= 0) sectionLibraryItems[existing] = data.item;
+    else sectionLibraryItems.push(data.item);
+    showToast('✓ Saved to team section library');
+  } catch (err) {
+    console.error('Save section library error:', err);
+    showToast('❌ ' + (err.message || 'Failed to save section'));
+  }
+}
+
+function addLibrarySectionToBudget(id) {
+  const item = sectionLibraryItems.find(entry => entry.id === id);
+  if (!item?.payload) return;
+  const current = collectCustomizationData();
+  const payload = JSON.parse(JSON.stringify(item.payload));
+  const propertyType = customizeBudgetData.propertyTypeLocked || customizeBudgetData.currentState?.propertyType || 'residential';
+  const usedIds = new Set([
+    ...getBudgetDefaultCategories(customizeBudgetData, propertyType).map(category => category.id),
+    ...current.customCategories.map(category => category.id)
+  ]);
+  const newId = uniqueSectionId(`custom-${slugifySectionId(payload.name || item.name)}`, usedIds);
+  current.customCategories.push({ ...payload, id: newId, name: payload.name || item.name, librarySourceId: item.id });
+  customizeBudgetData.categoryConfig = current.categoryConfig;
+  customizeBudgetData.customCategories = current.customCategories;
+  renderCustomizeEditor();
+  customizeDirty = true;
+  closeSectionLibraryModal();
+  setTimeout(() => scrollCustomizeItemIntoView('custom', newId), 0);
+  showToast('✓ Section added to budget');
+}
+
+async function deleteSectionLibraryItem(id) {
+  const item = sectionLibraryItems.find(entry => entry.id === id);
+  if (!item || !confirm(`Delete “${item.name}” from the team library?`)) return;
+  try {
+    const res = await fetch(api(`/api/admin/section-library/${encodeURIComponent(id)}`), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete section');
+    sectionLibraryItems = sectionLibraryItems.filter(entry => entry.id !== id);
+    renderSectionLibraryItems();
+    showToast('✓ Library section deleted');
+  } catch (err) {
+    console.error('Delete section library error:', err);
+    showToast('❌ ' + (err.message || 'Failed to delete section'));
+  }
+}
+
+function closeAiBudgetDraftModal() {
+  document.getElementById('aiBudgetDraftModal').classList.remove('active');
+}
+
+async function openAiBudgetDraftModal() {
+  if (!customizeBudgetId) return;
+  activeAiBudgetDraft = null;
+  document.getElementById('aiBudgetPrompt').value = '';
+  document.getElementById('aiBudgetResult').innerHTML = '';
+  document.getElementById('generateAiDraftBtn').textContent = 'Generate Draft';
+  const status = document.getElementById('aiBudgetStatus');
+  status.textContent = 'Checking availability…';
+  document.getElementById('aiBudgetDraftModal').classList.add('active');
+  try {
+    const res = await fetch(api('/api/admin/ai/status'), { credentials: 'include' });
+    const data = await res.json();
+    status.textContent = data.configured ? `Ready · ${data.model}` : 'AI is not configured on this environment';
+    document.getElementById('generateAiDraftBtn').disabled = !data.configured;
+  } catch (_) {
+    status.textContent = 'Could not verify AI availability';
+  }
+}
+
+async function generateAiBudgetDraft() {
+  const promptInput = document.getElementById('aiBudgetPrompt');
+  const button = document.getElementById('generateAiDraftBtn');
+  const status = document.getElementById('aiBudgetStatus');
+  const userPrompt = promptInput.value.trim();
+  if (userPrompt.length < 10) return showToast('Describe the project in a little more detail');
+  let requestPrompt = userPrompt;
+  if (activeAiBudgetDraft) {
+    const prior = JSON.stringify(activeAiBudgetDraft);
+    requestPrompt = `Refine this previous draft using the new direction below. Preserve good prior decisions unless the direction changes them.\n\nPREVIOUS DRAFT:\n${prior.slice(0, 10000)}\n\nNEW DIRECTION:\n${userPrompt}`.slice(0, 15000);
+  }
+  button.disabled = true;
+  status.textContent = activeAiBudgetDraft ? 'Refining draft…' : 'Building draft…';
+  try {
+    const res = await fetch(api('/api/admin/ai/budget-draft'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ budgetId: customizeBudgetId, prompt: requestPrompt })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'AI budget draft failed');
+    activeAiBudgetDraft = data.draft;
+    renderAiBudgetDraft(activeAiBudgetDraft);
+    promptInput.value = '';
+    promptInput.placeholder = 'Give the AI a refinement, or apply the draft below.';
+    button.textContent = 'Refine Draft';
+    status.textContent = `Draft ready · ${data.model}`;
+  } catch (err) {
+    console.error('AI budget draft error:', err);
+    status.textContent = err.message || 'AI budget draft failed';
+    showToast('❌ ' + (err.message || 'AI budget draft failed'));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderAiBudgetDraft(draft) {
+  const templates = draft.templateSelections || [];
+  const sections = draft.sections || [];
+  const list = (items, emptyText) => items.length ? `<ul>${items.map(item => `<li>${escapeAttr(item)}</li>`).join('')}</ul>` : `<div class="ai-draft-meta">${emptyText}</div>`;
+  document.getElementById('aiBudgetResult').innerHTML = `
+    <div class="ai-draft-summary"><strong>Draft summary</strong><div>${escapeAttr(draft.summary || '')}</div></div>
+    <div class="ai-draft-card">
+      <strong>Template choices (${templates.length})</strong>
+      ${templates.length ? templates.map(item => `<div style="margin-top:9px;"><strong>${escapeAttr(item.categoryId)}</strong> · ${escapeAttr(tierDisplayName(item.tierKey))}${item.required ? ' · Required' : ''}<div class="ai-draft-meta">${escapeAttr(item.rationale)}</div></div>`).join('') : '<div class="ai-draft-meta">No template choices added.</div>'}
+    </div>
+    <div class="ai-draft-card">
+      <strong>One-off sections (${sections.length})</strong>
+      ${sections.length ? sections.map(section => `<div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border);"><strong>${escapeAttr(section.icon || '📦')} ${escapeAttr(section.name)}</strong> <span class="ai-draft-meta">${section.source === 'library' ? 'From library' : 'Custom allowance'} · ${escapeAttr(section.header)} · recommends ${escapeAttr(tierDisplayName(section.recommendedTier))}${section.required ? ' · Required' : ''}</span><div class="section-library-tier-list">${(section.tiers || []).map(tier => `<span>${escapeAttr(tier.label)}: ${formatCurrency(tier.price)}</span>`).join('')}</div><div class="ai-draft-meta">${escapeAttr(section.rationale)}</div></div>`).join('') : '<div class="ai-draft-meta">No one-off sections added.</div>'}
+    </div>
+    <div class="ai-draft-card"><strong>Assumptions</strong>${list(draft.assumptions || [], 'No assumptions')}</div>
+    <div class="ai-draft-card"><strong>Questions to resolve</strong>${list(draft.questions || [], 'No open questions')}</div>
+    <button type="button" class="btn btn-primary" onclick="applyAiBudgetDraft()" style="width:100%;margin-top:12px;">Apply Draft to Budget</button>
+  `;
+}
+
+async function applyAiBudgetDraft() {
+  if (!activeAiBudgetDraft || !confirm('Apply this AI draft? Existing manually-created sections will be preserved.')) return;
+  const status = document.getElementById('aiBudgetStatus');
+  status.textContent = 'Applying draft…';
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${customizeBudgetId}/apply-ai-draft`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft: activeAiBudgetDraft })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to apply AI draft');
+    customizeBudgetData = data.budget;
+    activeAiBudgetDraft = null;
+    closeAiBudgetDraftModal();
+    renderCustomizeEditor();
+    customizeDirty = false;
+    showToast('✓ AI budget draft applied and versioned');
+  } catch (err) {
+    console.error('Apply AI budget draft error:', err);
+    status.textContent = err.message || 'Failed to apply AI draft';
+    showToast('❌ ' + (err.message || 'Failed to apply AI draft'));
+  }
 }
 
 function syncCustomizeLayoutSelects() {
@@ -6120,6 +6458,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
         <div class="category-editor-actions">
           ${layoutControlsHtml}
           <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
+          <button type="button" class="btn btn-secondary btn-small" onclick="saveEditorToSectionLibrary('default', '${cat.id}')">Save to Library</button>
           <label class="customize-show-control" style="${isLocked ? 'opacity:0.5;' : ''}">
             <input type="checkbox"
               ${isHidden ? '' : 'checked'}
@@ -6223,6 +6562,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
         <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;">
         ${layoutControlsHtml}
         <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
+        <button type="button" class="btn btn-secondary btn-small" onclick="saveEditorToSectionLibrary('custom', '${index}')">Save to Library</button>
         <button type="button" class="btn btn-secondary btn-small customize-clone-btn" onclick="cloneCustomCategory(${index})">Clone</button>
         <button type="button" class="btn btn-secondary btn-small customize-collapse-btn" onclick="toggleCustomizeEditorCollapsed(this)" aria-expanded="false">Edit</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})">Remove</button>

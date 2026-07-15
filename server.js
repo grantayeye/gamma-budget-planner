@@ -8,6 +8,8 @@ const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const helmet = require('helmet');
 const { z } = require('zod');
+const OpenAI = require('openai');
+const { zodTextFormat } = require('openai/helpers/zod');
 const { createClient } = require('@supabase/supabase-js');
 const {
   canonicalize,
@@ -15,6 +17,12 @@ const {
   escapeHtml,
   verifyBudgetEditToken
 } = require('./src/utils/security');
+const {
+  BUDGET_DRAFT_INSTRUCTIONS,
+  aiBudgetDraftSchema,
+  buildBudgetDraftInput,
+  normalizeAiDraft
+} = require('./src/utils/budget-ai');
 
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION:', err);
@@ -32,6 +40,7 @@ const FROM_EMAIL = 'BudgetPlanner@gamma.tech';
 const FROM_NAME = 'Gamma Tech Budget Planner';
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 const BUDGET_EDIT_SECRET = process.env.BUDGET_EDIT_SECRET || process.env.SUPABASE_SERVICE_KEY;
+const OPENAI_BUDGET_MODEL = process.env.OPENAI_BUDGET_MODEL || 'gpt-5.6-terra';
 
 // ============================================================
 // SUPABASE SETUP
@@ -68,6 +77,13 @@ const limits = {
     windowMs: 60 * 60 * 1000,
     max: 10,
     message: { error: 'Email quota exceeded, please try again later' }
+  }),
+  ai: rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 30,
+    message: { error: 'AI draft quota exceeded, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false
   })
 };
 
@@ -779,6 +795,22 @@ const schemas = {
     customCategories: z.array(z.any())
   }).strict(),
 
+  saveSectionLibraryItem: z.object({
+    id: z.string().max(100).optional(),
+    name: z.string().min(1).max(200),
+    description: z.string().max(1000).optional().default(''),
+    payload: z.record(z.string(), z.any())
+  }).strict(),
+
+  aiBudgetDraft: z.object({
+    budgetId: z.string().min(1).max(100),
+    prompt: z.string().min(10).max(15000)
+  }).strict(),
+
+  applyAiBudgetDraft: z.object({
+    draft: aiBudgetDraftSchema
+  }).strict(),
+
   createLink: z.object({
     config: z.string().min(1).max(5000),
     clientName: z.string().max(200).optional().nullable(),
@@ -1126,6 +1158,55 @@ function mergeCustomCategoriesPayload(existingCategories = [], incomingCategorie
     }
     return merged;
   }));
+}
+
+function normalizeSectionLibraryItems(items = []) {
+  const usedIds = new Set();
+  return (Array.isArray(items) ? items : []).map(item => {
+    const id = uniqueSectionId(
+      sanitizeIdentifier(item?.id || item?.name, `library-${crypto.randomUUID().slice(0, 8)}`),
+      usedIds
+    );
+    const payload = normalizeCustomCategoriesPayload([{
+      ...(item?.payload || {}),
+      id: item?.payload?.id || `library-payload-${id}`,
+      name: item?.payload?.name || item?.name
+    }])[0];
+    if (!payload) return null;
+    return {
+      id,
+      name: String(item?.name || payload.name || '').trim().slice(0, 200),
+      description: String(item?.description || '').trim().slice(0, 1000),
+      payload,
+      createdAt: item?.createdAt || new Date().toISOString(),
+      updatedAt: item?.updatedAt || new Date().toISOString(),
+      createdBy: String(item?.createdBy || '').slice(0, 254)
+    };
+  }).filter(item => item?.id && item?.name).slice(0, 100);
+}
+
+async function loadSectionLibraryData() {
+  const { data, error } = await supabase
+    .from('category_defaults')
+    .select('section_library')
+    .eq('id', 'current')
+    .single();
+  if (error) {
+    const err = new Error('Section library is unavailable');
+    err.cause = error;
+    throw err;
+  }
+  return normalizeSectionLibraryItems(data?.section_library || []);
+}
+
+async function saveSectionLibraryData(items) {
+  const normalized = normalizeSectionLibraryItems(items);
+  const { error } = await supabase
+    .from('category_defaults')
+    .update({ section_library: normalized })
+    .eq('id', 'current');
+  throwSupabaseError(error, 'saveSectionLibrary');
+  return normalized;
 }
 
 function slugifySectionId(value) {
@@ -1690,6 +1771,61 @@ app.post('/api/admin/categories/reset', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('POST /api/admin/categories/reset error:', err);
     res.status(500).json({ error: 'Failed to reset categories' });
+  }
+});
+
+// ============================================================
+// REUSABLE SECTION LIBRARY — ADMIN
+// ============================================================
+app.get('/api/admin/section-library', requireAuth, async (req, res) => {
+  try {
+    res.json({ items: await loadSectionLibraryData() });
+  } catch (err) {
+    console.error('GET section library error:', err);
+    res.status(503).json({ error: 'Section library is unavailable' });
+  }
+});
+
+app.post('/api/admin/section-library', requireAuth, async (req, res) => {
+  try {
+    const input = schemas.saveSectionLibraryItem.parse(req.body);
+    const items = await loadSectionLibraryData();
+    const now = new Date().toISOString();
+    const id = sanitizeIdentifier(input.id || input.name, `library-${crypto.randomUUID().slice(0, 8)}`);
+    const existingIndex = items.findIndex(item => item.id === id);
+    const item = normalizeSectionLibraryItems([{
+      id,
+      name: input.name,
+      description: input.description,
+      payload: input.payload,
+      createdAt: existingIndex >= 0 ? items[existingIndex].createdAt : now,
+      updatedAt: now,
+      createdBy: existingIndex >= 0 ? items[existingIndex].createdBy : req.user.email
+    }])[0];
+    if (!item) return res.status(400).json({ error: 'Section must contain at least one priced option' });
+    if (existingIndex >= 0) items[existingIndex] = item;
+    else items.push(item);
+    await saveSectionLibraryData(items);
+    res.json({ success: true, item });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid section library item', details: err.issues || err.errors });
+    }
+    console.error('POST section library error:', err);
+    res.status(500).json({ error: 'Failed to save section' });
+  }
+});
+
+app.delete('/api/admin/section-library/:id', requireAuth, async (req, res) => {
+  try {
+    const items = await loadSectionLibraryData();
+    const nextItems = items.filter(item => item.id !== req.params.id);
+    if (nextItems.length === items.length) return res.status(404).json({ error: 'Library section not found' });
+    await saveSectionLibraryData(nextItems);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE section library error:', err);
+    res.status(500).json({ error: 'Failed to delete section' });
   }
 });
 
@@ -2590,6 +2726,177 @@ app.put('/api/admin/budgets/:id/customize', requireAuth, async (req, res) => {
     }
     console.error('Customize budget error:', err);
     res.status(500).json({ error: 'Failed to customize budget' });
+  }
+});
+
+// ============================================================
+// AI BUDGET DRAFT — ADMIN REVIEW REQUIRED
+// ============================================================
+app.get('/api/admin/ai/status', requireAuth, (req, res) => {
+  res.json({ configured: !!process.env.OPENAI_API_KEY, model: OPENAI_BUDGET_MODEL });
+});
+
+app.post('/api/admin/ai/budget-draft', requireAuth, limits.ai, async (req, res) => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({ error: 'AI Budget Draft is not configured' });
+    }
+    const input = schemas.aiBudgetDraft.parse(req.body);
+    const budget = await loadBudget(input.budgetId);
+    if (!budget) return res.status(404).json({ error: 'Budget not found' });
+
+    const defaults = await loadCategoryDefaultsData();
+    const propertyType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
+    const categories = getBudgetDefaultCategoriesFromConfig(budget.categoryConfig || {}, defaults, propertyType);
+    const library = await loadSectionLibraryData();
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await client.responses.parse({
+      model: OPENAI_BUDGET_MODEL,
+      reasoning: { effort: 'medium' },
+      instructions: BUDGET_DRAFT_INSTRUCTIONS,
+      input: buildBudgetDraftInput({ prompt: input.prompt, budget, categories, library }),
+      text: { format: zodTextFormat(aiBudgetDraftSchema, 'gamma_budget_draft') },
+      max_output_tokens: 12000,
+      store: false
+    }, { timeout: 90000 });
+
+    if (!response.output_parsed) {
+      return res.status(502).json({ error: 'AI did not return a usable budget draft' });
+    }
+    const draft = normalizeAiDraft(response.output_parsed, categories, library);
+    res.json({ draft, model: OPENAI_BUDGET_MODEL });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid AI budget request', details: err.issues || err.errors });
+    }
+    console.error('AI budget draft error:', err);
+    res.status(502).json({ error: 'AI budget draft failed. Please try again.' });
+  }
+});
+
+app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) => {
+  try {
+    const input = schemas.applyAiBudgetDraft.parse(req.body);
+    const budget = await loadBudget(req.params.id);
+    if (!budget) return res.status(404).json({ error: 'Budget not found' });
+
+    const defaults = await loadCategoryDefaultsData();
+    const propertyType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
+    const sqftLocked = budget.sqftLocked || budget.currentState?.homeSize || 4000;
+    const categories = getBudgetDefaultCategoriesFromConfig(budget.categoryConfig || {}, defaults, propertyType);
+    const library = await loadSectionLibraryData();
+    const libraryMap = new Map(library.map(item => [item.id, item]));
+    const draft = normalizeAiDraft(input.draft, categories, library);
+    const usedIds = new Set([
+      ...categories.map(category => category.id),
+      ...(budget.customCategories || []).filter(category => !category.aiGenerated).map(category => category.id)
+    ]);
+    const preservedCustom = (budget.customCategories || []).filter(category => !category.aiGenerated);
+    const generatedCustom = [];
+    const selections = { ...(budget.currentState?.selections || {}) };
+
+    const categoryConfig = normalizeCategoryConfigPayload({
+      ...buildBudgetDefaultSnapshot(defaults),
+      ...(budget.categoryConfig || {})
+    });
+    draft.templateSelections.forEach(selection => {
+      selections[selection.categoryId] = selection.tierKey;
+      categoryConfig[selection.categoryId] = {
+        ...(categoryConfig[selection.categoryId] || {}),
+        required: selection.required === true
+      };
+    });
+
+    draft.sections.forEach((section, index) => {
+      let payload;
+      if (section.source === 'library') {
+        payload = deepClone(libraryMap.get(section.sourceId)?.payload || null);
+        if (!payload) return;
+      } else {
+        payload = {
+          name: section.name,
+          icon: section.icon || '📦',
+          desc: section.rationale,
+          tiers: Object.fromEntries(section.tiers.map(tier => [tier.key, {
+            enabled: true,
+            label: tier.label,
+            tag: tier.label,
+            price: Math.round(Number(tier.price || 0) / 100) * 100,
+            features: tier.features,
+            brands: tier.brands
+          }]))
+        };
+      }
+
+      const header = section.header || payload.section || 'Custom';
+      const id = uniqueSectionId(
+        sanitizeIdentifier(`ai-${section.source === 'library' ? section.sourceId : section.name}`, `ai-section-${index + 1}`),
+        usedIds
+      );
+      const normalized = normalizeCustomCategoriesPayload([{
+        ...payload,
+        id,
+        name: payload.name || section.name,
+        icon: payload.icon || section.icon || '📦',
+        section: header,
+        section_id: slugifySectionId(header),
+        sectionId: slugifySectionId(header),
+        required: section.required === true || payload.required === true,
+        sortOrder: index,
+        aiGenerated: true,
+        aiRationale: section.rationale,
+        librarySourceId: section.source === 'library' ? section.sourceId : null
+      }])[0];
+      if (!normalized) return;
+      generatedCustom.push(normalized);
+      selections[normalized.id] = normalized.tiers?.[section.recommendedTier]
+        ? section.recommendedTier
+        : Object.keys(normalized.tiers || {})[0] || null;
+    });
+
+    const customCategories = normalizeCustomCategoriesPayload([...preservedCustom, ...generatedCustom]);
+    const currentLayout = Array.isArray(categoryConfig.__layout?.sections)
+      ? deepClone(categoryConfig.__layout.sections)
+      : [];
+    const existingSectionIds = new Set(currentLayout.map(section => section.id || slugifySectionId(section.name)));
+    generatedCustom.forEach(category => {
+      const id = category.section_id || category.sectionId || slugifySectionId(category.section);
+      if (existingSectionIds.has(id)) return;
+      currentLayout.push({ id, name: category.section || 'Custom', order: currentLayout.length });
+      existingSectionIds.add(id);
+    });
+    if (currentLayout.length) categoryConfig.__layout = { sections: currentLayout };
+
+    const currentState = { ...(budget.currentState || {}), selections };
+    currentState.total = calculateBudgetTotal(currentState, defaults, {
+      sqft: sqftLocked,
+      propertyType,
+      isCustomized: true,
+      categoryConfig,
+      customCategories
+    });
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('budgets').update({
+      is_customized: true,
+      customized_at: now,
+      sqft_locked: sqftLocked,
+      property_type_locked: propertyType,
+      current_state: currentState,
+      category_config: categoryConfig,
+      custom_categories: customCategories.length ? customCategories : null,
+      modified_at: now
+    }).eq('id', req.params.id);
+    throwSupabaseError(error, 'applyAiBudgetDraft');
+
+    const nextVersionNum = (budget.versions?.length || 0) + 1;
+    await addVersion(req.params.id, nextVersionNum, currentState, 'AI budget draft applied', true, buildVersionMeta(req, req.user));
+    res.json({ success: true, budget: await loadBudget(req.params.id), newVersion: nextVersionNum });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid AI budget draft', details: err.issues || err.errors });
+    }
+    console.error('Apply AI budget draft error:', err);
+    res.status(500).json({ error: 'Failed to apply AI budget draft' });
   }
 });
 

@@ -1807,4 +1807,128 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customCount).toBe(1);
     expect(result.seen).toEqual([{ type: 'custom', id: result.addedId }]);
   });
+
+  test('saves and reuses a custom section from the team library', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      customizeBudgetId = 'library-budget';
+      customizeBudgetData = {
+        id: 'library-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
+        categoryConfig: { __layout: { sections: [{ id: 'custom', name: 'Custom', order: 0 }] } },
+        customCategories: [{
+          id: 'golf-simulator',
+          name: 'Golf Simulator',
+          icon: 'G',
+          section: 'Custom',
+          section_id: 'custom',
+          tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000, features: ['Room technology'], brands: '' } }
+        }]
+      };
+      renderCustomizeEditor();
+      const calls = [];
+      const originalFetch = window.fetch;
+      const originalPrompt = window.prompt;
+      window.prompt = () => 'Golf Simulator';
+      let savedItem;
+      window.fetch = async (url, options = {}) => {
+        calls.push({ url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
+        if ((options.method || 'GET') === 'POST') {
+          const body = JSON.parse(options.body);
+          savedItem = { id: 'golf-simulator', name: body.name, description: body.description, payload: body.payload };
+          return new Response(JSON.stringify({ success: true, item: savedItem }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ items: [savedItem] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+
+      await saveEditorToSectionLibrary('custom', '0');
+      await openSectionLibraryModal();
+      addLibrarySectionToBudget('golf-simulator');
+      const collected = collectCustomizationData();
+      window.fetch = originalFetch;
+      window.prompt = originalPrompt;
+      return {
+        postName: calls.find(call => call.method === 'POST')?.body?.name,
+        libraryCard: document.getElementById('sectionLibraryBody').textContent,
+        names: collected.customCategories.map(category => category.name),
+        uniqueIds: new Set(collected.customCategories.map(category => category.id)).size === collected.customCategories.length
+      };
+    });
+
+    expect(result.postName).toBe('Golf Simulator');
+    expect(result.libraryCard).toContain('Simulator Allowance');
+    expect(result.names).toEqual(['Golf Simulator', 'Golf Simulator']);
+    expect(result.uniqueIds).toBe(true);
+  });
+
+  test('previews and explicitly applies an AI budget draft', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      customizeBudgetId = 'ai-budget';
+      customizeBudgetData = {
+        id: 'ai-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
+        categoryConfig: {},
+        customCategories: []
+      };
+      renderCustomizeEditor();
+      const draft = {
+        summary: 'Adds a golf simulator allowance for review.',
+        assumptions: ['Room construction is excluded.'],
+        questions: ['Is a launch monitor already selected?'],
+        templateSelections: [],
+        sections: [{
+          source: 'custom', sourceId: '', name: 'Golf Simulator', icon: 'G', header: 'Entertainment', required: false,
+          recommendedTier: 'standard', rationale: 'Requested in meeting notes.',
+          tiers: [{ key: 'standard', label: 'Simulator Allowance', price: 50000, features: ['Room technology'], brands: '' }]
+        }]
+      };
+      const appliedBudget = {
+        ...customizeBudgetData,
+        currentState: { ...customizeBudgetData.currentState, selections: { 'ai-golf-simulator': 'standard' }, total: 50000 },
+        customCategories: [{ id: 'ai-golf-simulator', name: 'Golf Simulator', icon: 'G', section: 'Entertainment', tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000 } } }]
+      };
+      const calls = [];
+      const originalFetch = window.fetch;
+      const originalConfirm = window.confirm;
+      window.confirm = () => true;
+      window.fetch = async (url, options = {}) => {
+        calls.push({ url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
+        if (String(url).endsWith('/api/admin/ai/status')) {
+          return new Response(JSON.stringify({ configured: true, model: 'gpt-test' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (String(url).endsWith('/api/admin/ai/budget-draft')) {
+          return new Response(JSON.stringify({ draft, model: 'gpt-test' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ success: true, budget: appliedBudget, newVersion: 2 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+
+      await openAiBudgetDraftModal();
+      document.getElementById('aiBudgetPrompt').value = 'Build a golf simulator allowance from the meeting notes.';
+      await generateAiBudgetDraft();
+      const preview = document.getElementById('aiBudgetResult').textContent;
+      await applyAiBudgetDraft();
+      const finalNames = customizeBudgetData.customCategories.map(category => category.name);
+      window.fetch = originalFetch;
+      window.confirm = originalConfirm;
+      return {
+        preview,
+        finalNames,
+        draftPrompt: calls.find(call => call.url.endsWith('/api/admin/ai/budget-draft'))?.body?.prompt,
+        applied: calls.some(call => call.url.endsWith('/api/admin/budgets/ai-budget/apply-ai-draft')),
+        modalOpen: document.getElementById('aiBudgetDraftModal').classList.contains('active')
+      };
+    });
+
+    expect(result.preview).toContain('Golf Simulator');
+    expect(result.preview).toContain('$50,000');
+    expect(result.draftPrompt).toContain('meeting notes');
+    expect(result.applied).toBe(true);
+    expect(result.finalNames).toEqual(['Golf Simulator']);
+    expect(result.modalOpen).toBe(false);
+  });
 });
