@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import security from '../src/utils/security.js';
 
 const {
@@ -27,5 +29,11 @@ describe('security helpers', () => {
     expect(verifyBudgetEditToken(secret, 'budget-a', token)).toBe(true);
     expect(verifyBudgetEditToken(secret, 'budget-b', token)).toBe(false);
     expect(verifyBudgetEditToken(secret, 'budget-a', 'wrong')).toBe(false);
+  });
+
+  it('keeps user authentication off the service-role data client', () => {
+    const serverSource = readFileSync(join(process.cwd(), 'server.js'), 'utf8');
+    expect(serverSource).toContain('createPublicAuthClient().auth.signInWithPassword');
+    expect(serverSource).not.toMatch(/supabase\.auth\.(signInWithPassword|getUser|resetPasswordForEmail)/);
   });
 });
