@@ -38,8 +38,29 @@ const BUDGET_EDIT_SECRET = process.env.BUDGET_EDIT_SECRET || process.env.SUPABAS
 // ============================================================
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  }
 );
+
+function createPublicAuthClient() {
+  return createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    }
+  );
+}
 
 // ============================================================
 // RATE LIMITING
@@ -289,17 +310,7 @@ async function refreshRequestSession(req, res) {
   const refreshToken = req.cookies.sb_refresh_token;
   if (!refreshToken || !res) return null;
   try {
-    const refreshClient = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false
-        }
-      }
-    );
+    const refreshClient = createPublicAuthClient();
     const { data, error } = await refreshClient.auth.refreshSession({ refresh_token: refreshToken });
     if (error || !data?.session || !data?.user) {
       clearAuthCookies(res);
@@ -318,7 +329,7 @@ async function getRequestUser(req, res = null) {
   const token = getToken(req);
   if (token) {
     try {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
+      const { data: { user }, error } = await createPublicAuthClient().auth.getUser(token);
       if (!error && user) return user;
     } catch (_) {}
   }
@@ -1723,7 +1734,7 @@ app.post('/api/auth/login', limits.auth, async (req, res) => {
     let { email, password, rememberMe } = schemas.login.parse(req.body);
     if (!email.includes('@')) email += '@gamma.tech';
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await createPublicAuthClient().auth.signInWithPassword({ email, password });
     
     if (error) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -1755,7 +1766,7 @@ app.post('/api/auth/forgot-password', limits.auth, async (req, res) => {
     const { email } = schemas.forgotPassword.parse(req.body);
     const successMsg = { success: true, message: 'If an account with that email exists, a reset link has been sent.' };
     
-    await supabase.auth.resetPasswordForEmail(email, {
+    await createPublicAuthClient().auth.resetPasswordForEmail(email, {
       redirectTo: `${APP_URL}/admin.html#reset-password`
     });
     
@@ -1949,7 +1960,7 @@ app.post('/api/budgets', limits.api, async (req, res) => {
     const token = getToken(req);
     if (token) {
       try {
-        const { data: { user } } = await supabase.auth.getUser(token);
+        const { data: { user } } = await createPublicAuthClient().auth.getUser(token);
         if (user?.email) createdByEmail = user.email;
       } catch (_) {}
     }
