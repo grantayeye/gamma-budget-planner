@@ -408,6 +408,20 @@ main {
   color: var(--text);
   letter-spacing: -0.5px;
 }
+.required-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #FFF3E0;
+  color: #9A5B00;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
 .category-desc {
   font-size: 13px;
   color: var(--text-light);
@@ -441,6 +455,30 @@ main {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
   margin-bottom: 16px;
+}
+.required-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: #FFF8ED;
+  color: #80501A;
+  font-size: 12px;
+  font-weight: 600;
+}
+.clear-selection-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
 }
 @media (max-width: 768px) {
   .tier-selector {
@@ -1683,7 +1721,7 @@ main {
     <div class="summary-actions">
       <button class="btn btn-outline" onclick="collapseAll()">Collapse All</button>
       <button class="btn btn-outline" onclick="shareLink()">🔗 Share Link</button>
-      <button class="btn btn-outline" onclick="showEmailModal()">📧 Email</button>
+      <button class="btn btn-outline" id="emailBudgetBtn" onclick="showEmailModal()">📧 Email</button>
       <button class="btn btn-primary" onclick="showSummary()">📄 View Summary</button>
     </div>
   </div>
@@ -1793,6 +1831,8 @@ const categoryDataReady = (async function() {
   } catch(e) {}
 
   window.__isAdmin = authed;
+  const emailBudgetBtn = document.getElementById('emailBudgetBtn');
+  if (emailBudgetBtn) emailBudgetBtn.style.display = authed ? '' : 'none';
 
   if (authed) {
     gate.style.display = 'none';
@@ -2272,6 +2312,7 @@ function CATEGORIES() {
     }
     if (override?.section) customCat.section = override.section;
     if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
+    if (override?.required !== undefined) customCat.required = override.required === true;
     if (override?.presentationMode) customCat.presentationMode = override.presentationMode;
     if (override?.featureMatrix) customCat.featureMatrix = override.featureMatrix;
     
@@ -2343,6 +2384,7 @@ function CATEGORIES() {
         sizeScale: 0, // No scaling for custom
         isCustomized: true,
         sortOrder: cc.sortOrder,
+        required: cc.required === true,
         presentationMode: cc.presentationMode,
         featureMatrix: cc.featureMatrix,
         tiers
@@ -2524,9 +2566,9 @@ function renderCategories() {
       
       card.innerHTML = `
         <div class="category-header" onclick="toggleCategory('${cat.id}')">
-          <div class="category-icon">${cat.icon}</div>
+          <div class="category-icon">${escapeHtml(cat.icon)}</div>
           <div class="category-info">
-            <div class="category-name">${escapeHtml(cat.name)}</div>
+            <div class="category-name">${escapeHtml(cat.name)}${cat.required ? '<span class="required-badge">Required</span>' : ''}</div>
             <div class="category-desc">${escapeHtml(cat.desc)}</div>
           </div>
           <div class="category-price ${!selected ? 'no-selection' : ''}">
@@ -2534,13 +2576,19 @@ function renderCategories() {
           </div>
         </div>
         <div class="category-body">
+          ${cat.required ? `
+          <div class="required-selection-bar">
+            <span>${selected ? 'A selection is required for this section.' : 'Choose one option for this section.'}</span>
+            ${selected ? `<button type="button" class="clear-selection-btn" onclick="clearTierSelection(event, '${cat.id}')">Clear selection</button>` : ''}
+          </div>
+          ` : ''}
           ${isMatrixMode ? '' : `
           <div class="tier-selector">
-            <div class="tier-btn none-btn ${!selected ? 'selected' : ''}" onclick="selectTier('${cat.id}', null)">
+            ${cat.required ? '' : `<div class="tier-btn none-btn ${!selected ? 'selected' : ''}" onclick="selectTier('${cat.id}', null)">
               <div class="tier-label">Skip</div>
               <div class="tier-price">—</div>
               <div class="tier-tag">Not included</div>
-            </div>
+            </div>`}
             ${orderedTierKeys(cat.tiers).map(t => {
               const tp = getCategoryPrice(cat, t);
               // Check if this tier should be disabled
@@ -2558,7 +2606,7 @@ function renderCategories() {
           ${renderCategoryDetails(cat, selected)}
           <div class="cat-modifier" style="padding:8px 16px 12px;border-top:1px dashed var(--border);display:flex;gap:8px;align-items:center;">
             <span style="font-size:12px;color:var(--text-lighter);white-space:nowrap;">± Adjust:</span>
-            <input type="text" placeholder="Note" value="${(state.catMods[cat.id]?.name || '').replace(/"/g, '&quot;')}" 
+            <input type="text" placeholder="Note" value="${escapeAttr(state.catMods[cat.id]?.name || '')}"
               oninput="updateCatMod('${cat.id}', 'name', this.value)"
               onclick="event.stopPropagation()"
               style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;min-width:0;">
@@ -2683,9 +2731,11 @@ function comparisonTierDisplay(cat, tierKey) {
 }
 
 function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) {
-  const selectedKey = selectedTier || 'skip';
-  const selectedIndex = Math.max(0, tableColumns.indexOf(selectedKey));
-  const activeTier = comparisonTierDisplay(cat, selectedKey);
+  const selectedKey = selectedTier || (cat.required ? '' : 'skip');
+  const selectedIndex = tableColumns.indexOf(selectedKey);
+  const activeTier = selectedKey
+    ? comparisonTierDisplay(cat, selectedKey)
+    : { kicker: 'Required', name: 'Choose an option', price: '' };
   const tierList = tableColumns.join(',');
   const mobileCompareAttrs = `data-cat-id="${escapeAttr(cat.id)}" data-tier-list="${escapeAttr(tierList)}" data-active-tier="${escapeAttr(selectedKey)}"`;
   return `
@@ -2703,7 +2753,7 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
           </button>
         `).join('')}
       </div>
-      <div class="comparison-mobile-active-tier ${selectedKey}">
+      <div class="comparison-mobile-active-tier ${selectedKey || 'unselected'}">
         <div class="comparison-mobile-active-kicker">${escapeHtml(activeTier.kicker)}</div>
         <div class="comparison-mobile-active-name">${escapeHtml(activeTier.name)}</div>
         ${activeTier.price ? `<div class="comparison-mobile-active-price">${escapeHtml(activeTier.price)}</div>` : ''}
@@ -2727,9 +2777,9 @@ function renderMobileFeatureComparison(cat, selectedTier, matrix, tableColumns) 
                 ${escapeHtml(feature.label)}
               </button>
             </div>
-            <div class="mobile-feature-status selected ${selectedKey}-col">
-              <span class="mobile-feature-tier-label">${escapeHtml(mobileTierLabel(cat, selectedKey))}</span>
-              ${selectedKey === 'skip'
+            <div class="mobile-feature-status ${selectedKey ? 'selected' : 'unselected'} ${selectedKey ? `${selectedKey}-col` : ''}">
+              <span class="mobile-feature-tier-label">${selectedKey ? escapeHtml(mobileTierLabel(cat, selectedKey)) : 'Choose an option'}</span>
+              ${!selectedKey || selectedKey === 'skip'
                 ? renderFeatureStatusCell('not_included')
                 : renderFeatureStatusCell(featureCellForTier(feature, selectedKey), {
                     selectable: selectedTier === selectedKey,
@@ -2755,9 +2805,11 @@ function selectMobileComparisonTier(root, direction) {
   const mobile = root?.closest?.('.comparison-mobile-focus') || root;
   if (!mobile) return;
   const tiers = String(mobile.dataset.tierList || '').split(',').filter(Boolean);
-  const active = mobile.dataset.activeTier || 'skip';
-  const currentIndex = Math.max(0, tiers.indexOf(active));
-  const nextIndex = Math.min(tiers.length - 1, Math.max(0, currentIndex + direction));
+  const active = mobile.dataset.activeTier || '';
+  const currentIndex = tiers.indexOf(active);
+  const nextIndex = currentIndex < 0
+    ? 0
+    : Math.min(tiers.length - 1, Math.max(0, currentIndex + direction));
   if (nextIndex === currentIndex) return;
   const nextTier = tiers[nextIndex];
   selectTier(mobile.dataset.catId, nextTier === 'skip' ? null : nextTier);
@@ -2809,7 +2861,7 @@ function hideMatrixFeatureDescription() {
 function renderFeatureComparison(cat, selectedTier) {
   const matrix = getFeatureMatrix(cat);
   const tiers = orderedTierKeys(cat.tiers);
-  const tableColumns = ['skip', ...tiers];
+  const tableColumns = cat.required ? tiers : ['skip', ...tiers];
   const selectedLabel = selectedTier && cat.tiers[selectedTier]?.label
     ? `${cat.tiers[selectedTier].label} selected`
     : 'Choose an option';
@@ -2909,8 +2961,8 @@ function renderExtras() {
     div.innerHTML = `
       <div class="extra-info">
         <div>
-          <div class="extra-name">${e.name}</div>
-          <div class="extra-note">${e.note}</div>
+          <div class="extra-name">${escapeHtml(e.name)}</div>
+          <div class="extra-note">${escapeHtml(e.note)}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
@@ -3002,6 +3054,12 @@ function selectTier(catId, tier) {
   document.getElementById('cat-' + catId)?.classList.add('open');
   // Restore scroll after browser layout
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
+}
+
+function clearTierSelection(event, catId) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  selectTier(catId, null);
 }
 
 function toggleMatrixAddOn(event, catId, tierKey, featureId) {
@@ -3151,15 +3209,15 @@ function showSummary() {
       subtotal += price + addOnTotal + catModAmount;
       rows += `
         <tr>
-          <td>${cat.icon} ${cat.name}</td>
-          <td><span class="tier-badge ${tier}">${t.tag || tier.charAt(0).toUpperCase() + tier.slice(1)}</span> ${t.label}</td>
+          <td>${escapeHtml(cat.icon)} ${escapeHtml(cat.name)}</td>
+          <td><span class="tier-badge ${tier}">${escapeHtml(t.tag || tier.charAt(0).toUpperCase() + tier.slice(1))}</span> ${escapeHtml(t.label)}</td>
           <td class="price-cell">${formatCurrency(price)}</td>
         </tr>
         <tr class="features-row">
           <td colspan="3" style="padding:4px 16px 14px 36px;border-top:none;">
             <div style="font-size:11px;color:var(--text-light);line-height:1.6;">
-              ${featureLines(t.features).map(f => `• ${f}`).join('<br>')}
-              <div style="margin-top:4px;font-size:10px;color:var(--text-light);font-style:italic;">Typical brands: ${t.brands}</div>
+              ${featureLines(t.features).map(f => `• ${escapeHtml(f)}`).join('<br>')}
+              <div style="margin-top:4px;font-size:10px;color:var(--text-light);font-style:italic;">Typical brands: ${escapeHtml(t.brands)}</div>
             </div>
           </td>
         </tr>
@@ -3176,7 +3234,7 @@ function showSummary() {
       if (catModAmount !== 0) {
         rows += `
           <tr>
-            <td style="padding-left:36px;">↳ ${catMod.name || 'Adjustment'}</td>
+            <td style="padding-left:36px;">↳ ${escapeHtml(catMod.name || 'Adjustment')}</td>
             <td style="font-size:12px;color:var(--text-lighter);">${catModAmount > 0 ? 'Addition' : 'Credit'}</td>
             <td class="price-cell">${formatCurrency(catModAmount)}</td>
           </tr>
@@ -3192,8 +3250,8 @@ function showSummary() {
       extrasTotal += extraPrice;
       rows += `
         <tr>
-          <td>📎 ${e.name}</td>
-          <td style="font-size:12px;color:var(--text-lighter);">${e.note}</td>
+          <td>📎 ${escapeHtml(e.name)}</td>
+          <td style="font-size:12px;color:var(--text-lighter);">${escapeHtml(e.note)}</td>
           <td class="price-cell">${formatCurrency(extraPrice)}</td>
         </tr>
       `;
@@ -3206,7 +3264,7 @@ function showSummary() {
       modifiersTotal += m.amount;
       rows += `
         <tr>
-          <td>🔧 ${m.name || 'Custom Adjustment'}</td>
+          <td>🔧 ${escapeHtml(m.name || 'Custom Adjustment')}</td>
           <td style="font-size:12px;color:var(--text-lighter);">${m.amount > 0 ? 'Addition' : 'Credit'}</td>
           <td class="price-cell">${formatCurrency(m.amount)}</td>
         </tr>
@@ -3226,9 +3284,9 @@ function showSummary() {
     
     <div class="summary-project-info">
       <div><span class="info-label">Project:</span></div>
-      <div><span class="info-value">${clientName}</span></div>
+      <div><span class="info-value">${escapeHtml(clientName)}</span></div>
       <div><span class="info-label">Builder:</span></div>
-      <div><span class="info-value">${builder}</span></div>
+      <div><span class="info-value">${escapeHtml(builder)}</span></div>
       <div><span class="info-label">Property Type:</span></div>
       <div><span class="info-value">${state.propertyType === 'residential' ? 'Single Family' : 'Condo'}</span></div>
       <div><span class="info-label">Home Size:</span></div>
@@ -3277,7 +3335,7 @@ function showSummary() {
     </div>
     <div style="text-align:center;margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
       <button onclick="shareLink();closeSummary();" style="background:var(--accent);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">🔗 Share Link</button>
-      <button onclick="closeSummary();showEmailModal();" style="background:var(--primary);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">📧 Email Budget</button>
+      ${window.__isAdmin ? '<button onclick="closeSummary();showEmailModal();" style="background:var(--primary);color:white;border:none;padding:14px 32px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;transition:var(--transition);">📧 Email Budget</button>' : ''}
     </div>
   `;
   
@@ -3292,6 +3350,10 @@ function closeSummary() {
 // EMAIL FUNCTIONS
 // ============================================================
 function showEmailModal() {
+  if (!window.__isAdmin) {
+    showToast('Admin sign-in required to send email');
+    return;
+  }
   // Pre-fill recipient name from client name if available
   const clientName = document.getElementById('clientName').value;
   if (clientName) {
@@ -3359,11 +3421,14 @@ async function sendProposalEmail() {
   let subtotal = 0;
   CATEGORIES().forEach(cat => {
     const tier = state.selections[cat.id];
-    if (tier && cat.tiers[tier] && cat.tiers[tier].enabled !== false) subtotal += getCategoryPrice(cat, tier);
+    if (tier && cat.tiers[tier] && cat.tiers[tier].enabled !== false) {
+      subtotal += getCategoryPrice(cat, tier);
+      subtotal += matrixSelectedAddOnRows(cat, tier).reduce((sum, addOn) => sum + addOn.price, 0);
+    }
   });
   EXTRAS().forEach(e => {
     if (state.extras[e.id]) {
-      subtotal += typeof e.cost === 'function' ? e.cost() : e.cost;
+      subtotal += getExtraPrice(e);
     }
   });
   state.modifiers.forEach(m => {
@@ -3398,13 +3463,25 @@ async function sendProposalEmail() {
     try {
       await fetch(api(`/api/budgets/${currentBudgetId}`), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: budgetWriteHeaders(),
         body: JSON.stringify({ state: getStateForAPI(), pin: true, note: 'Emailed to client' })
       });
     } catch (e) {
       console.warn('Could not save before emailing:', e);
     }
-    budgetUrl = window.location.origin + '/b/' + currentBudgetId;
+    try {
+      const linkResponse = await fetch(api(`/api/admin/budgets/${currentBudgetId}/edit-link`), {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const linkResult = await linkResponse.json();
+      if (!linkResponse.ok) throw new Error(linkResult.error || 'Could not create editable link');
+      budgetUrl = window.location.origin + linkResult.url;
+      rememberBudgetEditToken(linkResult.url);
+    } catch (e) {
+      console.warn('Could not create editable email link:', e);
+    }
   } else {
     // No budget yet — create one
     try {
@@ -3421,6 +3498,8 @@ async function sendProposalEmail() {
         budgetUrl = window.location.origin + budgetResult.url;
         // Update page to use this budget
         currentBudgetId = budgetResult.id;
+        currentBudgetCanEdit = true;
+        rememberBudgetEditToken(budgetResult.url);
         window.history.replaceState({}, '', budgetResult.url);
       }
     } catch (e) {
@@ -3432,9 +3511,16 @@ async function sendProposalEmail() {
   const extras = [];
   EXTRAS().forEach(e => {
     if (state.extras[e.id]) {
-      const cost = typeof e.cost === 'function' ? e.cost() : e.cost;
+      const cost = getExtraPrice(e);
       extras.push({ name: e.name, price: cost });
     }
+  });
+  CATEGORIES().forEach(cat => {
+    const tier = state.selections[cat.id];
+    if (!tier) return;
+    matrixSelectedAddOnRows(cat, tier).forEach(addOn => {
+      extras.push({ name: `${cat.name}: ${addOn.label}`, price: addOn.price });
+    });
   });
 
   // Build per-category adjustments
@@ -3535,11 +3621,24 @@ function updateModifier(id, field, value) {
   }
 }
 
+function normalizeModifiers(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 100).map((modifier, index) => {
+    const parsedId = Number(modifier?.id);
+    const parsedAmount = Number(modifier?.amount);
+    return {
+      id: Number.isSafeInteger(parsedId) ? parsedId : ++modifierId + index,
+      name: String(modifier?.name || '').slice(0, 200),
+      amount: Number.isFinite(parsedAmount) ? Math.max(-100000000, Math.min(100000000, parsedAmount)) : 0
+    };
+  });
+}
+
 function renderModifiers() {
   const container = document.getElementById('modifiersContainer');
   container.innerHTML = state.modifiers.map(m => `
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
-      <input type="text" placeholder="Description" value="${m.name}" 
+      <input type="text" placeholder="Description" value="${escapeAttr(m.name)}"
         oninput="updateModifier(${m.id}, 'name', this.value)"
         style="flex:1;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;">
       <input type="text" inputmode="numeric" placeholder="$0" value="${m.amount ? formatCurrency(m.amount) : ''}" 
@@ -3688,10 +3787,10 @@ function decodeState(search) {
     try {
       const mods = JSON.parse(params.get('mods'));
       if (Array.isArray(mods)) {
-        state.modifiers = mods.map(m => ({
+        state.modifiers = mods.slice(0, 100).map(m => ({
           id: ++modifierId,
-          name: String(m.n || ''),
-          amount: parseFloat(m.a) || 0
+          name: String(m.n || '').slice(0, 200),
+          amount: Math.max(-100000000, Math.min(100000000, parseFloat(m.a) || 0))
         }));
         loaded = true;
       }
@@ -3722,8 +3821,21 @@ function decodeState(search) {
 // ============================================================
 
 let currentBudgetId = null;
+let currentBudgetEditToken = new URLSearchParams(window.location.search).get('edit') || '';
+let currentBudgetCanEdit = true;
 let autoSaveTimeout = null;
 let lastSavedState = null;
+
+function budgetWriteHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    ...(currentBudgetEditToken ? { 'X-Budget-Edit-Token': currentBudgetEditToken } : {})
+  };
+}
+
+function rememberBudgetEditToken(url) {
+  currentBudgetEditToken = new URL(url, window.location.origin).searchParams.get('edit') || '';
+}
 
 // Note: isCustomizedBudget, customCategoryConfig, customCategories, sqftLocked, propertyTypeLocked
 // are declared earlier (before CATEGORIES function) to avoid temporal dead zone errors
@@ -3755,7 +3867,7 @@ function getStateForAPI() {
 
 // Auto-save for live budgets
 function triggerAutoSave() {
-  if (!currentBudgetId) return;
+  if (!currentBudgetId || !currentBudgetCanEdit) return;
   
   // Clear existing timeout
   if (autoSaveTimeout) {
@@ -3774,7 +3886,7 @@ function triggerAutoSave() {
     try {
       const response = await fetch(api(`/api/budgets/${currentBudgetId}`), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: budgetWriteHeaders(),
         body: JSON.stringify({ state: currentState })
       });
 
@@ -3797,7 +3909,10 @@ function triggerAutoSave() {
 // Load a live budget by ID
 async function loadBudget(budgetId) {
   try {
-    const response = await fetch(api(`/api/budgets/${budgetId}?${budgetPresenceQuery({ recordView: '1' })}`));
+    const response = await fetch(api(`/api/budgets/${budgetId}?${budgetPresenceQuery({
+      recordView: '1',
+      ...(currentBudgetEditToken ? { edit: currentBudgetEditToken } : {})
+    })}`));
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       if (response.status === 410 && data.expired) {
@@ -3811,6 +3926,8 @@ async function loadBudget(budgetId) {
     
     // Set current budget ID for auto-save
     currentBudgetId = budget.id;
+    currentBudgetCanEdit = budget.canEdit !== false;
+    if (!currentBudgetCanEdit) showToast('Read-only budget link');
     
     // Load customization config if present
     isCustomizedBudget = budget.isCustomized || false;
@@ -3826,7 +3943,7 @@ async function loadBudget(budgetId) {
       // Apply state properties
       state.selections = s.selections || {};
       state.extras = s.extras || {};
-      state.modifiers = s.modifiers || [];
+      state.modifiers = normalizeModifiers(s.modifiers);
       state.catMods = s.catMods || {};
       state.addOns = s.addOns || {};
       state.homeSize = s.homeSize || 4000;
@@ -3907,7 +4024,7 @@ function startLiveSync(budgetId) {
             const s = budget.currentState;
             state.selections = s.selections || {};
             state.extras = s.extras || {};
-            state.modifiers = s.modifiers || [];
+            state.modifiers = normalizeModifiers(s.modifiers);
             state.catMods = s.catMods || {};
             state.addOns = s.addOns || {};
             state.homeSize = s.homeSize || 4000;
@@ -3967,18 +4084,35 @@ function showExpiredBudgetMessage() {
 async function shareLink() {
   const currentState = getStateForAPI();
 
-  // If we're already in a budget, copy link immediately (before any async work)
+  // A read-only public link forks into a new editable budget when re-shared.
+  if (currentBudgetId && !currentBudgetCanEdit && !window.__isAdmin) {
+    currentBudgetId = null;
+  }
+
+  // If we're already in a budget, preserve its edit capability when sharing.
   if (currentBudgetId) {
-    const budgetUrl = window.location.origin + '/b/' + currentBudgetId;
+    let relativeUrl = `/b/${currentBudgetId}${currentBudgetEditToken ? `?edit=${encodeURIComponent(currentBudgetEditToken)}` : ''}`;
+    if (window.__isAdmin && !currentBudgetEditToken) {
+      const linkResponse = await fetch(api(`/api/admin/budgets/${currentBudgetId}/edit-link`), {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const linkResult = await linkResponse.json();
+      if (!linkResponse.ok) throw new Error(linkResult.error || 'Could not create editable link');
+      relativeUrl = linkResult.url;
+      rememberBudgetEditToken(relativeUrl);
+    }
+    const budgetUrl = window.location.origin + relativeUrl;
+
+    await fetch(api(`/api/budgets/${currentBudgetId}`), {
+      method: 'PUT',
+      credentials: 'include',
+      headers: budgetWriteHeaders(),
+      body: JSON.stringify({ state: currentState, pin: true, note: 'Shared link' })
+    });
+    lastSavedState = currentState;
     copyToClipboard(budgetUrl);
     showLinkModal(budgetUrl);
-
-    // Save + pin in background (don't block clipboard)
-    fetch(api(`/api/budgets/${currentBudgetId}`), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: currentState, pin: true, note: 'Shared link' })
-    }).then(() => { lastSavedState = currentState; }).catch(() => {});
     return;
   }
 
@@ -4001,6 +4135,8 @@ async function shareLink() {
       const budgetUrl = window.location.origin + result.url;
 
       currentBudgetId = result.id;
+      currentBudgetCanEdit = true;
+      rememberBudgetEditToken(result.url);
       lastSavedState = currentState;
       window.history.replaceState({}, '', result.url);
       startLiveSync(result.id);
@@ -4114,8 +4250,10 @@ function showSharedBanner() {
   banner.innerHTML = `
     <div class="shared-banner" style="max-width:1200px;margin:20px auto;">
       <div class="shared-text">
-        📋 You're viewing a shared budget configuration for <strong>${clientName}</strong>
-        <small>Adjust selections freely. Use the Share button to save your changes as a new link.</small>
+        📋 You're viewing a shared budget configuration for <strong>${escapeHtml(clientName)}</strong>
+        <small>${currentBudgetCanEdit
+          ? 'Changes save automatically. Use Share to copy the editable link.'
+          : 'This link is read-only. Use Share to create your own editable copy.'}</small>
       </div>
       <button class="btn-save" onclick="bookmarkConfig()">📌 Save to Bookmarks</button>
     </div>

@@ -68,67 +68,14 @@ ALTER TABLE budget_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_views ENABLE ROW LEVEL SECURITY;
 ALTER TABLE short_links ENABLE ROW LEVEL SECURITY;
 
--- Budgets: authenticated users can do everything, anon can read/update (for live budget links)
-CREATE POLICY "Authenticated users full access to budgets"
-  ON budgets FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
+-- All application table access goes through the Express server using the
+-- service role. No direct browser/anon/authenticated table access is granted.
+REVOKE ALL PRIVILEGES ON TABLE budgets FROM anon, authenticated;
+REVOKE ALL PRIVILEGES ON TABLE budget_versions FROM anon, authenticated;
+REVOKE ALL PRIVILEGES ON TABLE budget_views FROM anon, authenticated;
+REVOKE ALL PRIVILEGES ON TABLE short_links FROM anon, authenticated;
 
-CREATE POLICY "Anon can read budgets by ID"
-  ON budgets FOR SELECT
-  TO anon
-  USING (true);
-
-CREATE POLICY "Anon can update budgets (live budget auto-save)"
-  ON budgets FOR UPDATE
-  TO anon
-  USING (true)
-  WITH CHECK (true);
-
--- Budget Versions: authenticated full access, anon can insert (auto-save creates versions)
-CREATE POLICY "Authenticated users full access to versions"
-  ON budget_versions FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
-CREATE POLICY "Anon can insert versions (auto-save)"
-  ON budget_versions FOR INSERT
-  TO anon
-  WITH CHECK (true);
-
-CREATE POLICY "Anon can read versions"
-  ON budget_versions FOR SELECT
-  TO anon
-  USING (true);
-
--- Budget Views: anyone can insert (view tracking), authenticated can read
-CREATE POLICY "Anyone can insert views"
-  ON budget_views FOR INSERT
-  TO anon, authenticated
-  WITH CHECK (true);
-
-CREATE POLICY "Authenticated users can read views"
-  ON budget_views FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
--- Short Links: authenticated full access, anon can read + update access count
-CREATE POLICY "Authenticated users full access to short_links"
-  ON short_links FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
-CREATE POLICY "Anon can read short_links"
-  ON short_links FOR SELECT
-  TO anon
-  USING (true);
-
-CREATE POLICY "Anon can update short_links (access tracking)"
-  ON short_links FOR UPDATE
-  TO anon
-  USING (true)
-  WITH CHECK (true);
+GRANT ALL PRIVILEGES ON TABLE budgets TO service_role;
+GRANT ALL PRIVILEGES ON TABLE budget_versions TO service_role;
+GRANT ALL PRIVILEGES ON TABLE budget_views TO service_role;
+GRANT ALL PRIVILEGES ON TABLE short_links TO service_role;

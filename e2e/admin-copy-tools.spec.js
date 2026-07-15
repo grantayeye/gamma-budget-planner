@@ -69,6 +69,31 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.sameVerticalBand).toBe(true);
   });
 
+  test('budget list escapes stored customer HTML', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__storedXssExecuted = false;
+      budgets = [{
+        id: 'safe123',
+        clientName: '<img src=x onerror="window.__storedXssExecuted=true">',
+        builder: '<svg onload="window.__storedXssExecuted=true">',
+        status: 'active',
+        currentTotal: 12000,
+        created: new Date().toISOString(),
+        clientViews: 0,
+        internalViews: 0,
+        activeBrowserCount: 0,
+        versionCount: 1,
+        lastClientActivity: null
+      }];
+      renderBudgets();
+    });
+
+    await page.waitForTimeout(50);
+    expect(await page.evaluate(() => window.__storedXssExecuted)).toBe(false);
+    await expect(page.locator('#budgetTableBody img, #budgetTableBody svg')).toHaveCount(0);
+    await expect(page.locator('#budgetTableBody')).toContainText('<img src=x');
+  });
+
   test('budget details can edit builder and salesperson owner', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const calls = [];
@@ -916,6 +941,64 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customGoodScale).toBe(0.2);
     expect(result.customBetterCell).toEqual({ status: 'included', label: 'Invisible Speaker' });
     expect(result.customBetterFeatures).toEqual(['Custom base', 'Custom upgrade']);
+  });
+
+  test('customize editor saves required selection for default and custom sections', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const targetCat = {
+        id: 'networking',
+        section: 'Infrastructure',
+        section_id: 'infrastructure',
+        name: 'Networking',
+        icon: 'W',
+        sizeScale: 0,
+        tiers: {
+          good: { price: 1000, label: 'Good', features: ['Coverage'], brands: '' }
+        }
+      };
+      customizeBudgetData = {
+        id: 'required-budget',
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { propertyType: 'residential', homeSize: 4000, selections: {}, extras: {} },
+        categoryConfig: {
+          __defaultCategories: { residential: [targetCat], condo: [] },
+          __defaultSections: { residential: [{ id: 'infrastructure', name: 'Infrastructure', order: 0 }], condo: [] },
+          __layout: {
+            sections: [
+              { id: 'infrastructure', name: 'Infrastructure', order: 0 },
+              { id: 'custom', name: 'Custom', order: 1 }
+            ]
+          }
+        },
+        customCategories: [{
+          id: 'custom-required',
+          name: 'Custom Required',
+          icon: 'C',
+          section: 'Custom',
+          section_id: 'custom',
+          tiers: { good: { enabled: true, price: 500, label: 'Good', features: [], brands: '' } }
+        }]
+      };
+      renderCustomizeEditor();
+
+      const defaultEditor = document.querySelector('.category-editor[data-cat-id="networking"]');
+      const customEditor = document.querySelector('.custom-category-editor[data-cc-id="custom-required"]');
+      defaultEditor.querySelector('.category-required').checked = true;
+      customEditor.querySelector('.category-required').checked = true;
+      const collected = collectCustomizationData();
+      return {
+        defaultRequired: collected.categoryConfig.networking.required,
+        customRequired: collected.customCategories.find(cat => cat.id === 'custom-required')?.required,
+        defaultLabel: defaultEditor.querySelector('.customize-required-control')?.textContent.trim(),
+        customLabel: customEditor.querySelector('.customize-required-control')?.textContent.trim()
+      };
+    });
+
+    expect(result.defaultRequired).toBe(true);
+    expect(result.customRequired).toBe(true);
+    expect(result.defaultLabel).toBe('Require a selection');
+    expect(result.customLabel).toBe('Require a selection');
   });
 
   test('customize comparison matrix inserts and reorders feature rows', async ({ page }) => {
