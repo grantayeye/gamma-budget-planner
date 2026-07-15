@@ -713,6 +713,170 @@
       line-height: 1.45;
     }
 
+    .library-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .library-toolbar input,
+    .library-toolbar select {
+      min-width: 180px;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: white;
+      font: inherit;
+    }
+
+    .library-tags {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .library-tag {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #EAF5FC;
+      color: #176B9A;
+      font-size: 11px;
+    }
+
+    .library-card-actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: auto;
+      padding-top: 10px;
+    }
+
+    .section-library-card {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #aiBudgetDraftModal .modal-body {
+      padding-bottom: 0;
+    }
+
+    .ai-draft-prompt-wrap {
+      transition: all 0.2s ease;
+    }
+
+    #aiBudgetDraftModal.has-draft .ai-draft-intro {
+      display: none;
+    }
+
+    #aiBudgetDraftModal.has-draft #aiBudgetPrompt {
+      min-height: 72px;
+      height: 72px;
+    }
+
+    #aiBudgetDraftModal.has-draft #generateAiDraftBtn {
+      display: none;
+    }
+
+    .ai-review-row {
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 12px;
+      margin-top: 10px;
+      background: white;
+    }
+
+    .ai-review-row.is-excluded {
+      opacity: 0.5;
+      background: var(--bg);
+    }
+
+    .ai-review-grid {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(110px, 0.6fr) auto;
+      gap: 9px;
+      align-items: end;
+      margin-top: 10px;
+    }
+
+    .ai-review-grid label,
+    .library-editor-grid label {
+      display: grid;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
+    .ai-review-grid input,
+    .ai-review-grid select,
+    .library-editor-grid input,
+    .library-editor-grid select,
+    .library-editor-grid textarea {
+      width: 100%;
+      padding: 8px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: white;
+      font: inherit;
+      color: var(--text);
+    }
+
+    .ai-draft-totals {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .ai-draft-total {
+      padding: 10px;
+      border-radius: 8px;
+      background: var(--bg);
+      text-align: center;
+    }
+
+    .ai-draft-total strong {
+      display: block;
+      margin-top: 3px;
+      color: var(--primary);
+    }
+
+    .ai-draft-actions-sticky {
+      position: sticky;
+      bottom: 0;
+      z-index: 3;
+      display: none;
+      gap: 10px;
+      padding: 14px 0 18px;
+      margin-top: 14px;
+      border-top: 1px solid var(--border);
+      background: rgba(255,255,255,0.97);
+      box-shadow: 0 -8px 18px rgba(15,47,68,0.08);
+    }
+
+    #aiBudgetDraftModal.has-draft .ai-draft-actions-sticky {
+      display: flex;
+    }
+
+    .library-editor-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .library-tier-editor {
+      display: grid;
+      grid-template-columns: auto minmax(130px, 1fr) minmax(110px, 0.5fr) minmax(180px, 1.3fr);
+      gap: 8px;
+      align-items: end;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 8px;
+    }
+
     .copy-section-card {
       background: #F7FAFC;
       border: 1px solid var(--border-light);
@@ -1284,6 +1448,23 @@
     }
 
     @media (max-width: 700px) {
+      .ai-review-grid,
+      .library-editor-grid,
+      .library-tier-editor,
+      .ai-draft-totals {
+        grid-template-columns: 1fr;
+      }
+
+      #aiBudgetDraftModal .modal,
+      #sectionLibraryModal .modal,
+      #libraryEditorModal .modal {
+        width: calc(100% - 24px);
+        max-height: calc(100vh - 24px);
+      }
+
+      .ai-draft-actions-sticky {
+        padding-bottom: max(14px, env(safe-area-inset-bottom));
+      }
       #customizeModal.modal-overlay {
         padding: 0;
         align-items: stretch;
@@ -2209,6 +2390,7 @@
   <nav class="tab-bar">
     <button class="tab-btn active" data-tab="budgets" onclick="switchTab('budgets')">Budgets</button>
     <button class="tab-btn" data-tab="categories" onclick="switchTab('categories')">Categories & Pricing</button>
+    <button class="tab-btn" data-tab="library" onclick="switchTab('library')">Section Library</button>
     <button class="tab-btn" id="usersTabButton" data-tab="users" onclick="switchTab('users')">Users</button>
   </nav>
   
@@ -2315,6 +2497,23 @@
       </div>
     </div>
 
+    <!-- TAB: Section Library -->
+    <div class="tab-panel" id="tab-library">
+      <div class="section-header">
+        <div>
+          <h2>Reusable Section Library</h2>
+          <div style="font-size:13px;color:var(--text-light);margin-top:4px;">Team-approved building blocks for fast one-off budgets.</div>
+        </div>
+        <button class="btn btn-primary btn-small" onclick="openLibraryEditorModal()">+ New Library Section</button>
+      </div>
+      <div class="library-toolbar">
+        <input type="search" id="libraryManagerSearch" placeholder="Search name, notes, or tags…" oninput="renderSectionLibraryManager()">
+        <select id="libraryManagerCategory" onchange="renderSectionLibraryManager()"><option value="">All categories</option></select>
+        <button class="btn btn-secondary btn-small" onclick="refreshSectionLibraryManager()">↻ Refresh</button>
+      </div>
+      <div id="sectionLibraryManagerBody"><div class="empty-state">Loading section library…</div></div>
+    </div>
+
     <!-- TAB: Users -->
     <div class="tab-panel" id="tab-users">
       <div class="section-header">
@@ -2395,7 +2594,7 @@
 </div>
 
 <!-- REUSABLE SECTION LIBRARY MODAL -->
-<div class="modal-overlay" id="sectionLibraryModal">
+<div class="modal-overlay" id="sectionLibraryModal" aria-hidden="true">
   <div class="modal" style="max-width:820px;max-height:88vh;">
     <div class="modal-header">
       <h2>📚 Reusable Section Library</h2>
@@ -2403,26 +2602,65 @@
     </div>
     <div class="modal-body">
       <div style="color:var(--text-light);font-size:13px;margin-bottom:16px;">Add proven one-off sections to this budget. Save sections from the Customize editor to make them available to the whole team.</div>
+      <div class="library-toolbar">
+        <input type="search" id="sectionLibrarySearch" placeholder="Search sections or tags…" oninput="renderSectionLibraryItems()">
+        <select id="sectionLibraryCategory" onchange="renderSectionLibraryItems()"><option value="">All categories</option></select>
+        <button type="button" class="btn btn-secondary btn-small" onclick="openLibraryEditorModal()">+ New</button>
+      </div>
       <div id="sectionLibraryBody">Loading…</div>
     </div>
   </div>
 </div>
 
 <!-- AI BUDGET DRAFT MODAL -->
-<div class="modal-overlay" id="aiBudgetDraftModal">
+<div class="modal-overlay" id="aiBudgetDraftModal" aria-hidden="true">
   <div class="modal" style="max-width:840px;max-height:90vh;">
     <div class="modal-header">
       <h2>✨ AI Budget Draft</h2>
       <button class="modal-close" onclick="closeAiBudgetDraftModal()">×</button>
     </div>
     <div class="modal-body">
-      <div style="font-size:13px;color:var(--text-light);line-height:1.5;margin-bottom:12px;">Paste meeting notes, a transcript, or describe the one-off project. AI will use approved template categories and your reusable section library first. Review is required before anything changes.</div>
-      <textarea id="aiBudgetPrompt" rows="7" maxlength="15000" placeholder="Example: 6,500 sq ft home. Client wants a golf simulator, premium outdoor entertaining, strong WiFi, lighting control, and cameras. Give them useful options without turning this into a proposal." style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+      <div class="ai-draft-prompt-wrap">
+        <div class="ai-draft-intro" style="font-size:13px;color:var(--text-light);line-height:1.5;margin-bottom:12px;">Paste meeting notes, a transcript, or describe the one-off project. AI will use approved template categories and your reusable section library first. It recommends structure and allowances, but leaves all new customer choices unanswered.</div>
+        <textarea id="aiBudgetPrompt" rows="6" maxlength="15000" placeholder="Example: 6,500 sq ft home. Client wants a golf simulator, premium outdoor entertaining, strong WiFi, lighting control, and cameras. Give them useful options without turning this into a proposal." style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0;">
         <button type="button" class="btn btn-primary" id="generateAiDraftBtn" onclick="generateAiBudgetDraft()">Generate Draft</button>
         <span id="aiBudgetStatus" style="font-size:12px;color:var(--text-light);"></span>
       </div>
       <div id="aiBudgetResult"></div>
+      <div class="ai-draft-actions-sticky" id="aiDraftFooter">
+        <button type="button" class="btn btn-secondary" onclick="generateAiBudgetDraft()">Refine with Message</button>
+        <button type="button" class="btn btn-primary" onclick="applyAiBudgetDraft()" style="flex:1;">Apply Selected Structure</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION LIBRARY EDITOR -->
+<div class="modal-overlay" id="libraryEditorModal" aria-hidden="true">
+  <div class="modal" style="max-width:860px;max-height:92vh;">
+    <div class="modal-header">
+      <h2 id="libraryEditorTitle">New Library Section</h2>
+      <button class="modal-close" onclick="closeLibraryEditorModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="libraryEditId">
+      <div class="library-editor-grid">
+        <label>Name<input type="text" id="libraryEditName" maxlength="200" placeholder="Golf Simulator"></label>
+        <label>Category<input type="text" id="libraryEditCategory" maxlength="100" placeholder="Entertainment"></label>
+        <label>Header<input type="text" id="libraryEditHeader" maxlength="120" placeholder="Entertainment"></label>
+        <label>Icon<input type="text" id="libraryEditIcon" maxlength="20" placeholder="📦"></label>
+        <label style="grid-column:1/-1;">Tags<input type="text" id="libraryEditTags" placeholder="golf, entertainment, one-off"></label>
+        <label style="grid-column:1/-1;">Description / usage notes<textarea id="libraryEditDescription" rows="3" maxlength="1000" placeholder="When to use this section and what the allowance covers."></textarea></label>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin:14px 0;font-size:13px;"><input type="checkbox" id="libraryEditRequired"> Require a customer choice</label>
+      <h3 style="margin:14px 0 8px;">Options</h3>
+      <div id="libraryTierEditors"></div>
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button type="button" class="btn btn-primary" onclick="saveLibraryEditor()" style="flex:1;">Save Library Section</button>
+        <button type="button" class="btn btn-secondary" onclick="closeLibraryEditorModal()">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4946,6 +5184,49 @@ async function handleNewBudgetSubmit(e) {
 // CUSTOMIZE BUDGET
 // ============================================================
 
+function showManagedModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  document.querySelectorAll('.modal-overlay.active').forEach(openModal => {
+    if (openModal.id === id) return;
+    openModal.inert = true;
+    openModal.setAttribute('aria-hidden', 'true');
+  });
+  if (!document.querySelector('.modal-overlay.active')) {
+    const dashboard = document.getElementById('dashboard');
+    if (dashboard) {
+      dashboard.inert = true;
+      dashboard.setAttribute('aria-hidden', 'true');
+    }
+  }
+  modal.inert = false;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-hidden', 'false');
+  modal.classList.add('active');
+  requestAnimationFrame(() => modal.querySelector('.modal-close, input, textarea, button')?.focus());
+}
+
+function hideManagedModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.classList.remove('active');
+  modal.setAttribute('aria-hidden', 'true');
+  modal.inert = true;
+  const remaining = Array.from(document.querySelectorAll('.modal-overlay.active')).pop();
+  if (remaining) {
+    remaining.inert = false;
+    remaining.setAttribute('aria-hidden', 'false');
+    remaining.querySelector('.modal-close, input, textarea, button')?.focus();
+  } else {
+    const dashboard = document.getElementById('dashboard');
+    if (dashboard) {
+      dashboard.inert = false;
+      dashboard.removeAttribute('aria-hidden');
+    }
+  }
+}
+
 let customizeBudgetId = null;
 let customizeBudgetData = null;
 let customizeDraftTimer = null;
@@ -4954,6 +5235,7 @@ let copySectionSourceBudget = null;
 let copyToPayload = null;
 let sectionLibraryItems = [];
 let activeAiBudgetDraft = null;
+let libraryEditorBasePayload = null;
 
 async function openCustomizeModal(budgetId) {
   customizeBudgetId = budgetId;
@@ -4974,7 +5256,7 @@ async function openCustomizeModal(budgetId) {
     
     renderCustomizeEditor();
     customizeDirty = false;
-    document.getElementById('customizeModal').classList.add('active');
+    showManagedModal('customizeModal');
   } catch (err) {
     console.error('Load budget error:', err);
     showToast('Failed to load budget');
@@ -4986,7 +5268,7 @@ function closeCustomizeModal(force = false) {
     return false;
   }
   if (customizeDraftTimer) clearTimeout(customizeDraftTimer);
-  document.getElementById('customizeModal').classList.remove('active');
+  hideManagedModal('customizeModal');
   customizeBudgetId = null;
   customizeBudgetData = null;
   customizeDirty = false;
@@ -5203,56 +5485,202 @@ function renderCustomizeEditor() {
 }
 
 function closeSectionLibraryModal() {
-  document.getElementById('sectionLibraryModal').classList.remove('active');
+  hideManagedModal('sectionLibraryModal');
+}
+
+function libraryMatches(item, search, category) {
+  const haystack = [item.name, item.description, item.category, ...(item.tags || []), item.payload?.section]
+    .join(' ').toLowerCase();
+  return (!search || haystack.includes(search.toLowerCase())) && (!category || item.category === category);
+}
+
+function populateLibraryCategorySelects() {
+  const categories = [...new Set(sectionLibraryItems.map(item => item.category || 'Other'))].sort();
+  ['libraryManagerCategory', 'sectionLibraryCategory'].forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">All categories</option>' + categories.map(category => `<option value="${escapeAttr(category)}">${escapeAttr(category)}</option>`).join('');
+    if (categories.includes(current)) select.value = current;
+  });
+}
+
+async function loadSectionLibraryItems(force = false) {
+  if (sectionLibraryItems.length && !force) return sectionLibraryItems;
+  const res = await fetch(api('/api/admin/section-library'), { credentials: 'include' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to load section library');
+  sectionLibraryItems = Array.isArray(data.items) ? data.items : [];
+  populateLibraryCategorySelects();
+  return sectionLibraryItems;
+}
+
+async function refreshSectionLibraryManager() {
+  const body = document.getElementById('sectionLibraryManagerBody');
+  if (body) body.innerHTML = '<div class="empty-state">Refreshing section library…</div>';
+  try {
+    await loadSectionLibraryItems(true);
+    renderSectionLibraryManager();
+  } catch (err) {
+    console.error('Refresh section library error:', err);
+    if (body) body.innerHTML = `<div style="color:#C62828;">${escapeAttr(err.message || 'Failed to load section library')}</div>`;
+  }
 }
 
 async function openSectionLibraryModal() {
   if (!customizeBudgetId) return;
-  const modal = document.getElementById('sectionLibraryModal');
-  const body = document.getElementById('sectionLibraryBody');
-  modal.classList.add('active');
-  body.innerHTML = '<div style="color:var(--text-light);">Loading section library…</div>';
+  showManagedModal('sectionLibraryModal');
+  document.getElementById('sectionLibraryBody').innerHTML = '<div class="empty-state">Loading section library…</div>';
   try {
-    const res = await fetch(api('/api/admin/section-library'), { credentials: 'include' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load section library');
-    sectionLibraryItems = Array.isArray(data.items) ? data.items : [];
+    await loadSectionLibraryItems(true);
     renderSectionLibraryItems();
   } catch (err) {
     console.error('Load section library error:', err);
-    body.innerHTML = `<div style="color:#C62828;">${escapeAttr(err.message || 'Failed to load section library')}</div>`;
+    document.getElementById('sectionLibraryBody').innerHTML = `<div style="color:#C62828;">${escapeAttr(err.message)}</div>`;
   }
+}
+
+function libraryCardHtml(item, { allowAdd = false } = {}) {
+  const payload = item.payload || {};
+  const tiers = TIER_ORDER.filter(key => payload.tiers?.[key] && payload.tiers[key].enabled !== false);
+  return `<div class="section-library-card">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+      <div><strong>${escapeAttr(payload.icon || '📦')} ${escapeAttr(item.name)}</strong><div class="ai-draft-meta">${escapeAttr(item.category || 'Other')} · Header: ${escapeAttr(payload.section || 'Custom')}</div></div>
+      ${payload.required ? '<span class="required-badge">Required</span>' : ''}
+    </div>
+    <div style="font-size:13px;color:var(--text-light);margin-top:7px;">${escapeAttr(item.description || 'No usage notes yet.')}</div>
+    <div class="library-tags">${(item.tags || []).map(tag => `<span class="library-tag">${escapeAttr(tag)}</span>`).join('')}</div>
+    <div class="section-library-tier-list">${tiers.map(key => `<span>${escapeAttr(payload.tiers[key].label || tierDisplayName(key))}: ${formatCurrency(payload.tiers[key].price)}</span>`).join('')}</div>
+    <div class="library-card-actions">
+      ${allowAdd ? `<button type="button" class="btn btn-primary btn-small" onclick="addLibrarySectionToBudget('${escapeAttr(item.id)}')">Add to Budget</button>` : ''}
+      <button type="button" class="btn btn-secondary btn-small" onclick="openLibraryEditorModal('${escapeAttr(item.id)}')">Edit</button>
+      <button type="button" class="btn btn-secondary btn-small" onclick="duplicateLibraryItem('${escapeAttr(item.id)}')">Duplicate</button>
+      <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteSectionLibraryItem('${escapeAttr(item.id)}')">Delete</button>
+    </div>
+  </div>`;
 }
 
 function renderSectionLibraryItems() {
   const body = document.getElementById('sectionLibraryBody');
-  if (!sectionLibraryItems.length) {
-    body.innerHTML = '<div style="padding:24px;text-align:center;background:var(--bg);border-radius:8px;color:var(--text-light);">No reusable sections yet. Use “Save to Library” on any category in the Customize editor.</div>';
-    return;
-  }
-  body.innerHTML = `<div class="section-library-grid">${sectionLibraryItems.map(item => {
-    const payload = item.payload || {};
-    const tiers = TIER_ORDER.filter(key => payload.tiers?.[key] && payload.tiers[key].enabled !== false);
-    return `
-      <div class="section-library-card">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
-          <div>
-            <strong>${escapeAttr(payload.icon || '📦')} ${escapeAttr(item.name)}</strong>
-            <div class="ai-draft-meta">${escapeAttr(payload.section || 'Custom')}</div>
-          </div>
-          ${payload.required ? '<span class="required-badge">Required</span>' : ''}
-        </div>
-        ${item.description ? `<div style="font-size:13px;color:var(--text-light);">${escapeAttr(item.description)}</div>` : ''}
-        <div class="section-library-tier-list">${tiers.map(key => `<span>${escapeAttr(payload.tiers[key].label || tierDisplayName(key))}: ${formatCurrency(payload.tiers[key].price)}</span>`).join('')}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary btn-small" onclick="addLibrarySectionToBudget('${escapeAttr(item.id)}')">Add to Budget</button>
-          <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="deleteSectionLibraryItem('${escapeAttr(item.id)}')">Delete</button>
-        </div>
-      </div>`;
-  }).join('')}</div>`;
+  const search = document.getElementById('sectionLibrarySearch')?.value.trim() || '';
+  const category = document.getElementById('sectionLibraryCategory')?.value || '';
+  const items = sectionLibraryItems.filter(item => libraryMatches(item, search, category));
+  body.innerHTML = items.length
+    ? `<div class="section-library-grid">${items.map(item => libraryCardHtml(item, { allowAdd: true })).join('')}</div>`
+    : '<div class="empty-state">No matching reusable sections. Create one here or save a section from the budget editor.</div>';
 }
 
-async function saveEditorToSectionLibrary(type, idOrIndex) {
+function renderSectionLibraryManager() {
+  const body = document.getElementById('sectionLibraryManagerBody');
+  if (!body) return;
+  const search = document.getElementById('libraryManagerSearch')?.value.trim() || '';
+  const category = document.getElementById('libraryManagerCategory')?.value || '';
+  const items = sectionLibraryItems.filter(item => libraryMatches(item, search, category));
+  body.innerHTML = items.length
+    ? `<div class="section-library-grid">${items.map(item => libraryCardHtml(item)).join('')}</div>`
+    : '<div class="empty-state">No library sections yet. Create a proven building block or save one from a custom budget.</div>';
+}
+
+function renderLibraryTierEditors(payload = {}) {
+  document.getElementById('libraryTierEditors').innerHTML = TIER_ORDER.map(key => {
+    const tier = payload.tiers?.[key] || {};
+    const enabled = !!(payload.tiers?.[key] && tier.enabled !== false);
+    return `<div class="library-tier-editor" data-tier="${key}">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" class="library-tier-enabled" ${enabled ? 'checked' : ''}> ${escapeAttr(tierDisplayName(key))}</label>
+      <label>Option label<input type="text" class="library-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${escapeAttr(tierDisplayName(key))}"></label>
+      <label>Allowance<input type="number" class="library-tier-price" min="0" max="10000000" step="100" value="${Number(tier.price || 0)}"></label>
+      <label>Features<textarea class="library-tier-features" rows="2" placeholder="One feature per line">${escapeAttr((tier.features || []).join('\n'))}</textarea></label>
+    </div>`;
+  }).join('');
+}
+
+function openLibraryEditorModal(id = '', payloadOverride = null) {
+  const item = id ? sectionLibraryItems.find(entry => entry.id === id) : null;
+  const payload = JSON.parse(JSON.stringify(payloadOverride || item?.payload || { icon: '📦', section: 'Custom', tiers: {} }));
+  libraryEditorBasePayload = payload;
+  document.getElementById('libraryEditorTitle').textContent = item ? `Edit: ${item.name}` : 'New Library Section';
+  document.getElementById('libraryEditId').value = item?.id || '';
+  document.getElementById('libraryEditName').value = item?.name || payload.name || '';
+  document.getElementById('libraryEditCategory').value = item?.category || payload.section || 'Other';
+  document.getElementById('libraryEditHeader').value = payload.section || 'Custom';
+  document.getElementById('libraryEditIcon').value = payload.icon || '📦';
+  document.getElementById('libraryEditTags').value = (item?.tags || []).join(', ');
+  document.getElementById('libraryEditDescription').value = item?.description || payload.desc || '';
+  document.getElementById('libraryEditRequired').checked = payload.required === true;
+  renderLibraryTierEditors(payload);
+  showManagedModal('libraryEditorModal');
+}
+
+function closeLibraryEditorModal() {
+  hideManagedModal('libraryEditorModal');
+  libraryEditorBasePayload = null;
+}
+
+function duplicateLibraryItem(id) {
+  const item = sectionLibraryItems.find(entry => entry.id === id);
+  if (!item) return;
+  openLibraryEditorModal('', { ...JSON.parse(JSON.stringify(item.payload)), name: `${item.name} Copy`, desc: item.description });
+  document.getElementById('libraryEditName').value = `${item.name} Copy`;
+  document.getElementById('libraryEditCategory').value = item.category || 'Other';
+  document.getElementById('libraryEditTags').value = (item.tags || []).join(', ');
+}
+
+async function saveLibraryEditor() {
+  const id = document.getElementById('libraryEditId').value;
+  const name = document.getElementById('libraryEditName').value.trim();
+  if (!name) return showToast('Add a library section name');
+  const tiers = {};
+  document.querySelectorAll('#libraryTierEditors .library-tier-editor').forEach(row => {
+    if (!row.querySelector('.library-tier-enabled').checked) return;
+    const key = row.dataset.tier;
+    tiers[key] = {
+      ...(libraryEditorBasePayload?.tiers?.[key] || {}),
+      enabled: true,
+      label: row.querySelector('.library-tier-label').value.trim() || tierDisplayName(key),
+      price: Math.max(0, Number(row.querySelector('.library-tier-price').value || 0)),
+      features: row.querySelector('.library-tier-features').value.split('\n').map(value => value.trim()).filter(Boolean)
+    };
+  });
+  if (!Object.keys(tiers).length) return showToast('Enable at least one option');
+  const payload = {
+    ...(libraryEditorBasePayload || {}),
+    name,
+    icon: document.getElementById('libraryEditIcon').value.trim() || '📦',
+    section: document.getElementById('libraryEditHeader').value.trim() || 'Custom',
+    required: document.getElementById('libraryEditRequired').checked,
+    tiers
+  };
+  const body = {
+    name,
+    category: document.getElementById('libraryEditCategory').value.trim() || 'Other',
+    description: document.getElementById('libraryEditDescription').value.trim(),
+    tags: document.getElementById('libraryEditTags').value.split(',').map(value => value.trim()).filter(Boolean),
+    payload
+  };
+  try {
+    const res = await fetch(api(id ? `/api/admin/section-library/${encodeURIComponent(id)}` : '/api/admin/section-library'), {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save library section');
+    const index = sectionLibraryItems.findIndex(item => item.id === data.item.id);
+    if (index >= 0) sectionLibraryItems[index] = data.item;
+    else sectionLibraryItems.push(data.item);
+    sectionLibraryItems.sort((a, b) => a.name.localeCompare(b.name));
+    populateLibraryCategorySelects();
+    renderSectionLibraryItems();
+    renderSectionLibraryManager();
+    closeLibraryEditorModal();
+    showToast('✓ Team library section saved');
+  } catch (err) {
+    console.error('Save section library error:', err);
+    showToast('❌ ' + (err.message || 'Failed to save section'));
+  }
+}
+
+function saveEditorToSectionLibrary(type, idOrIndex) {
   if (!customizeBudgetData) return;
   let payload;
   if (type === 'default') {
@@ -5262,52 +5690,25 @@ async function saveEditorToSectionLibrary(type, idOrIndex) {
     if (!editor || !base) return showToast('Could not read that section');
     const layout = collectCustomizeLayoutData().itemLayout[idOrIndex] || {};
     const override = readStandardCategoryEditorPayload(editor, layout);
-    payload = {
-      ...base,
-      ...override,
-      id: `library-${slugifySectionId(base.name)}`,
-      name: base.name,
-      icon: base.icon || '📦',
-      desc: base.desc || '',
-      section: layout.section || base.section || 'Custom',
-      tiers: override.tiers
-    };
+    payload = { ...base, ...override, id: `library-${slugifySectionId(base.name)}`, name: base.name, icon: base.icon || '📦', desc: base.desc || '', section: layout.section || base.section || 'Custom', tiers: override.tiers };
     delete payload.hidden;
   } else {
     const editor = document.querySelector(`.custom-category-editor[data-index="${Number(idOrIndex)}"]`);
     payload = readCustomCategoryEditorData(editor, { newId: true });
   }
   if (!payload?.name || !Object.keys(payload.tiers || {}).length) return showToast('Add a name and at least one option first');
-  const name = prompt('Library name', payload.name);
-  if (!name?.trim()) return;
-  try {
-    const res = await fetch(api('/api/admin/section-library'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), description: payload.desc || '', payload: { ...payload, name: name.trim() } })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to save section');
-    const existing = sectionLibraryItems.findIndex(item => item.id === data.item.id);
-    if (existing >= 0) sectionLibraryItems[existing] = data.item;
-    else sectionLibraryItems.push(data.item);
-    showToast('✓ Saved to team section library');
-  } catch (err) {
-    console.error('Save section library error:', err);
-    showToast('❌ ' + (err.message || 'Failed to save section'));
-  }
+  openLibraryEditorModal('', payload);
 }
 
 function addLibrarySectionToBudget(id) {
   const item = sectionLibraryItems.find(entry => entry.id === id);
   if (!item?.payload) return;
   const current = collectCustomizationData();
+  const duplicate = current.customCategories.find(category => category.librarySourceId === item.id || category.name?.toLowerCase() === item.name.toLowerCase());
+  if (duplicate && !confirm(`“${item.name}” is already in this budget. Add another copy?`)) return;
   const payload = JSON.parse(JSON.stringify(item.payload));
   const propertyType = customizeBudgetData.propertyTypeLocked || customizeBudgetData.currentState?.propertyType || 'residential';
-  const usedIds = new Set([
-    ...getBudgetDefaultCategories(customizeBudgetData, propertyType).map(category => category.id),
-    ...current.customCategories.map(category => category.id)
-  ]);
+  const usedIds = new Set([...getBudgetDefaultCategories(customizeBudgetData, propertyType).map(category => category.id), ...current.customCategories.map(category => category.id)]);
   const newId = uniqueSectionId(`custom-${slugifySectionId(payload.name || item.name)}`, usedIds);
   current.customCategories.push({ ...payload, id: newId, name: payload.name || item.name, librarySourceId: item.id });
   customizeBudgetData.categoryConfig = current.categoryConfig;
@@ -5321,13 +5722,15 @@ function addLibrarySectionToBudget(id) {
 
 async function deleteSectionLibraryItem(id) {
   const item = sectionLibraryItems.find(entry => entry.id === id);
-  if (!item || !confirm(`Delete “${item.name}” from the team library?`)) return;
+  if (!item || !confirm(`Delete “${item.name}” from the team library? Existing budgets will not be changed.`)) return;
   try {
     const res = await fetch(api(`/api/admin/section-library/${encodeURIComponent(id)}`), { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to delete section');
     sectionLibraryItems = sectionLibraryItems.filter(entry => entry.id !== id);
+    populateLibraryCategorySelects();
     renderSectionLibraryItems();
+    renderSectionLibraryManager();
     showToast('✓ Library section deleted');
   } catch (err) {
     console.error('Delete section library error:', err);
@@ -5336,23 +5739,28 @@ async function deleteSectionLibraryItem(id) {
 }
 
 function closeAiBudgetDraftModal() {
-  document.getElementById('aiBudgetDraftModal').classList.remove('active');
+  hideManagedModal('aiBudgetDraftModal');
 }
 
 async function openAiBudgetDraftModal() {
   if (!customizeBudgetId) return;
   activeAiBudgetDraft = null;
+  const modal = document.getElementById('aiBudgetDraftModal');
+  modal.classList.remove('has-draft');
   document.getElementById('aiBudgetPrompt').value = '';
+  document.getElementById('aiBudgetPrompt').placeholder = 'Paste meeting notes, a transcript, email scope, or describe the one-off project.';
   document.getElementById('aiBudgetResult').innerHTML = '';
-  document.getElementById('generateAiDraftBtn').textContent = 'Generate Draft';
+  const button = document.getElementById('generateAiDraftBtn');
+  button.textContent = 'Generate Draft';
+  button.disabled = false;
   const status = document.getElementById('aiBudgetStatus');
   status.textContent = 'Checking availability…';
-  document.getElementById('aiBudgetDraftModal').classList.add('active');
+  showManagedModal('aiBudgetDraftModal');
   try {
     const res = await fetch(api('/api/admin/ai/status'), { credentials: 'include' });
     const data = await res.json();
-    status.textContent = data.configured ? `Ready · ${data.model}` : 'AI is not configured on this environment';
-    document.getElementById('generateAiDraftBtn').disabled = !data.configured;
+    status.textContent = data.configured ? 'Ready' : 'AI is not configured on this environment';
+    button.disabled = !data.configured;
   } catch (_) {
     status.textContent = 'Could not verify AI availability';
   }
@@ -5363,11 +5771,12 @@ async function generateAiBudgetDraft() {
   const button = document.getElementById('generateAiDraftBtn');
   const status = document.getElementById('aiBudgetStatus');
   const userPrompt = promptInput.value.trim();
-  if (userPrompt.length < 10) return showToast('Describe the project in a little more detail');
+  if (userPrompt.length < 10) return showToast(activeAiBudgetDraft ? 'Add a refinement message first' : 'Describe the project in a little more detail');
+  if (activeAiBudgetDraft) activeAiBudgetDraft = collectAiDraftReview();
   let requestPrompt = userPrompt;
   if (activeAiBudgetDraft) {
     const prior = JSON.stringify(activeAiBudgetDraft);
-    requestPrompt = `Refine this previous draft using the new direction below. Preserve good prior decisions unless the direction changes them.\n\nPREVIOUS DRAFT:\n${prior.slice(0, 10000)}\n\nNEW DIRECTION:\n${userPrompt}`.slice(0, 15000);
+    requestPrompt = `Refine this reviewed draft using the new direction below. Preserve reviewed decisions unless the direction changes them.\n\nPREVIOUS DRAFT:\n${prior.slice(0, 10000)}\n\nNEW DIRECTION:\n${userPrompt}`.slice(0, 15000);
   }
   button.disabled = true;
   status.textContent = activeAiBudgetDraft ? 'Refining draft…' : 'Building draft…';
@@ -5375,16 +5784,15 @@ async function generateAiBudgetDraft() {
     const res = await fetch(api('/api/admin/ai/budget-draft'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ budgetId: customizeBudgetId, prompt: requestPrompt })
+      body: JSON.stringify({ budgetId: customizeBudgetId, prompt: requestPrompt, customization: collectCustomizationData() })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'AI budget draft failed');
     activeAiBudgetDraft = data.draft;
     renderAiBudgetDraft(activeAiBudgetDraft);
     promptInput.value = '';
-    promptInput.placeholder = 'Give the AI a refinement, or apply the draft below.';
-    button.textContent = 'Refine Draft';
-    status.textContent = `Draft ready · ${data.model}`;
+    promptInput.placeholder = 'Optional: describe what you want changed, then choose Refine.';
+    status.textContent = 'Draft ready for review';
   } catch (err) {
     console.error('AI budget draft error:', err);
     status.textContent = err.message || 'AI budget draft failed';
@@ -5394,35 +5802,120 @@ async function generateAiBudgetDraft() {
   }
 }
 
+function aiCategoryForReview(id) {
+  const propertyType = customizeBudgetData.propertyTypeLocked || customizeBudgetData.currentState?.propertyType || 'residential';
+  return getBudgetDefaultCategories(customizeBudgetData, propertyType).find(category => category.id === id);
+}
+
+function updateAiTemplateTierPrice(select) {
+  const row = select.closest('.ai-review-row');
+  const category = aiCategoryForReview(row.dataset.categoryId);
+  const price = category?.tiers?.[select.value]?.price || 0;
+  row.querySelector('.ai-template-price').value = price;
+  updateAiDraftTotals();
+}
+
+function toggleAiReviewRow(input) {
+  input.closest('.ai-review-row')?.classList.toggle('is-excluded', !input.checked);
+  updateAiDraftTotals();
+}
+
 function renderAiBudgetDraft(draft) {
   const templates = draft.templateSelections || [];
   const sections = draft.sections || [];
   const list = (items, emptyText) => items.length ? `<ul>${items.map(item => `<li>${escapeAttr(item)}</li>`).join('')}</ul>` : `<div class="ai-draft-meta">${emptyText}</div>`;
   document.getElementById('aiBudgetResult').innerHTML = `
-    <div class="ai-draft-summary"><strong>Draft summary</strong><div>${escapeAttr(draft.summary || '')}</div></div>
-    <div class="ai-draft-card">
-      <strong>Template choices (${templates.length})</strong>
-      ${templates.length ? templates.map(item => `<div style="margin-top:9px;"><strong>${escapeAttr(item.categoryId)}</strong> · ${escapeAttr(tierDisplayName(item.tierKey))}${item.required ? ' · Required' : ''}<div class="ai-draft-meta">${escapeAttr(item.rationale)}</div></div>`).join('') : '<div class="ai-draft-meta">No template choices added.</div>'}
+    <div class="ai-draft-summary"><strong>Draft summary</strong><div>${escapeAttr(draft.summary || '')}</div><div class="ai-draft-meta" style="margin-top:6px;">Applying this draft adds reviewed structure only. New choices remain unanswered.</div></div>
+    <div class="ai-draft-totals">
+      <div class="ai-draft-total">Current customer total<strong id="aiCurrentTotal">$0</strong></div>
+      <div class="ai-draft-total">After structure is applied<strong id="aiAfterTotal">$0</strong></div>
+      <div class="ai-draft-total">Recommendations if later chosen<strong id="aiRecommendedTotal">$0</strong></div>
     </div>
-    <div class="ai-draft-card">
-      <strong>One-off sections (${sections.length})</strong>
-      ${sections.length ? sections.map(section => `<div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border);"><strong>${escapeAttr(section.icon || '📦')} ${escapeAttr(section.name)}</strong> <span class="ai-draft-meta">${section.source === 'library' ? 'From library' : 'Custom allowance'} · ${escapeAttr(section.header)} · recommends ${escapeAttr(tierDisplayName(section.recommendedTier))}${section.required ? ' · Required' : ''}</span><div class="section-library-tier-list">${(section.tiers || []).map(tier => `<span>${escapeAttr(tier.label)}: ${formatCurrency(tier.price)}</span>`).join('')}</div><div class="ai-draft-meta">${escapeAttr(section.rationale)}</div></div>`).join('') : '<div class="ai-draft-meta">No one-off sections added.</div>'}
+    <div class="ai-draft-card"><strong>Approved template recommendations (${templates.length})</strong>
+      ${templates.length ? templates.map((item, index) => {
+        const category = aiCategoryForReview(item.categoryId);
+        const options = TIER_ORDER.filter(key => category?.tiers?.[key] && category.tiers[key].enabled !== false);
+        return `<div class="ai-review-row" data-kind="template" data-index="${index}" data-category-id="${escapeAttr(item.categoryId)}">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="checkbox" class="ai-include" checked onchange="toggleAiReviewRow(this)"> Include ${escapeAttr(item.categoryName || category?.name || item.categoryId)}</label>
+          <div class="ai-review-grid">
+            <label>Recommended option<select class="ai-template-tier" onchange="updateAiTemplateTierPrice(this)">${options.map(key => `<option value="${key}" ${key === item.tierKey ? 'selected' : ''}>${escapeAttr(category.tiers[key].label || tierDisplayName(key))}</option>`).join('')}</select></label>
+            <label>Allowance<input type="number" class="ai-template-price" min="0" max="10000000" step="100" value="${Number(item.price || category?.tiers?.[item.tierKey]?.price || 0)}" oninput="updateAiDraftTotals()"></label>
+            <label style="display:flex;align-items:center;gap:7px;padding-bottom:9px;"><input type="checkbox" class="ai-required" ${item.required ? 'checked' : ''}> Required</label>
+          </div><div class="ai-draft-meta">${escapeAttr(item.rationale)}</div>
+        </div>`;
+      }).join('') : '<div class="ai-draft-meta">No template recommendations.</div>'}
     </div>
-    <div class="ai-draft-card"><strong>Assumptions</strong>${list(draft.assumptions || [], 'No assumptions')}</div>
-    <div class="ai-draft-card"><strong>Questions to resolve</strong>${list(draft.questions || [], 'No open questions')}</div>
-    <button type="button" class="btn btn-primary" onclick="applyAiBudgetDraft()" style="width:100%;margin-top:12px;">Apply Draft to Budget</button>
+    <div class="ai-draft-card" style="margin-top:12px;"><strong>One-off sections (${sections.length})</strong>
+      ${sections.length ? sections.map((section, index) => `<div class="ai-review-row" data-kind="section" data-index="${index}">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="checkbox" class="ai-include" checked onchange="toggleAiReviewRow(this)"> Include ${escapeAttr(section.icon || '📦')} ${escapeAttr(section.name)}</label>
+        <div class="ai-review-grid">
+          <label>Section name<input type="text" class="ai-section-name" value="${escapeAttr(section.name)}"></label>
+          <label>Header<input type="text" class="ai-section-header" value="${escapeAttr(section.header)}"></label>
+          <label>Recommended option<select class="ai-section-recommended" onchange="updateAiDraftTotals()">${section.tiers.map(tier => `<option value="${tier.key}" ${tier.key === section.recommendedTier ? 'selected' : ''}>${escapeAttr(tier.label || tierDisplayName(tier.key))}</option>`).join('')}</select></label>
+          <label style="display:flex;align-items:center;gap:7px;padding-bottom:9px;"><input type="checkbox" class="ai-required" ${section.required ? 'checked' : ''}> Required</label>
+        </div>
+        <div class="ai-draft-meta" style="margin-top:6px;">${section.source === 'library' ? 'Reusable library section' : 'Custom allowance'} · ${escapeAttr(section.rationale)}</div>
+        <div class="ai-draft-list">${section.tiers.map((tier, tierIndex) => `<div class="ai-review-grid ai-section-tier" data-tier-index="${tierIndex}" data-tier-key="${tier.key}"><label>Option<input type="text" class="ai-tier-label" value="${escapeAttr(tier.label)}"></label><label>Allowance<input type="number" class="ai-tier-price" min="0" max="10000000" step="100" value="${Number(tier.price || 0)}" oninput="updateAiDraftTotals()"></label></div>`).join('')}</div>
+      </div>`).join('') : '<div class="ai-draft-meta">No one-off sections.</div>'}
+    </div>
+    <details class="ai-draft-card" style="margin-top:12px;"><summary><strong>Assumptions (${(draft.assumptions || []).length})</strong></summary>${list(draft.assumptions || [], 'No assumptions')}</details>
+    <details class="ai-draft-card" style="margin-top:12px;" ${(draft.questions || []).length ? 'open' : ''}><summary><strong>Questions to resolve (${(draft.questions || []).length})</strong></summary>${list(draft.questions || [], 'No open questions')}</details>
   `;
+  document.getElementById('aiBudgetDraftModal').classList.add('has-draft');
+  updateAiDraftTotals();
+}
+
+function collectAiDraftReview() {
+  const draft = JSON.parse(JSON.stringify(activeAiBudgetDraft));
+  draft.templateSelections = Array.from(document.querySelectorAll('.ai-review-row[data-kind="template"]'))
+    .filter(row => row.querySelector('.ai-include').checked)
+    .map(row => {
+      const original = draft.templateSelections[Number(row.dataset.index)];
+      return { ...original, tierKey: row.querySelector('.ai-template-tier').value, price: Number(row.querySelector('.ai-template-price').value || 0), required: row.querySelector('.ai-required').checked };
+    });
+  draft.sections = Array.from(document.querySelectorAll('.ai-review-row[data-kind="section"]'))
+    .filter(row => row.querySelector('.ai-include').checked)
+    .map(row => {
+      const original = draft.sections[Number(row.dataset.index)];
+      return { ...original, name: row.querySelector('.ai-section-name').value.trim() || original.name, header: row.querySelector('.ai-section-header').value.trim() || 'Custom', recommendedTier: row.querySelector('.ai-section-recommended').value, required: row.querySelector('.ai-required').checked, tiers: Array.from(row.querySelectorAll('.ai-section-tier')).map(tierRow => ({ ...original.tiers[Number(tierRow.dataset.tierIndex)], label: tierRow.querySelector('.ai-tier-label').value.trim() || tierDisplayName(tierRow.dataset.tierKey), price: Number(tierRow.querySelector('.ai-tier-price').value || 0) })) };
+    });
+  return draft;
+}
+
+function updateAiDraftTotals() {
+  if (!activeAiBudgetDraft) return;
+  const currentTotal = Number(customizeBudgetData?.currentState?.total || 0);
+  let recommended = 0;
+  document.querySelectorAll('.ai-review-row[data-kind="template"]').forEach(row => {
+    if (row.querySelector('.ai-include').checked) recommended += Number(row.querySelector('.ai-template-price').value || 0);
+  });
+  document.querySelectorAll('.ai-review-row[data-kind="section"]').forEach(row => {
+    if (!row.querySelector('.ai-include').checked) return;
+    const selected = row.querySelector('.ai-section-recommended').value;
+    const tier = row.querySelector(`.ai-section-tier[data-tier-key="${CSS.escape(selected)}"]`);
+    recommended += Number(tier?.querySelector('.ai-tier-price').value || 0);
+  });
+  const currentEl = document.getElementById('aiCurrentTotal');
+  const afterEl = document.getElementById('aiAfterTotal');
+  const recommendedEl = document.getElementById('aiRecommendedTotal');
+  if (currentEl) currentEl.textContent = formatCurrency(currentTotal);
+  if (afterEl) afterEl.textContent = formatCurrency(currentTotal);
+  if (recommendedEl) recommendedEl.textContent = formatCurrency(recommended);
 }
 
 async function applyAiBudgetDraft() {
-  if (!activeAiBudgetDraft || !confirm('Apply this AI draft? Existing manually-created sections will be preserved.')) return;
+  if (!activeAiBudgetDraft) return;
+  const reviewedDraft = collectAiDraftReview();
+  const selectedCount = reviewedDraft.templateSelections.length + reviewedDraft.sections.length;
+  if (!confirm(`Apply ${selectedCount} reviewed recommendation${selectedCount === 1 ? '' : 's'}? New AI sections will remain unanswered and your current selections will not change.`)) return;
   const status = document.getElementById('aiBudgetStatus');
-  status.textContent = 'Applying draft…';
+  status.textContent = 'Applying reviewed structure…';
   try {
+    const customization = collectCustomizationData();
     const res = await fetch(api(`/api/admin/budgets/${customizeBudgetId}/apply-ai-draft`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draft: activeAiBudgetDraft })
+      body: JSON.stringify({ draft: reviewedDraft, customization })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to apply AI draft');
@@ -5431,7 +5924,7 @@ async function applyAiBudgetDraft() {
     closeAiBudgetDraftModal();
     renderCustomizeEditor();
     customizeDirty = false;
-    showToast('✓ AI budget draft applied and versioned');
+    showToast('✓ Reviewed structure applied; customer choices remain unanswered');
   } catch (err) {
     console.error('Apply AI budget draft error:', err);
     status.textContent = err.message || 'Failed to apply AI draft';
@@ -6004,6 +6497,9 @@ function readCustomCategoryEditorPayload(editor, options = {}) {
   const customId = options.newId
     ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     : existingId;
+  const existingCategory = options.newId
+    ? {}
+    : (customizeBudgetData?.customCategories || []).find(category => category.id === existingId) || {};
   const tiers = readTierRowsFromEditor(editor, '.cc-tier-row', {
     enabled: '.cc-tier-enabled',
     label: '.cc-tier-label',
@@ -6015,10 +6511,11 @@ function readCustomCategoryEditorPayload(editor, options = {}) {
     ? (collectCustomizeLayoutData().customLayout[existingId] || {})
     : {};
   return withPresentationPayload({
+    ...existingCategory,
     id: customId,
     name: editor.querySelector('.cc-name')?.value || '',
     icon: editor.querySelector('.cc-icon')?.value || '📦',
-    desc: '',
+    desc: existingCategory.desc || '',
     required: editor.querySelector('.category-required')?.checked === true,
     ...layout,
     tiers
@@ -6945,7 +7442,7 @@ function collectCustomizationData() {
   const customCategories = [];
   const layout = document.getElementById('customizeLayoutSections') ? collectCustomizeLayoutData() : { sections: [], itemLayout: {}, customLayout: {} };
   const existingConfig = customizeBudgetData?.categoryConfig || {};
-  [DEFAULT_CATEGORY_SNAPSHOT_KEY, DEFAULT_EXTRA_SNAPSHOT_KEY, DEFAULT_SECTION_SNAPSHOT_KEY].forEach(key => {
+  [DEFAULT_CATEGORY_SNAPSHOT_KEY, DEFAULT_EXTRA_SNAPSHOT_KEY, DEFAULT_SECTION_SNAPSHOT_KEY, '__aiDraft'].forEach(key => {
     if (Object.prototype.hasOwnProperty.call(existingConfig, key)) {
       categoryConfig[key] = existingConfig[key];
     }
@@ -8054,6 +8551,13 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === 'tab-' + tabName);
   });
+  if (tabName === 'library') {
+    loadSectionLibraryItems(true)
+      .then(() => renderSectionLibraryManager())
+      .catch(err => {
+        document.getElementById('sectionLibraryManagerBody').innerHTML = `<div style="color:#C62828;">${escapeAttr(err.message || 'Failed to load section library')}</div>`;
+      });
+  }
 }
 
 // Initialize

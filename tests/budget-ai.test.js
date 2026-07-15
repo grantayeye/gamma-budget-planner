@@ -60,10 +60,10 @@ describe('AI budget draft helpers', () => {
   it('drops invalid, disabled, and duplicate references before review', () => {
     const normalized = normalizeAiDraft(draft({
       templateSelections: [
-        { categoryId: 'networking', tierKey: 'good', required: false, rationale: 'Needed' },
-        { categoryId: 'networking', tierKey: 'good', required: true, rationale: 'Duplicate' },
-        { categoryId: 'networking', tierKey: 'best', required: false, rationale: 'Disabled' },
-        { categoryId: 'invented', tierKey: 'good', required: false, rationale: 'Unknown' }
+        { categoryId: 'networking', categoryName: 'Networking', tierKey: 'good', price: 10000, required: false, rationale: 'Needed' },
+        { categoryId: 'networking', categoryName: 'Networking', tierKey: 'good', price: 10000, required: true, rationale: 'Duplicate' },
+        { categoryId: 'networking', categoryName: 'Networking', tierKey: 'best', price: 25000, required: false, rationale: 'Disabled' },
+        { categoryId: 'invented', categoryName: 'Invented', tierKey: 'good', price: 1000, required: false, rationale: 'Unknown' }
       ],
       sections: [
         { source: 'library', sourceId: 'golf-simulator', name: 'Golf', icon: '⛳', header: 'Entertainment', required: false, recommendedTier: 'standard', rationale: 'Requested', tiers: [{ key: 'standard', label: 'Allowance', price: 50000, features: [], brands: '' }] },

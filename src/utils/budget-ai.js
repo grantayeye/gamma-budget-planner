@@ -4,7 +4,9 @@ const TIER_KEYS = ['good', 'standard', 'better', 'best'];
 
 const aiTemplateSelectionSchema = z.object({
   categoryId: z.string().max(100),
+  categoryName: z.string().max(200),
   tierKey: z.enum(TIER_KEYS),
+  price: z.number().int().min(0).max(10000000),
   required: z.boolean(),
   rationale: z.string().max(500)
 });
@@ -66,6 +68,8 @@ function compactLibraryItem(item = {}) {
     id: item.id,
     name: item.name,
     description: item.description || '',
+    category: item.category || 'Other',
+    tags: (item.tags || []).slice(0, 10),
     header: payload.section || 'Custom',
     required: payload.required === true,
     tiers: Object.fromEntries(
@@ -96,28 +100,34 @@ const BUDGET_DRAFT_INSTRUCTIONS = `You build preliminary residential technology 
 The budget tool is for customer priorities, options, allowances, and decisions. It is not proposal-writing software. Do not create product quantities, labor line items, contracts, payment schedules, or sales language.
 
 Rules:
-1. Prefer approved template categories for common systems. Put those choices in templateSelections using the exact category and tier keys supplied.
+1. Prefer approved template categories for common systems. Put those recommendations in templateSelections using the exact category id, name, tier key, and approved price supplied.
 2. Prefer reusable library sections when one is a strong match. For a library section set source="library", use its exact sourceId, and keep its existing pricing and scope. The application will enforce the saved library payload.
 3. Create a custom section only when the request is not adequately represented by the template or library.
 4. Custom prices are preliminary customer allowances, rounded to the nearest $100. Do not use $0 unless the request explicitly calls for a no-cost option.
 5. Use one tier for a fixed allowance; use Good/Better/Best only when meaningful alternatives help the customer decide.
-6. Mark required only when the project cannot reasonably proceed without a choice in that section.
+6. Default required to false. Mark a section required only when the user's request explicitly says the choice is mandatory or required. Do not infer required merely because a system is useful.
 7. State material assumptions and unanswered questions. Never hide uncertainty.
 8. Keep section names and features concise and customer-friendly.
 9. Do not duplicate a system across templateSelections and sections.
-10. Return a practical draft for human review; never claim it is final.`;
+10. Recommendations are planning guidance, not customer selections. Applying the draft will leave new sections unanswered so the customer-facing budget remains at $0 until choices are made.
+11. Return a practical draft for human review; never claim it is final.`;
 
 function normalizeAiDraft(draft, categories = [], library = []) {
   const parsed = aiBudgetDraftSchema.parse(draft);
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const libraryMap = new Map(library.map(item => [item.id, item]));
   const seenCategories = new Set();
-  const templateSelections = parsed.templateSelections.filter(selection => {
+  const templateSelections = parsed.templateSelections.flatMap(selection => {
     const category = categoryMap.get(selection.categoryId);
-    if (!category?.tiers?.[selection.tierKey] || category.tiers[selection.tierKey].enabled === false) return false;
-    if (seenCategories.has(selection.categoryId)) return false;
+    const tier = category?.tiers?.[selection.tierKey];
+    if (!tier || tier.enabled === false) return [];
+    if (seenCategories.has(selection.categoryId)) return [];
     seenCategories.add(selection.categoryId);
-    return true;
+    return [{
+      ...selection,
+      categoryName: category.name || selection.categoryName,
+      price: Number(tier.price || 0)
+    }];
   });
 
   const seenLibrary = new Set();

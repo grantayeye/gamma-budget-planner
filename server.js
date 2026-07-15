@@ -723,6 +723,11 @@ async function requireSuperAdmin(req, res, next) {
 // ============================================================
 // VALIDATION SCHEMAS (Zod)
 // ============================================================
+const customizationSnapshotSchema = z.object({
+  categoryConfig: z.record(z.string(), z.any()),
+  customCategories: z.array(z.any()).max(200)
+}).strict();
+
 const schemas = {
   login: z.object({
     email: z.string().min(1).max(254),
@@ -801,25 +806,26 @@ const schemas = {
     clientName: z.string().max(200).optional().nullable()
   }),
 
-  customizeBudget: z.object({
-    categoryConfig: z.record(z.string(), z.any()),
-    customCategories: z.array(z.any())
-  }).strict(),
+  customizeBudget: customizationSnapshotSchema,
 
   saveSectionLibraryItem: z.object({
     id: z.string().max(100).optional(),
     name: z.string().min(1).max(200),
     description: z.string().max(1000).optional().default(''),
+    category: z.string().min(1).max(100).optional().default('Other'),
+    tags: z.array(z.string().min(1).max(50)).max(20).optional().default([]),
     payload: z.record(z.string(), z.any())
   }).strict(),
 
   aiBudgetDraft: z.object({
     budgetId: z.string().min(1).max(100),
-    prompt: z.string().min(10).max(15000)
+    prompt: z.string().min(10).max(15000),
+    customization: customizationSnapshotSchema.optional()
   }).strict(),
 
   applyAiBudgetDraft: z.object({
-    draft: aiBudgetDraftSchema
+    draft: aiBudgetDraftSchema,
+    customization: customizationSnapshotSchema.optional()
   }).strict(),
 
   createLink: z.object({
@@ -1188,36 +1194,29 @@ function normalizeSectionLibraryItems(items = []) {
       id,
       name: String(item?.name || payload.name || '').trim().slice(0, 200),
       description: String(item?.description || '').trim().slice(0, 1000),
+      category: String(item?.category || 'Other').trim().slice(0, 100) || 'Other',
+      tags: [...new Set((Array.isArray(item?.tags) ? item.tags : [])
+        .map(tag => String(tag || '').trim().slice(0, 50))
+        .filter(Boolean))].slice(0, 20),
       payload,
-      createdAt: item?.createdAt || new Date().toISOString(),
-      updatedAt: item?.updatedAt || new Date().toISOString(),
-      createdBy: String(item?.createdBy || '').slice(0, 254)
+      createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
+      updatedAt: item?.updatedAt || item?.updated_at || new Date().toISOString(),
+      createdBy: String(item?.createdBy || item?.created_by || '').slice(0, 254)
     };
   }).filter(item => item?.id && item?.name).slice(0, 100);
 }
 
 async function loadSectionLibraryData() {
   const { data, error } = await supabase
-    .from('category_defaults')
-    .select('section_library')
-    .eq('id', 'current')
-    .single();
+    .from('section_library')
+    .select('id,name,description,category,tags,payload,created_at,updated_at,created_by')
+    .order('name', { ascending: true });
   if (error) {
     const err = new Error('Section library is unavailable');
     err.cause = error;
     throw err;
   }
-  return normalizeSectionLibraryItems(data?.section_library || []);
-}
-
-async function saveSectionLibraryData(items) {
-  const normalized = normalizeSectionLibraryItems(items);
-  const { error } = await supabase
-    .from('category_defaults')
-    .update({ section_library: normalized })
-    .eq('id', 'current');
-  throwSupabaseError(error, 'saveSectionLibrary');
-  return normalized;
+  return normalizeSectionLibraryItems(data || []);
 }
 
 function slugifySectionId(value) {
@@ -1800,23 +1799,40 @@ app.get('/api/admin/section-library', requireAuth, async (req, res) => {
 app.post('/api/admin/section-library', requireAuth, async (req, res) => {
   try {
     const input = schemas.saveSectionLibraryItem.parse(req.body);
-    const items = await loadSectionLibraryData();
     const now = new Date().toISOString();
     const id = sanitizeIdentifier(input.id || input.name, `library-${crypto.randomUUID().slice(0, 8)}`);
-    const existingIndex = items.findIndex(item => item.id === id);
+    const { data: duplicate } = await supabase
+      .from('section_library')
+      .select('id,name')
+      .ilike('name', input.name.trim())
+      .maybeSingle();
+    if (duplicate) {
+      return res.status(409).json({ error: `A library section named “${duplicate.name}” already exists`, existingId: duplicate.id });
+    }
     const item = normalizeSectionLibraryItems([{
       id,
       name: input.name,
       description: input.description,
+      category: input.category,
+      tags: input.tags,
       payload: input.payload,
-      createdAt: existingIndex >= 0 ? items[existingIndex].createdAt : now,
+      createdAt: now,
       updatedAt: now,
-      createdBy: existingIndex >= 0 ? items[existingIndex].createdBy : req.user.email
+      createdBy: req.user.email
     }])[0];
     if (!item) return res.status(400).json({ error: 'Section must contain at least one priced option' });
-    if (existingIndex >= 0) items[existingIndex] = item;
-    else items.push(item);
-    await saveSectionLibraryData(items);
+    const { error } = await supabase.from('section_library').insert({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      tags: item.tags,
+      payload: item.payload,
+      created_at: item.createdAt,
+      updated_at: item.updatedAt,
+      created_by: item.createdBy
+    });
+    throwSupabaseError(error, 'createSectionLibraryItem');
     res.json({ success: true, item });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -1827,12 +1843,55 @@ app.post('/api/admin/section-library', requireAuth, async (req, res) => {
   }
 });
 
+app.put('/api/admin/section-library/:id', requireAuth, async (req, res) => {
+  try {
+    const input = schemas.saveSectionLibraryItem.omit({ id: true }).parse(req.body);
+    const items = await loadSectionLibraryData();
+    const existing = items.find(item => item.id === req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Library section not found' });
+    const duplicate = items.find(item => item.id !== req.params.id && item.name.toLowerCase() === input.name.trim().toLowerCase());
+    if (duplicate) {
+      return res.status(409).json({ error: `A library section named “${duplicate.name}” already exists`, existingId: duplicate.id });
+    }
+    const item = normalizeSectionLibraryItems([{
+      ...existing,
+      name: input.name,
+      description: input.description,
+      category: input.category,
+      tags: input.tags,
+      payload: input.payload,
+      updatedAt: new Date().toISOString()
+    }])[0];
+    if (!item) return res.status(400).json({ error: 'Section must contain at least one option' });
+    const { error } = await supabase.from('section_library').update({
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      tags: item.tags,
+      payload: item.payload,
+      updated_at: item.updatedAt
+    }).eq('id', req.params.id);
+    throwSupabaseError(error, 'updateSectionLibraryItem');
+    res.json({ success: true, item });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid section library item', details: err.issues || err.errors });
+    }
+    console.error('PUT section library error:', err);
+    res.status(500).json({ error: 'Failed to update section' });
+  }
+});
+
 app.delete('/api/admin/section-library/:id', requireAuth, async (req, res) => {
   try {
-    const items = await loadSectionLibraryData();
-    const nextItems = items.filter(item => item.id !== req.params.id);
-    if (nextItems.length === items.length) return res.status(404).json({ error: 'Library section not found' });
-    await saveSectionLibraryData(nextItems);
+    const { data, error } = await supabase
+      .from('section_library')
+      .delete()
+      .eq('id', req.params.id)
+      .select('id')
+      .maybeSingle();
+    throwSupabaseError(error, 'deleteSectionLibraryItem');
+    if (!data) return res.status(404).json({ error: 'Library section not found' });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE section library error:', err);
@@ -2757,15 +2816,20 @@ app.post('/api/admin/ai/budget-draft', requireAuth, limits.ai, async (req, res) 
     if (!budget) return res.status(404).json({ error: 'Budget not found' });
 
     const defaults = await loadCategoryDefaultsData();
-    const propertyType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
-    const categories = getBudgetDefaultCategoriesFromConfig(budget.categoryConfig || {}, defaults, propertyType);
+    const effectiveBudget = input.customization ? {
+      ...budget,
+      categoryConfig: normalizeCategoryConfigPayload(input.customization.categoryConfig),
+      customCategories: normalizeCustomCategoriesPayload(input.customization.customCategories)
+    } : budget;
+    const propertyType = effectiveBudget.propertyTypeLocked || effectiveBudget.currentState?.propertyType || 'residential';
+    const categories = getBudgetDefaultCategoriesFromConfig(effectiveBudget.categoryConfig || {}, defaults, propertyType);
     const library = await loadSectionLibraryData();
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.responses.parse({
       model: OPENAI_BUDGET_MODEL,
       reasoning: { effort: 'medium' },
       instructions: BUDGET_DRAFT_INSTRUCTIONS,
-      input: buildBudgetDraftInput({ prompt: input.prompt, budget, categories, library }),
+      input: buildBudgetDraftInput({ prompt: input.prompt, budget: effectiveBudget, categories, library }),
       text: { format: zodTextFormat(aiBudgetDraftSchema, 'gamma_budget_draft') },
       max_output_tokens: 12000,
       store: false
@@ -2794,27 +2858,44 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
     const defaults = await loadCategoryDefaultsData();
     const propertyType = budget.propertyTypeLocked || budget.currentState?.propertyType || 'residential';
     const sqftLocked = budget.sqftLocked || budget.currentState?.homeSize || 4000;
-    const categories = getBudgetDefaultCategoriesFromConfig(budget.categoryConfig || {}, defaults, propertyType);
+    const baseCategoryConfig = input.customization
+      ? normalizeCategoryConfigPayload(input.customization.categoryConfig)
+      : (budget.categoryConfig || {});
+    const baseCustomCategories = input.customization
+      ? normalizeCustomCategoriesPayload(input.customization.customCategories)
+      : (budget.customCategories || []);
+    const categories = getBudgetDefaultCategoriesFromConfig(baseCategoryConfig, defaults, propertyType);
     const library = await loadSectionLibraryData();
     const libraryMap = new Map(library.map(item => [item.id, item]));
     const draft = normalizeAiDraft(input.draft, categories, library);
     const usedIds = new Set([
       ...categories.map(category => category.id),
-      ...(budget.customCategories || []).filter(category => !category.aiGenerated).map(category => category.id)
+      ...baseCustomCategories.filter(category => !category.aiGenerated).map(category => category.id)
     ]);
-    const preservedCustom = (budget.customCategories || []).filter(category => !category.aiGenerated);
+    const priorAiCustom = baseCustomCategories.filter(category => category.aiGenerated);
+    const preservedCustom = baseCustomCategories.filter(category => !category.aiGenerated);
     const generatedCustom = [];
     const selections = { ...(budget.currentState?.selections || {}) };
+    priorAiCustom.forEach(category => delete selections[category.id]);
 
     const categoryConfig = normalizeCategoryConfigPayload({
       ...buildBudgetDefaultSnapshot(defaults),
-      ...(budget.categoryConfig || {})
+      ...baseCategoryConfig
     });
     draft.templateSelections.forEach(selection => {
-      selections[selection.categoryId] = selection.tierKey;
       categoryConfig[selection.categoryId] = {
         ...(categoryConfig[selection.categoryId] || {}),
-        required: selection.required === true
+        hidden: false,
+        required: selection.required === true,
+        aiRecommendedTier: selection.tierKey,
+        aiRationale: selection.rationale,
+        tiers: {
+          ...(categoryConfig[selection.categoryId]?.tiers || {}),
+          [selection.tierKey]: {
+            ...(categoryConfig[selection.categoryId]?.tiers?.[selection.tierKey] || {}),
+            price: selection.price
+          }
+        }
       };
     });
 
@@ -2823,6 +2904,14 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
       if (section.source === 'library') {
         payload = deepClone(libraryMap.get(section.sourceId)?.payload || null);
         if (!payload) return;
+        section.tiers.forEach(tier => {
+          if (!payload.tiers?.[tier.key]) return;
+          payload.tiers[tier.key] = {
+            ...payload.tiers[tier.key],
+            label: tier.label,
+            price: Math.round(Number(tier.price || 0) / 100) * 100
+          };
+        });
       } else {
         payload = {
           name: section.name,
@@ -2860,9 +2949,7 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
       }])[0];
       if (!normalized) return;
       generatedCustom.push(normalized);
-      selections[normalized.id] = normalized.tiers?.[section.recommendedTier]
-        ? section.recommendedTier
-        : Object.keys(normalized.tiers || {})[0] || null;
+      delete selections[normalized.id];
     });
 
     const customCategories = normalizeCustomCategoriesPayload([...preservedCustom, ...generatedCustom]);
@@ -2877,6 +2964,12 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
       existingSectionIds.add(id);
     });
     if (currentLayout.length) categoryConfig.__layout = { sections: currentLayout };
+    categoryConfig.__aiDraft = {
+      templateCategoryIds: draft.templateSelections.map(selection => selection.categoryId),
+      generatedCustomCategoryIds: generatedCustom.map(category => category.id),
+      summary: draft.summary,
+      appliedAt: new Date().toISOString()
+    };
 
     const currentState = { ...(budget.currentState || {}), selections };
     currentState.total = calculateBudgetTotal(currentState, defaults, {

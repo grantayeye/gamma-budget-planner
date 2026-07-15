@@ -1830,27 +1830,31 @@ test.describe('Admin copy/customization tools', () => {
       renderCustomizeEditor();
       const calls = [];
       const originalFetch = window.fetch;
-      const originalPrompt = window.prompt;
-      window.prompt = () => 'Golf Simulator';
+      const originalConfirm = window.confirm;
+      window.confirm = () => true;
       let savedItem;
       window.fetch = async (url, options = {}) => {
         calls.push({ url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
         if ((options.method || 'GET') === 'POST') {
           const body = JSON.parse(options.body);
-          savedItem = { id: 'golf-simulator', name: body.name, description: body.description, payload: body.payload };
+          savedItem = { id: 'golf-simulator', name: body.name, description: body.description, category: body.category, tags: body.tags, payload: body.payload };
           return new Response(JSON.stringify({ success: true, item: savedItem }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         return new Response(JSON.stringify({ items: [savedItem] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
 
-      await saveEditorToSectionLibrary('custom', '0');
+      saveEditorToSectionLibrary('custom', '0');
+      document.getElementById('libraryEditCategory').value = 'Entertainment';
+      document.getElementById('libraryEditTags').value = 'golf, one-off';
+      await saveLibraryEditor();
       await openSectionLibraryModal();
       addLibrarySectionToBudget('golf-simulator');
       const collected = collectCustomizationData();
       window.fetch = originalFetch;
-      window.prompt = originalPrompt;
+      window.confirm = originalConfirm;
       return {
         postName: calls.find(call => call.method === 'POST')?.body?.name,
+        postCategory: calls.find(call => call.method === 'POST')?.body?.category,
         libraryCard: document.getElementById('sectionLibraryBody').textContent,
         names: collected.customCategories.map(category => category.name),
         uniqueIds: new Set(collected.customCategories.map(category => category.id)).size === collected.customCategories.length
@@ -1858,6 +1862,7 @@ test.describe('Admin copy/customization tools', () => {
     });
 
     expect(result.postName).toBe('Golf Simulator');
+    expect(result.postCategory).toBe('Entertainment');
     expect(result.libraryCard).toContain('Simulator Allowance');
     expect(result.names).toEqual(['Golf Simulator', 'Golf Simulator']);
     expect(result.uniqueIds).toBe(true);
@@ -1871,16 +1876,19 @@ test.describe('Admin copy/customization tools', () => {
         isCustomized: true,
         sqftLocked: 4000,
         propertyTypeLocked: 'residential',
-        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
-        categoryConfig: {},
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: {
+          __defaultCategories: { residential: [{ id: 'networking', name: 'Networking', section: 'Infrastructure', icon: 'N', tiers: { best: { enabled: true, label: 'Enterprise', price: 30000, features: [] } } }], condo: [] }
+        },
         customCategories: []
       };
       renderCustomizeEditor();
+      showManagedModal('customizeModal');
       const draft = {
         summary: 'Adds a golf simulator allowance for review.',
         assumptions: ['Room construction is excluded.'],
         questions: ['Is a launch monitor already selected?'],
-        templateSelections: [],
+        templateSelections: [{ categoryId: 'networking', categoryName: 'Networking', tierKey: 'best', price: 30000, required: false, rationale: 'Reliable coverage.' }],
         sections: [{
           source: 'custom', sourceId: '', name: 'Golf Simulator', icon: 'G', header: 'Entertainment', required: false,
           recommendedTier: 'standard', rationale: 'Requested in meeting notes.',
@@ -1889,7 +1897,7 @@ test.describe('Admin copy/customization tools', () => {
       };
       const appliedBudget = {
         ...customizeBudgetData,
-        currentState: { ...customizeBudgetData.currentState, selections: { 'ai-golf-simulator': 'standard' }, total: 50000 },
+        currentState: { ...customizeBudgetData.currentState, selections: {}, total: 0 },
         customCategories: [{ id: 'ai-golf-simulator', name: 'Golf Simulator', icon: 'G', section: 'Entertainment', tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000 } } }]
       };
       const calls = [];
@@ -1908,27 +1916,96 @@ test.describe('Admin copy/customization tools', () => {
       };
 
       await openAiBudgetDraftModal();
+      const customizeInertDuringAi = document.getElementById('customizeModal').inert;
       document.getElementById('aiBudgetPrompt').value = 'Build a golf simulator allowance from the meeting notes.';
       await generateAiBudgetDraft();
       const preview = document.getElementById('aiBudgetResult').textContent;
+      const footerRect = document.getElementById('aiDraftFooter').getBoundingClientRect();
+      const footerVisible = getComputedStyle(document.getElementById('aiDraftFooter')).display !== 'none' && footerRect.bottom <= window.innerHeight + 1;
+      document.querySelector('.ai-review-row[data-kind="template"] .ai-include').click();
+      document.querySelector('.ai-review-row[data-kind="section"] .ai-tier-price').value = '55000';
+      updateAiDraftTotals();
+      const afterTotal = document.getElementById('aiAfterTotal').textContent;
+      const recommendedTotal = document.getElementById('aiRecommendedTotal').textContent;
       await applyAiBudgetDraft();
       const finalNames = customizeBudgetData.customCategories.map(category => category.name);
+      const generateCall = calls.find(call => call.url.endsWith('/api/admin/ai/budget-draft'));
+      const applyCall = calls.find(call => call.url.endsWith('/api/admin/budgets/ai-budget/apply-ai-draft'));
       window.fetch = originalFetch;
       window.confirm = originalConfirm;
       return {
         preview,
         finalNames,
-        draftPrompt: calls.find(call => call.url.endsWith('/api/admin/ai/budget-draft'))?.body?.prompt,
-        applied: calls.some(call => call.url.endsWith('/api/admin/budgets/ai-budget/apply-ai-draft')),
-        modalOpen: document.getElementById('aiBudgetDraftModal').classList.contains('active')
+        draftPrompt: generateCall?.body?.prompt,
+        generationHasCustomization: !!generateCall?.body?.customization,
+        applyHasCustomization: !!applyCall?.body?.customization,
+        appliedTemplateCount: applyCall?.body?.draft?.templateSelections?.length,
+        appliedPrice: applyCall?.body?.draft?.sections?.[0]?.tiers?.[0]?.price,
+        afterTotal,
+        recommendedTotal,
+        applied: !!applyCall,
+        finalSelections: customizeBudgetData.currentState.selections,
+        modalOpen: document.getElementById('aiBudgetDraftModal').classList.contains('active'),
+        customizeInertDuringAi,
+        customizeInertAfterApply: document.getElementById('customizeModal').inert,
+        footerVisible
       };
     });
 
     expect(result.preview).toContain('Golf Simulator');
-    expect(result.preview).toContain('$50,000');
+    expect(result.preview).toContain('$80,000');
     expect(result.draftPrompt).toContain('meeting notes');
+    expect(result.generationHasCustomization).toBe(true);
+    expect(result.applyHasCustomization).toBe(true);
+    expect(result.appliedTemplateCount).toBe(0);
+    expect(result.appliedPrice).toBe(55000);
+    expect(result.afterTotal).toBe('$0');
+    expect(result.recommendedTotal).toBe('$55,000');
     expect(result.applied).toBe(true);
     expect(result.finalNames).toEqual(['Golf Simulator']);
+    expect(result.finalSelections).toEqual({});
     expect(result.modalOpen).toBe(false);
+    expect(result.customizeInertDuringAi).toBe(true);
+    expect(result.customizeInertAfterApply).toBe(false);
+    expect(result.footerVisible).toBe(true);
+  });
+
+  test('team library manager searches, filters, edits, and duplicates sections', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      sectionLibraryItems = [
+        { id: 'golf', name: 'Golf Simulator', description: 'Dedicated room allowance', category: 'Entertainment', tags: ['golf', 'one-off'], payload: { name: 'Golf Simulator', icon: 'G', section: 'Entertainment', tiers: { standard: { enabled: true, label: 'Allowance', price: 50000, features: [] } } } },
+        { id: 'gate', name: 'Entry Gate', description: 'Gate access allowance', category: 'Security', tags: ['gate'], payload: { name: 'Entry Gate', icon: 'S', section: 'Security', tiers: { standard: { enabled: true, label: 'Allowance', price: 20000, features: [] } } } }
+      ];
+      populateLibraryCategorySelects();
+      renderSectionLibraryManager();
+      document.getElementById('libraryManagerSearch').value = 'golf';
+      renderSectionLibraryManager();
+      const searchText = document.getElementById('sectionLibraryManagerBody').textContent;
+      document.getElementById('libraryManagerSearch').value = '';
+      document.getElementById('libraryManagerCategory').value = 'Security';
+      renderSectionLibraryManager();
+      const filterText = document.getElementById('sectionLibraryManagerBody').textContent;
+      openLibraryEditorModal('golf');
+      const edit = {
+        name: document.getElementById('libraryEditName').value,
+        category: document.getElementById('libraryEditCategory').value,
+        dashboardInert: document.getElementById('dashboard').inert
+      };
+      closeLibraryEditorModal();
+      duplicateLibraryItem('golf');
+      const duplicate = {
+        id: document.getElementById('libraryEditId').value,
+        name: document.getElementById('libraryEditName').value
+      };
+      closeLibraryEditorModal();
+      return { searchText, filterText, edit, duplicate };
+    });
+
+    expect(result.searchText).toContain('Golf Simulator');
+    expect(result.searchText).not.toContain('Entry Gate');
+    expect(result.filterText).toContain('Entry Gate');
+    expect(result.filterText).not.toContain('Golf Simulator');
+    expect(result.edit).toEqual({ name: 'Golf Simulator', category: 'Entertainment', dashboardInert: true });
+    expect(result.duplicate).toEqual({ id: '', name: 'Golf Simulator Copy' });
   });
 });
