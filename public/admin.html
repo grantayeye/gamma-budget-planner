@@ -746,6 +746,70 @@
       font-size: 11px;
     }
 
+    .provenance-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+
+    .provenance-badge.library { background:#EAF5FC; color:#176B9A; }
+    .provenance-badge.ai { background:#F3E8FF; color:#6B21A8; }
+    .provenance-badge.approved { background:#E8F5E9; color:#2E7D32; }
+
+    .custom-provenance-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: -4px 0 9px;
+    }
+
+    .readiness-panel {
+      margin: 18px 0;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: white;
+    }
+
+    .readiness-panel.ready { border-color:#A5D6A7; background:#F3FBF4; }
+    .readiness-panel.needs-review { border-color:#FFE082; background:#FFFDF5; }
+
+    .readiness-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .readiness-item {
+      padding: 9px;
+      border-radius: 7px;
+      background: rgba(255,255,255,0.78);
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
+    .readiness-item strong {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 18px;
+      color: var(--primary);
+    }
+
+    .readiness-details {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-light);
+    }
+
     .library-card-actions {
       display: flex;
       gap: 7px;
@@ -1469,7 +1533,8 @@
       .ai-review-grid,
       .library-editor-grid,
       .library-tier-editor,
-      .ai-draft-totals {
+      .ai-draft-totals,
+      .readiness-grid {
         grid-template-columns: 1fr;
       }
 
@@ -5254,9 +5319,11 @@ let copyToPayload = null;
 let sectionLibraryItems = [];
 let activeAiBudgetDraft = null;
 let libraryEditorBasePayload = null;
+let customizeAiUndoAvailable = false;
 
 async function openCustomizeModal(budgetId) {
   customizeBudgetId = budgetId;
+  customizeAiUndoAvailable = false;
   
   try {
     if (!catData) {
@@ -5275,6 +5342,7 @@ async function openCustomizeModal(budgetId) {
     renderCustomizeEditor();
     customizeDirty = false;
     showManagedModal('customizeModal');
+    refreshAiUndoAvailability();
   } catch (err) {
     console.error('Load budget error:', err);
     showToast('Failed to load budget');
@@ -5473,6 +5541,7 @@ function renderCustomizeEditor() {
       <div class="customize-accelerators">
         <button type="button" class="btn btn-primary" onclick="openAiBudgetDraftModal()">✨ AI Budget Draft</button>
         <button type="button" class="btn btn-secondary" onclick="openSectionLibraryModal()">📚 Section Library</button>
+        <button type="button" class="btn btn-secondary" id="undoAiDraftBtn" onclick="undoAiBudgetDraft()" ${customizeAiUndoAvailable ? '' : 'style="display:none;"'}>↶ Undo AI Apply</button>
         <span>Build from notes or reuse a proven one-off section. Nothing changes until you apply it.</span>
       </div>
 
@@ -5489,6 +5558,8 @@ function renderCustomizeEditor() {
           </div>
         </div>
       ` : ''}
+
+      <div id="budgetReadinessPanel" class="readiness-panel needs-review"></div>
     </div>
 
     <div class="customize-actions-sticky">
@@ -5497,9 +5568,141 @@ function renderCustomizeEditor() {
     </div>
   `;
 
-  body.oninput = queueCustomizeDraftSave;
-  body.onchange = queueCustomizeDraftSave;
+  body.oninput = () => { queueCustomizeDraftSave(); updateBudgetReadiness(); };
+  body.onchange = () => { queueCustomizeDraftSave(); updateBudgetReadiness(); };
   syncCustomizeLayoutSelects();
+  updateBudgetReadiness();
+}
+
+async function refreshAiUndoAvailability() {
+  if (!customizeBudgetId) return;
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${customizeBudgetId}/ai-draft-undo`), { credentials: 'include' });
+    const data = await res.json();
+    customizeAiUndoAvailable = res.ok && data.available === true;
+  } catch (_) {
+    customizeAiUndoAvailable = false;
+  }
+  const button = document.getElementById('undoAiDraftBtn');
+  if (button) button.style.display = customizeAiUndoAvailable ? '' : 'none';
+}
+
+async function undoAiBudgetDraft() {
+  if (!customizeBudgetId || !customizeAiUndoAvailable) return;
+  const warning = customizeDirty
+    ? 'Undo the last AI Apply? This also discards edits made in the customizer since it was applied.'
+    : 'Undo the last AI Apply and restore the budget structure from immediately before it?';
+  if (!confirm(warning)) return;
+  try {
+    const res = await fetch(api(`/api/admin/budgets/${customizeBudgetId}/undo-ai-draft`), {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not undo AI draft');
+    customizeBudgetData = data.budget;
+    customizeAiUndoAvailable = false;
+    customizeDirty = false;
+    renderCustomizeEditor();
+    showToast('✓ AI draft undone; prior structure restored');
+  } catch (err) {
+    console.error('Undo AI draft error:', err);
+    customizeAiUndoAvailable = false;
+    const button = document.getElementById('undoAiDraftBtn');
+    if (button) button.style.display = 'none';
+    showToast('❌ ' + (err.message || 'Could not undo AI draft'));
+  }
+}
+
+function normalizeReadinessName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(copy|section|category)\b/g, '')
+    .replace(/\(\d+\)/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function calculateBudgetReadiness() {
+  const selections = customizeBudgetData?.currentState?.selections || {};
+  const required = [];
+  const names = [];
+  const missingPrices = [];
+
+  document.querySelectorAll('.category-editor').forEach(editor => {
+    const id = editor.dataset.catId;
+    const shown = editor.querySelector('.customize-show-control input')?.checked !== false;
+    const name = editor.querySelector('.category-editor-title strong')?.textContent.trim() || id;
+    if (shown) names.push(name);
+    if (shown && editor.querySelector('.category-required')?.checked && !selections[id]) required.push(name);
+    const enabledRows = Array.from(editor.querySelectorAll('.tier-row')).filter(row => row.querySelector('.tier-enabled')?.checked);
+    if (shown && (!enabledRows.length || enabledRows.some(row => Number(row.querySelector('.tier-price')?.value || 0) <= 0))) {
+      missingPrices.push(name);
+    }
+  });
+
+  document.querySelectorAll('.custom-category-editor').forEach(editor => {
+    const id = editor.dataset.ccId;
+    const name = editor.querySelector('.cc-name')?.value.trim() || 'Unnamed custom section';
+    names.push(name);
+    if (editor.querySelector('.category-required')?.checked && !selections[id]) required.push(name);
+    const enabledRows = Array.from(editor.querySelectorAll('.cc-tier-row')).filter(row => row.querySelector('.cc-tier-enabled')?.checked);
+    if (!enabledRows.length || enabledRows.some(row => Number(row.querySelector('.cc-tier-price')?.value || 0) <= 0)) {
+      missingPrices.push(name);
+    }
+  });
+
+  const groupedNames = new Map();
+  names.forEach(name => {
+    const key = normalizeReadinessName(name);
+    if (!key) return;
+    if (!groupedNames.has(key)) groupedNames.set(key, []);
+    groupedNames.get(key).push(name);
+  });
+  const duplicates = Array.from(groupedNames.values()).filter(group => group.length > 1);
+  const aiCategories = (customizeBudgetData?.customCategories || []).filter(category => category.aiGenerated);
+  const aiPricing = aiCategories.filter(category => !category.aiPriceReviewed || !category.aiReviewedAt).map(category => category.name);
+  const aiMeta = customizeBudgetData?.categoryConfig?.__aiDraft || {};
+  const aiNotesPending = !!aiMeta.appliedAt
+    && aiMeta.assumptionsReviewed !== true
+    && ((aiMeta.assumptions || []).length > 0 || (aiMeta.questions || []).length > 0);
+
+  return { required, duplicates, aiPricing, missingPrices: [...new Set(missingPrices)], aiNotesPending, aiMeta };
+}
+
+function updateBudgetReadiness() {
+  const panel = document.getElementById('budgetReadinessPanel');
+  if (!panel) return;
+  const report = calculateBudgetReadiness();
+  const issueCount = report.required.length + report.duplicates.length + report.aiPricing.length + report.missingPrices.length + (report.aiNotesPending ? 1 : 0);
+  const ready = issueCount === 0;
+  panel.className = `readiness-panel ${ready ? 'ready' : 'needs-review'}`;
+  const details = [];
+  if (report.required.length) details.push(`Customer choices pending: ${report.required.join(', ')}`);
+  if (report.duplicates.length) details.push(`Possible duplicates: ${report.duplicates.map(group => group.join(' / ')).join('; ')}`);
+  if (report.aiPricing.length) details.push(`AI pricing not reviewed: ${report.aiPricing.join(', ')}`);
+  if (report.missingPrices.length) details.push(`Missing or $0 option pricing: ${report.missingPrices.join(', ')}`);
+  if (report.aiNotesPending) details.push(`AI notes pending review: ${[...(report.aiMeta.assumptions || []), ...(report.aiMeta.questions || [])].join(' · ')}`);
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+      <strong>${ready ? '✓ Budget structure is ready' : 'Budget readiness review'}</strong>
+      ${report.aiNotesPending ? '<button type="button" class="btn btn-secondary btn-small" onclick="acknowledgeAiReadiness()">Mark AI notes reviewed</button>' : ''}
+    </div>
+    <div class="readiness-grid">
+      <div class="readiness-item"><strong>${report.required.length}</strong>Required choices unanswered</div>
+      <div class="readiness-item"><strong>${report.aiPricing.length}</strong>AI prices needing review</div>
+      <div class="readiness-item"><strong>${report.duplicates.length}</strong>Possible duplicates</div>
+      <div class="readiness-item"><strong>${report.missingPrices.length + (report.aiNotesPending ? 1 : 0)}</strong>Missing prices or notes</div>
+    </div>
+    <div class="readiness-details">${details.length ? details.map(detail => `<div>• ${escapeAttr(detail)}</div>`).join('') : 'No structural issues found. Customer selections can remain unanswered until the budget conversation.'}</div>`;
+}
+
+function acknowledgeAiReadiness() {
+  if (!customizeBudgetData?.categoryConfig?.__aiDraft) return;
+  customizeBudgetData.categoryConfig.__aiDraft.assumptionsReviewed = true;
+  customizeDirty = true;
+  queueCustomizeDraftSave();
+  updateBudgetReadiness();
 }
 
 function closeSectionLibraryModal() {
@@ -5857,15 +6060,15 @@ function renderAiBudgetDraft(draft) {
     <div class="ai-draft-summary"><strong>Draft summary</strong><div>${escapeAttr(draft.summary || '')}</div><div class="ai-draft-meta" style="margin-top:6px;">Applying this draft adds reviewed structure only. New choices remain unanswered.</div></div>
     <div class="ai-draft-totals">
       <div class="ai-draft-total">Current customer total<strong id="aiCurrentTotal">$0</strong></div>
-      <div class="ai-draft-total">After structure is applied<strong id="aiAfterTotal">$0</strong></div>
-      <div class="ai-draft-total">Recommendations if later chosen<strong id="aiRecommendedTotal">$0</strong></div>
+      <div class="ai-draft-total">Recommended additions<strong id="aiRecommendedAdditions">$0</strong></div>
+      <div class="ai-draft-total">Projected total if selected<strong id="aiProjectedTotal">$0</strong></div>
     </div>
     <div class="ai-draft-card"><strong>Approved template recommendations (${templates.length})</strong>
       ${templates.length ? templates.map((item, index) => {
         const category = aiCategoryForReview(item.categoryId);
         const options = TIER_ORDER.filter(key => category?.tiers?.[key] && category.tiers[key].enabled !== false);
         return `<div class="ai-review-row" data-kind="template" data-index="${index}" data-category-id="${escapeAttr(item.categoryId)}">
-          <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="checkbox" class="ai-include" checked onchange="toggleAiReviewRow(this)"> Include ${escapeAttr(item.categoryName || category?.name || item.categoryId)}</label>
+          <label style="display:flex;align-items:center;gap:8px;font-weight:600;flex-wrap:wrap;"><input type="checkbox" class="ai-include" checked onchange="toggleAiReviewRow(this)"> Include ${escapeAttr(item.categoryName || category?.name || item.categoryId)} ${provenanceBadgeHtml('approved')}</label>
           <div class="ai-review-grid">
             <label>Recommended option<select class="ai-template-tier" onchange="updateAiTemplateTierPrice(this)">${options.map(key => `<option value="${key}" ${key === item.tierKey ? 'selected' : ''}>${escapeAttr(category.tiers[key].label || tierDisplayName(key))}</option>`).join('')}</select></label>
             <label>Allowance<input type="number" class="ai-template-price" min="0" max="10000000" step="100" value="${Number(item.price || category?.tiers?.[item.tierKey]?.price || 0)}" oninput="updateAiDraftTotals()"></label>
@@ -5876,7 +6079,7 @@ function renderAiBudgetDraft(draft) {
     </div>
     <div class="ai-draft-card" style="margin-top:12px;"><strong>One-off sections (${sections.length})</strong>
       ${sections.length ? sections.map((section, index) => `<div class="ai-review-row" data-kind="section" data-index="${index}">
-        <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="checkbox" class="ai-include" checked onchange="toggleAiReviewRow(this)"> Include ${escapeAttr(section.icon || '📦')} ${escapeAttr(section.name)}</label>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;flex-wrap:wrap;"><input type="checkbox" class="ai-include" checked onchange="toggleAiReviewRow(this)"> Include ${escapeAttr(section.icon || '📦')} ${escapeAttr(section.name)} ${provenanceBadgeHtml(section.source === 'library' ? 'library' : 'ai')}</label>
         <div class="ai-review-grid">
           <label>Section name<input type="text" class="ai-section-name" value="${escapeAttr(section.name)}"></label>
           <label>Header<input type="text" class="ai-section-header" value="${escapeAttr(section.header)}"></label>
@@ -5914,22 +6117,29 @@ function collectAiDraftReview() {
 function updateAiDraftTotals() {
   if (!activeAiBudgetDraft) return;
   const currentTotal = Number(customizeBudgetData?.currentState?.total || 0);
-  let recommended = 0;
+  const selections = customizeBudgetData?.currentState?.selections || {};
+  let additions = 0;
   document.querySelectorAll('.ai-review-row[data-kind="template"]').forEach(row => {
-    if (row.querySelector('.ai-include').checked) recommended += Number(row.querySelector('.ai-template-price').value || 0);
+    if (!row.querySelector('.ai-include').checked) return;
+    const recommendedPrice = Number(row.querySelector('.ai-template-price').value || 0);
+    const currentTier = selections[row.dataset.categoryId];
+    const currentPrice = currentTier
+      ? Number(document.querySelector(`.category-editor[data-cat-id="${CSS.escape(row.dataset.categoryId)}"] .tier-row[data-tier="${CSS.escape(currentTier)}"] .tier-price`)?.value || 0)
+      : 0;
+    additions += recommendedPrice - currentPrice;
   });
   document.querySelectorAll('.ai-review-row[data-kind="section"]').forEach(row => {
     if (!row.querySelector('.ai-include').checked) return;
     const selected = row.querySelector('.ai-section-recommended').value;
     const tier = row.querySelector(`.ai-section-tier[data-tier-key="${CSS.escape(selected)}"]`);
-    recommended += Number(tier?.querySelector('.ai-tier-price').value || 0);
+    additions += Number(tier?.querySelector('.ai-tier-price').value || 0);
   });
   const currentEl = document.getElementById('aiCurrentTotal');
-  const afterEl = document.getElementById('aiAfterTotal');
-  const recommendedEl = document.getElementById('aiRecommendedTotal');
+  const additionsEl = document.getElementById('aiRecommendedAdditions');
+  const projectedEl = document.getElementById('aiProjectedTotal');
   if (currentEl) currentEl.textContent = formatCurrency(currentTotal);
-  if (afterEl) afterEl.textContent = formatCurrency(currentTotal);
-  if (recommendedEl) recommendedEl.textContent = formatCurrency(recommended);
+  if (additionsEl) additionsEl.textContent = formatCurrency(additions);
+  if (projectedEl) projectedEl.textContent = formatCurrency(currentTotal + additions);
 }
 
 async function applyAiBudgetDraft() {
@@ -5949,6 +6159,7 @@ async function applyAiBudgetDraft() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to apply AI draft');
     customizeBudgetData = data.budget;
+    customizeAiUndoAvailable = data.undoAvailable === true;
     activeAiBudgetDraft = null;
     closeAiBudgetDraftModal();
     renderCustomizeEditor();
@@ -6951,6 +7162,11 @@ function tierHasContent(defaultTier, tierOverride = {}, selected = false) {
   );
 }
 
+function provenanceBadgeHtml(kind) {
+  const labels = { approved: 'Approved Category', library: 'Team Library', ai: 'AI-Created' };
+  return labels[kind] ? `<span class="provenance-badge ${kind}">${labels[kind]}</span>` : '';
+}
+
 function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutControlsHtml = '') {
   const override = existingOverride || {};
   const isHidden = override.hidden === true;
@@ -6979,6 +7195,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
       <div class="category-editor-header-row">
         <div class="category-editor-title">
           <strong>${cat.icon} ${cat.name}</strong>
+          ${override.aiReviewedAt ? provenanceBadgeHtml('approved') : ''}
           ${selectedTier ? `<span style="color:var(--accent);font-size:12px;margin-left:8px;">● ${selectedTier} selected</span>` : ''}
         </div>
         <div class="category-editor-actions">
@@ -7083,6 +7300,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
   
   return `
     <div class="custom-category-editor" data-index="${index}" data-cc-id="${cc.id || ''}" data-presentation-mode="${presentationMode}" style="margin-bottom:16px;padding:16px;background:#E3F2FD;border-radius:8px;">
+      ${(cc.librarySourceId || cc.provenance === 'library') ? `<div class="custom-provenance-row">${provenanceBadgeHtml('library')}<span class="ai-draft-meta">Reusable team building block</span></div>` : cc.aiGenerated ? `<div class="custom-provenance-row">${provenanceBadgeHtml('ai')}<span class="ai-draft-meta">Reviewed ${cc.aiReviewedAt ? new Date(cc.aiReviewedAt).toLocaleDateString() : 'status unknown'}</span></div>` : ''}
       <div class="custom-category-header">
         <input type="text" class="cc-icon" value="${escapeAttr(cc.icon || '📦')}" style="padding:6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:18px;">
         <input type="text" class="cc-name" value="${escapeAttr(cc.name || '')}" placeholder="Category Name" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;">

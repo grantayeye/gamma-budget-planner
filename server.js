@@ -1219,6 +1219,21 @@ async function loadSectionLibraryData() {
   return normalizeSectionLibraryItems(data || []);
 }
 
+async function loadAiBudgetUndo(budgetId) {
+  const { data, error } = await supabase
+    .from('ai_budget_undo')
+    .select('budget_id,snapshot,applied_at,applied_by,created_at')
+    .eq('budget_id', budgetId)
+    .maybeSingle();
+  throwSupabaseError(error, 'loadAiBudgetUndo');
+  return data || null;
+}
+
+function aiBudgetUndoIsCurrent(undo, budget) {
+  if (!undo?.applied_at || !budget?.lastModified) return false;
+  return new Date(undo.applied_at).getTime() === new Date(budget.lastModified).getTime();
+}
+
 function slugifySectionId(value) {
   const slug = String(value || 'other')
     .toLowerCase()
@@ -2806,6 +2821,59 @@ app.get('/api/admin/ai/status', requireAuth, (req, res) => {
   res.json({ configured: !!process.env.OPENAI_API_KEY, model: OPENAI_BUDGET_MODEL });
 });
 
+app.get('/api/admin/budgets/:id/ai-draft-undo', requireAuth, async (req, res) => {
+  try {
+    const budget = await loadBudget(req.params.id);
+    if (!budget) return res.status(404).json({ error: 'Budget not found' });
+    const undo = await loadAiBudgetUndo(req.params.id);
+    res.json({
+      available: aiBudgetUndoIsCurrent(undo, budget),
+      appliedAt: undo?.applied_at || null
+    });
+  } catch (err) {
+    console.error('AI draft undo status error:', err);
+    res.status(500).json({ error: 'Failed to check AI undo status' });
+  }
+});
+
+app.post('/api/admin/budgets/:id/undo-ai-draft', requireAuth, async (req, res) => {
+  try {
+    const budget = await loadBudget(req.params.id);
+    if (!budget) return res.status(404).json({ error: 'Budget not found' });
+    const undo = await loadAiBudgetUndo(req.params.id);
+    if (!undo || !aiBudgetUndoIsCurrent(undo, budget)) {
+      return res.status(409).json({ error: 'Undo is no longer available because the budget changed after the AI draft was applied.' });
+    }
+    const snapshot = undo.snapshot || {};
+    if (!snapshot.currentState || !snapshot.categoryConfig || !Array.isArray(snapshot.customCategories)) {
+      return res.status(409).json({ error: 'The AI undo snapshot is incomplete.' });
+    }
+
+    const restoredState = preserveBudgetAccess(snapshot.currentState, budget.currentState || {});
+    const now = new Date().toISOString();
+    const { error: updateError } = await supabase.from('budgets').update({
+      is_customized: true,
+      customized_at: now,
+      sqft_locked: snapshot.sqftLocked || budget.sqftLocked,
+      property_type_locked: snapshot.propertyTypeLocked || budget.propertyTypeLocked,
+      current_state: restoredState,
+      category_config: normalizeCategoryConfigPayload(snapshot.categoryConfig),
+      custom_categories: snapshot.customCategories.length ? normalizeCustomCategoriesPayload(snapshot.customCategories) : null,
+      modified_at: now
+    }).eq('id', req.params.id);
+    throwSupabaseError(updateError, 'undoAiBudgetDraft');
+
+    const nextVersionNum = (budget.versions?.length || 0) + 1;
+    await addVersion(req.params.id, nextVersionNum, restoredState, 'AI budget draft undone', true, buildVersionMeta(req, req.user));
+    const { error: deleteError } = await supabase.from('ai_budget_undo').delete().eq('budget_id', req.params.id);
+    throwSupabaseError(deleteError, 'deleteAiBudgetUndo');
+    res.json({ success: true, budget: await loadBudget(req.params.id), newVersion: nextVersionNum });
+  } catch (err) {
+    console.error('Undo AI budget draft error:', err);
+    res.status(500).json({ error: 'Failed to undo AI budget draft' });
+  }
+});
+
 app.post('/api/admin/ai/budget-draft', requireAuth, limits.ai, async (req, res) => {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -2867,7 +2935,8 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
     const categories = getBudgetDefaultCategoriesFromConfig(baseCategoryConfig, defaults, propertyType);
     const library = await loadSectionLibraryData();
     const libraryMap = new Map(library.map(item => [item.id, item]));
-    const draft = normalizeAiDraft(input.draft, categories, library);
+    const draft = normalizeAiDraft(input.draft, categories, library, { preserveReviewedValues: true });
+    const appliedAt = new Date().toISOString();
     const usedIds = new Set([
       ...categories.map(category => category.id),
       ...baseCustomCategories.filter(category => !category.aiGenerated).map(category => category.id)
@@ -2887,6 +2956,9 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
         ...(categoryConfig[selection.categoryId] || {}),
         hidden: false,
         required: selection.required === true,
+        provenance: 'approved',
+        aiReviewedAt: appliedAt,
+        aiPriceReviewed: true,
         aiRecommendedTier: selection.tierKey,
         aiRationale: selection.rationale,
         tiers: {
@@ -2936,7 +3008,7 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
       const normalized = normalizeCustomCategoriesPayload([{
         ...payload,
         id,
-        name: payload.name || section.name,
+        name: section.name || payload.name,
         icon: payload.icon || section.icon || '📦',
         section: header,
         section_id: slugifySectionId(header),
@@ -2944,6 +3016,9 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
         required: section.required === true || payload.required === true,
         sortOrder: index,
         aiGenerated: true,
+        provenance: section.source === 'library' ? 'library' : 'ai',
+        aiReviewedAt: appliedAt,
+        aiPriceReviewed: true,
         aiRationale: section.rationale,
         librarySourceId: section.source === 'library' ? section.sourceId : null
       }])[0];
@@ -2968,7 +3043,9 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
       templateCategoryIds: draft.templateSelections.map(selection => selection.categoryId),
       generatedCustomCategoryIds: generatedCustom.map(category => category.id),
       summary: draft.summary,
-      appliedAt: new Date().toISOString()
+      assumptions: draft.assumptions || [],
+      questions: draft.questions || [],
+      appliedAt
     };
 
     const currentState = { ...(budget.currentState || {}), selections };
@@ -2979,7 +3056,30 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
       categoryConfig,
       customCategories
     });
-    const now = new Date().toISOString();
+    const undoState = { ...(budget.currentState || {}) };
+    undoState.total = calculateBudgetTotal(undoState, defaults, {
+      sqft: sqftLocked,
+      propertyType,
+      isCustomized: true,
+      categoryConfig: baseCategoryConfig,
+      customCategories: baseCustomCategories
+    });
+    const { error: undoError } = await supabase.from('ai_budget_undo').upsert({
+      budget_id: req.params.id,
+      snapshot: {
+        currentState: undoState,
+        categoryConfig: baseCategoryConfig,
+        customCategories: baseCustomCategories,
+        sqftLocked,
+        propertyTypeLocked: propertyType
+      },
+      applied_at: appliedAt,
+      applied_by: req.user.id,
+      created_at: appliedAt
+    });
+    throwSupabaseError(undoError, 'saveAiBudgetUndo');
+
+    const now = appliedAt;
     const { error } = await supabase.from('budgets').update({
       is_customized: true,
       customized_at: now,
@@ -2994,7 +3094,7 @@ app.post('/api/admin/budgets/:id/apply-ai-draft', requireAuth, async (req, res) 
 
     const nextVersionNum = (budget.versions?.length || 0) + 1;
     await addVersion(req.params.id, nextVersionNum, currentState, 'AI budget draft applied', true, buildVersionMeta(req, req.user));
-    res.json({ success: true, budget: await loadBudget(req.params.id), newVersion: nextVersionNum });
+    res.json({ success: true, budget: await loadBudget(req.params.id), newVersion: nextVersionNum, undoAvailable: true });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid AI budget draft', details: err.issues || err.errors });

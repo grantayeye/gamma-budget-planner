@@ -86,4 +86,23 @@ describe('AI budget draft helpers', () => {
       sections: [{ source: 'custom', sourceId: '', name: 'Bad', icon: '📦', header: 'Other', required: false, recommendedTier: 'good', rationale: '', tiers: [{ key: 'good', label: 'Bad', price: 10000001, features: [], brands: '' }] }]
     }))).toThrow();
   });
+
+  it('preserves staff-reviewed names and prices when applying a draft', () => {
+    const normalized = normalizeAiDraft(draft({
+      templateSelections: [
+        { categoryId: 'networking', categoryName: 'Networking', tierKey: 'good', price: 12500, required: false, rationale: 'Reviewed' }
+      ],
+      sections: [
+        { source: 'library', sourceId: 'golf-simulator', name: 'Simulator Planning Allowance', icon: '⛳', header: 'Specialty Spaces', required: true, recommendedTier: 'standard', rationale: 'Reviewed', tiers: [{ key: 'standard', label: 'Reviewed Allowance', price: 57500, features: ['Reviewed scope'], brands: '' }] }
+      ]
+    }), categories, library, { preserveReviewedValues: true });
+
+    expect(normalized.templateSelections[0].price).toBe(12500);
+    expect(normalized.sections[0]).toMatchObject({
+      name: 'Simulator Planning Allowance',
+      header: 'Specialty Spaces',
+      required: true
+    });
+    expect(normalized.sections[0].tiers[0]).toMatchObject({ label: 'Reviewed Allowance', price: 57500 });
+  });
 });

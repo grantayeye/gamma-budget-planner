@@ -112,7 +112,8 @@ Rules:
 10. Recommendations are planning guidance, not customer selections. Applying the draft will leave new sections unanswered so the customer-facing budget remains at $0 until choices are made.
 11. Return a practical draft for human review; never claim it is final.`;
 
-function normalizeAiDraft(draft, categories = [], library = []) {
+function normalizeAiDraft(draft, categories = [], library = [], options = {}) {
+  const preserveReviewedValues = options.preserveReviewedValues === true;
   const parsed = aiBudgetDraftSchema.parse(draft);
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const libraryMap = new Map(library.map(item => [item.id, item]));
@@ -126,7 +127,7 @@ function normalizeAiDraft(draft, categories = [], library = []) {
     return [{
       ...selection,
       categoryName: category.name || selection.categoryName,
-      price: Number(tier.price || 0)
+      price: preserveReviewedValues ? Number(selection.price || 0) : Number(tier.price || 0)
     }];
   });
 
@@ -137,19 +138,26 @@ function normalizeAiDraft(draft, categories = [], library = []) {
     if (!item || seenLibrary.has(section.sourceId)) return [];
     seenLibrary.add(section.sourceId);
     const payload = item.payload || {};
+    const reviewedTiers = new Map(section.tiers.map(tier => [tier.key, tier]));
     const tiers = TIER_KEYS
       .filter(key => payload.tiers?.[key] && payload.tiers[key].enabled !== false)
-      .map(key => ({ key, ...compactTier(payload.tiers[key]) }));
+      .map(key => {
+        const baseTier = { key, ...compactTier(payload.tiers[key]) };
+        const reviewed = reviewedTiers.get(key);
+        return preserveReviewedValues && reviewed
+          ? { ...baseTier, label: reviewed.label, price: reviewed.price, features: reviewed.features, brands: reviewed.brands }
+          : baseTier;
+      });
     if (!tiers.length) return [];
     const recommendedTier = tiers.some(tier => tier.key === section.recommendedTier)
       ? section.recommendedTier
       : tiers[0].key;
     return [{
       ...section,
-      name: item.name || payload.name || section.name,
+      name: preserveReviewedValues ? section.name : (item.name || payload.name || section.name),
       icon: payload.icon || section.icon,
-      header: payload.section || section.header,
-      required: payload.required === true || section.required,
+      header: preserveReviewedValues ? section.header : (payload.section || section.header),
+      required: preserveReviewedValues ? section.required : (payload.required === true || section.required),
       recommendedTier,
       tiers
     }];

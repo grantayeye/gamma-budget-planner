@@ -1898,7 +1898,8 @@ test.describe('Admin copy/customization tools', () => {
       const appliedBudget = {
         ...customizeBudgetData,
         currentState: { ...customizeBudgetData.currentState, selections: {}, total: 0 },
-        customCategories: [{ id: 'ai-golf-simulator', name: 'Golf Simulator', icon: 'G', section: 'Entertainment', tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000 } } }]
+        categoryConfig: { ...customizeBudgetData.categoryConfig, __aiDraft: { summary: 'Golf', assumptions: [], questions: [], appliedAt: '2026-07-15T00:00:00.000Z' } },
+        customCategories: [{ id: 'ai-golf-simulator', name: 'Golf Simulator', icon: 'G', section: 'Entertainment', aiGenerated: true, provenance: 'ai', aiReviewedAt: '2026-07-15T00:00:00.000Z', aiPriceReviewed: true, tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000 } } }]
       };
       const calls = [];
       const originalFetch = window.fetch;
@@ -1912,7 +1913,7 @@ test.describe('Admin copy/customization tools', () => {
         if (String(url).endsWith('/api/admin/ai/budget-draft')) {
           return new Response(JSON.stringify({ draft, model: 'gpt-test' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
-        return new Response(JSON.stringify({ success: true, budget: appliedBudget, newVersion: 2 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ success: true, budget: appliedBudget, newVersion: 2, undoAvailable: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
 
       await openAiBudgetDraftModal();
@@ -1920,13 +1921,14 @@ test.describe('Admin copy/customization tools', () => {
       document.getElementById('aiBudgetPrompt').value = 'Build a golf simulator allowance from the meeting notes.';
       await generateAiBudgetDraft();
       const preview = document.getElementById('aiBudgetResult').textContent;
+      const provenance = Array.from(document.querySelectorAll('#aiBudgetResult .provenance-badge')).map(el => el.textContent.trim());
       const footerRect = document.getElementById('aiDraftFooter').getBoundingClientRect();
       const footerVisible = getComputedStyle(document.getElementById('aiDraftFooter')).display !== 'none' && footerRect.bottom <= window.innerHeight + 1;
       document.querySelector('.ai-review-row[data-kind="template"] .ai-include').click();
       document.querySelector('.ai-review-row[data-kind="section"] .ai-tier-price').value = '55000';
       updateAiDraftTotals();
-      const afterTotal = document.getElementById('aiAfterTotal').textContent;
-      const recommendedTotal = document.getElementById('aiRecommendedTotal').textContent;
+      const recommendedAdditions = document.getElementById('aiRecommendedAdditions').textContent;
+      const projectedTotal = document.getElementById('aiProjectedTotal').textContent;
       await applyAiBudgetDraft();
       const finalNames = customizeBudgetData.customCategories.map(category => category.name);
       const generateCall = calls.find(call => call.url.endsWith('/api/admin/ai/budget-draft'));
@@ -1935,17 +1937,20 @@ test.describe('Admin copy/customization tools', () => {
       window.confirm = originalConfirm;
       return {
         preview,
+        provenance,
         finalNames,
         draftPrompt: generateCall?.body?.prompt,
         generationHasCustomization: !!generateCall?.body?.customization,
         applyHasCustomization: !!applyCall?.body?.customization,
         appliedTemplateCount: applyCall?.body?.draft?.templateSelections?.length,
         appliedPrice: applyCall?.body?.draft?.sections?.[0]?.tiers?.[0]?.price,
-        afterTotal,
-        recommendedTotal,
+        recommendedAdditions,
+        projectedTotal,
         applied: !!applyCall,
         finalSelections: customizeBudgetData.currentState.selections,
         modalOpen: document.getElementById('aiBudgetDraftModal').classList.contains('active'),
+        appliedProvenance: document.getElementById('customizeBody').textContent.includes('AI-Created'),
+        undoVisible: getComputedStyle(document.getElementById('undoAiDraftBtn')).display !== 'none',
         customizeInertDuringAi,
         customizeInertAfterApply: document.getElementById('customizeModal').inert,
         footerVisible
@@ -1954,20 +1959,97 @@ test.describe('Admin copy/customization tools', () => {
 
     expect(result.preview).toContain('Golf Simulator');
     expect(result.preview).toContain('$80,000');
+    expect(result.provenance).toEqual(['Approved Category', 'AI-Created']);
     expect(result.draftPrompt).toContain('meeting notes');
     expect(result.generationHasCustomization).toBe(true);
     expect(result.applyHasCustomization).toBe(true);
     expect(result.appliedTemplateCount).toBe(0);
     expect(result.appliedPrice).toBe(55000);
-    expect(result.afterTotal).toBe('$0');
-    expect(result.recommendedTotal).toBe('$55,000');
+    expect(result.recommendedAdditions).toBe('$55,000');
+    expect(result.projectedTotal).toBe('$55,000');
     expect(result.applied).toBe(true);
     expect(result.finalNames).toEqual(['Golf Simulator']);
     expect(result.finalSelections).toEqual({});
     expect(result.modalOpen).toBe(false);
+    expect(result.appliedProvenance).toBe(true);
+    expect(result.undoVisible).toBe(true);
     expect(result.customizeInertDuringAi).toBe(true);
     expect(result.customizeInertAfterApply).toBe(false);
     expect(result.footerVisible).toBe(true);
+  });
+
+  test('readiness panel surfaces structural risks and records AI-note review', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      customizeBudgetId = 'readiness-budget';
+      customizeBudgetData = {
+        id: 'readiness-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: {
+          __defaultCategories: { residential: [{ id: 'networking', name: 'Networking', section: 'Infrastructure', icon: 'N', tiers: { good: { enabled: true, label: 'Good', price: 5000 } } }], condo: [] },
+          networking: { required: true },
+          __aiDraft: { appliedAt: '2026-07-15T00:00:00.000Z', assumptions: ['Pathways must be confirmed.'], questions: ['Is power available?'] }
+        },
+        customCategories: [
+          { id: 'ai-gate', name: 'Gate Camera', aiGenerated: true, tiers: { good: { enabled: true, label: 'Coverage', price: 0 } } },
+          { id: 'manual-gate', name: 'Gate Camera Copy', tiers: { good: { enabled: true, label: 'Coverage', price: 2500 } } }
+        ]
+      };
+      renderCustomizeEditor();
+      const before = document.getElementById('budgetReadinessPanel').textContent;
+      acknowledgeAiReadiness();
+      const after = document.getElementById('budgetReadinessPanel').textContent;
+      return {
+        before,
+        after,
+        reviewed: customizeBudgetData.categoryConfig.__aiDraft.assumptionsReviewed,
+        counts: Array.from(document.querySelectorAll('.readiness-item strong')).map(el => Number(el.textContent))
+      };
+    });
+
+    expect(result.before).toContain('Networking');
+    expect(result.before).toContain('Gate Camera');
+    expect(result.before).toContain('AI notes pending review');
+    expect(result.after).not.toContain('AI notes pending review');
+    expect(result.reviewed).toBe(true);
+    expect(result.counts).toEqual([1, 1, 1, 1]);
+  });
+
+  test('one-click AI undo restores the prior customizer state', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const baseBudget = {
+        id: 'undo-budget', isCustomized: true, sqftLocked: 4000, propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: { __defaultCategories: { residential: [], condo: [] } }, customCategories: []
+      };
+      customizeBudgetId = baseBudget.id;
+      customizeBudgetData = { ...baseBudget, customCategories: [{ id: 'ai-room', name: 'AI Room', aiGenerated: true, tiers: { good: { enabled: true, label: 'Allowance', price: 5000 } } }] };
+      customizeAiUndoAvailable = true;
+      renderCustomizeEditor();
+      const visibleBefore = getComputedStyle(document.getElementById('undoAiDraftBtn')).display !== 'none';
+      const originalFetch = window.fetch;
+      const originalConfirm = window.confirm;
+      let undoCalled = false;
+      window.confirm = () => true;
+      window.fetch = async (url, options = {}) => {
+        undoCalled = String(url).endsWith('/api/admin/budgets/undo-budget/undo-ai-draft') && options.method === 'POST';
+        return new Response(JSON.stringify({ success: true, budget: baseBudget, newVersion: 3 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+      await undoAiBudgetDraft();
+      window.fetch = originalFetch;
+      window.confirm = originalConfirm;
+      return {
+        visibleBefore,
+        undoCalled,
+        restoredNames: customizeBudgetData.customCategories.map(category => category.name),
+        availableAfter: customizeAiUndoAvailable,
+        visibleAfter: getComputedStyle(document.getElementById('undoAiDraftBtn')).display !== 'none'
+      };
+    });
+
+    expect(result).toEqual({ visibleBefore: true, undoCalled: true, restoredNames: [], availableAfter: false, visibleAfter: false });
   });
 
   test('team library manager searches, filters, edits, and duplicates sections', async ({ page }) => {
