@@ -2994,7 +2994,10 @@ function updateStats(rows = budgets) {
 
 async function viewBudget(id) {
   try {
-    if (!users.length) {
+    // Only superadmins may list every user. Regular staff still need budget
+    // details (especially the Unexpire control), so do not call the
+    // restricted users endpoint for them.
+    if (currentUser?.canManageUsers && !users.length) {
       await loadUsers();
     }
     const res = await fetch(api(`/api/admin/budgets/${id}`), { credentials: 'include' });
@@ -4242,7 +4245,7 @@ function renderVersionChangeLog(budget, version) {
 
 function renderSalespersonOptions(currentEmail) {
   const options = new Map();
-  (users || []).forEach(user => {
+  (Array.isArray(users) ? users : []).forEach(user => {
     const email = user.email || user.username;
     if (email) options.set(email, user.name || email);
   });
@@ -6714,7 +6717,9 @@ async function loadUsers() {
       showLogin();
       return;
     }
-    users = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to load users');
+    users = Array.isArray(data) ? data : [];
     renderUsers();
   } catch (err) {
     console.error('Load users error:', err);

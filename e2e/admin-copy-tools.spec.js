@@ -189,6 +189,78 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.listRowText).toContain('sam');
   });
 
+  test('regular staff can open expired budget details and unexpire it', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      users = [];
+      currentUser = {
+        email: 'jorge@gamma.tech',
+        name: 'Jorge',
+        canManageUsers: false
+      };
+      const calls = [];
+      const expiredBudget = {
+        id: 'expired123',
+        clientName: 'Expired Residence',
+        builder: 'Gamma Builder',
+        createdByEmail: 'jorge@gamma.tech',
+        status: 'active',
+        created: '2026-05-01T12:00:00.000Z',
+        lastModified: '2026-06-01T12:00:00.000Z',
+        expiresAt: '2026-06-30',
+        expiredAt: null,
+        isExpired: true,
+        currentState: {
+          clientName: 'Expired Residence',
+          builder: 'Gamma Builder',
+          homeSize: 4000,
+          propertyType: 'residential',
+          total: 12000,
+          selections: {},
+          extras: {},
+          expiresAt: '2026-06-30'
+        },
+        views: [],
+        activeBrowsers: [],
+        versions: [],
+        categoryConfig: {},
+        customCategories: []
+      };
+
+      const originalLoadUsers = loadUsers;
+      let loadUsersCalled = false;
+      loadUsers = async () => {
+        loadUsersCalled = true;
+        throw new Error('Regular staff must not call the restricted users endpoint');
+      };
+      fetch = async (url) => {
+        calls.push(String(url));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => expiredBudget
+        };
+      };
+
+      try {
+        await viewBudget('expired123');
+      } finally {
+        loadUsers = originalLoadUsers;
+      }
+      return {
+        calls,
+        loadUsersCalled,
+        modalOpen: document.getElementById('budgetModal').classList.contains('active'),
+        unexpireVisible: [...document.querySelectorAll('#budgetModal button')]
+          .some(button => button.textContent.trim() === 'Unexpire Budget')
+      };
+    });
+
+    expect(result.calls).toContainEqual(expect.stringContaining('/api/admin/budgets/expired123'));
+    expect(result.loadUsersCalled).toBe(false);
+    expect(result.modalOpen).toBe(true);
+    expect(result.unexpireVisible).toBe(true);
+  });
+
   test('category editor creates stable section ids for typed new headers', async ({ page }) => {
     const result = await page.evaluate(() => {
       catData = {
