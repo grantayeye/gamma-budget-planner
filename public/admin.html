@@ -103,6 +103,61 @@
       box-shadow: 0 0 0 3px rgba(1,126,215,0.12);
       background: white;
     }
+
+    .budget-start-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .budget-start-option {
+      position: relative;
+      display: block;
+      cursor: pointer;
+    }
+
+    .budget-start-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .budget-start-option-card {
+      display: block;
+      height: 100%;
+      padding: 14px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: #FAFBFC;
+      transition: all var(--transition);
+    }
+
+    .budget-start-option input:checked + .budget-start-option-card {
+      border-color: var(--accent);
+      background: #EEF8FE;
+      box-shadow: 0 0 0 3px rgba(1,126,215,0.1);
+    }
+
+    .budget-start-option input:focus-visible + .budget-start-option-card {
+      outline: 3px solid rgba(1,126,215,0.25);
+      outline-offset: 2px;
+    }
+
+    .budget-start-option-title {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--primary);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .budget-start-option-copy {
+      display: block;
+      color: var(--text-light);
+      font-size: 12px;
+      line-height: 1.45;
+    }
     
     .btn {
       padding: 12px 24px;
@@ -1530,6 +1585,10 @@
     }
 
     @media (max-width: 700px) {
+      .budget-start-options {
+        grid-template-columns: 1fr;
+      }
+
       .ai-review-grid,
       .library-editor-grid,
       .library-tier-editor,
@@ -2627,14 +2686,32 @@
 
 <!-- NEW BUDGET MODAL -->
 <div class="modal-overlay" id="newBudgetModal">
-  <div class="modal" style="max-width: 500px;">
+  <div class="modal" style="max-width: 560px;">
     <div class="modal-header">
-      <h2>➕ New Custom Budget</h2>
+      <h2>➕ New Budget</h2>
       <button class="modal-close" onclick="closeNewBudgetModal()">×</button>
     </div>
     <div class="modal-body">
-      <p style="margin-bottom:20px;color:var(--text-light);">Create a blank budget to customize pricing for a specific project.</p>
       <form onsubmit="handleNewBudgetSubmit(event)">
+        <fieldset class="form-group" style="border:0;padding:0;min-width:0;">
+          <legend style="font-weight:600;font-size:13px;color:var(--text);">Starting Point</legend>
+          <div class="budget-start-options">
+            <label class="budget-start-option">
+              <input type="radio" name="newBudgetType" value="template" checked onchange="updateNewBudgetTypeUi()">
+              <span class="budget-start-option-card">
+                <span class="budget-start-option-title">Template Budget</span>
+                <span class="budget-start-option-copy">Start with Gamma Tech's standard categories, options, and allowances.</span>
+              </span>
+            </label>
+            <label class="budget-start-option">
+              <input type="radio" name="newBudgetType" value="blank_custom" onchange="updateNewBudgetTypeUi()">
+              <span class="budget-start-option-card">
+                <span class="budget-start-option-title">Blank Custom Budget</span>
+                <span class="budget-start-option-copy">Start at $0 with no categories or add-ons. Build with AI, the library, or custom sections.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
         <div class="form-group">
           <label>Client Name</label>
           <input type="text" id="newBudgetClient" placeholder="e.g., Smith Residence">
@@ -2655,7 +2732,7 @@
           </select>
         </div>
         <div style="display:flex;gap:12px;margin-top:24px;">
-          <button type="submit" class="btn btn-primary" style="flex:1;">Create Budget</button>
+          <button type="submit" class="btn btn-primary" id="newBudgetSubmitBtn" style="flex:1;">Create Template Budget</button>
           <button type="button" class="btn btn-secondary" onclick="closeNewBudgetModal()">Cancel</button>
         </div>
       </form>
@@ -5262,12 +5339,21 @@ function showNewBudgetModal() {
   document.getElementById('newBudgetBuilder').value = '';
   document.getElementById('newBudgetSqft').value = '';
   document.getElementById('newBudgetPropertyType').value = 'residential';
-  document.getElementById('newBudgetModal').classList.add('active');
+  const templateOption = document.querySelector('input[name="newBudgetType"][value="template"]');
+  if (templateOption) templateOption.checked = true;
+  updateNewBudgetTypeUi();
+  showManagedModal('newBudgetModal');
   document.getElementById('newBudgetClient').focus();
 }
 
 function closeNewBudgetModal() {
-  document.getElementById('newBudgetModal').classList.remove('active');
+  hideManagedModal('newBudgetModal');
+}
+
+function updateNewBudgetTypeUi() {
+  const budgetType = document.querySelector('input[name="newBudgetType"]:checked')?.value || 'template';
+  const submit = document.getElementById('newBudgetSubmitBtn');
+  if (submit) submit.textContent = budgetType === 'blank_custom' ? 'Create Blank Custom Budget' : 'Create Template Budget';
 }
 
 async function handleNewBudgetSubmit(e) {
@@ -5277,18 +5363,20 @@ async function handleNewBudgetSubmit(e) {
   const builder = document.getElementById('newBudgetBuilder').value.trim();
   const homeSize = parseInt(document.getElementById('newBudgetSqft').value);
   const propertyType = document.getElementById('newBudgetPropertyType').value;
+  const budgetType = document.querySelector('input[name="newBudgetType"]:checked')?.value || 'template';
   
   try {
     const res = await fetch(api('/api/admin/budgets'), {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientName, builder, homeSize, propertyType })
+      body: JSON.stringify({ clientName, builder, homeSize, propertyType, budgetType })
     });
     
     const data = await res.json();
     
     if (res.ok && data.success) {
-      showToast('✓ Budget created');
+      showToast(budgetType === 'blank_custom' ? '✓ Blank custom budget created' : '✓ Template budget created');
       closeNewBudgetModal();
       loadBudgets();
       // Open customize modal for the new budget

@@ -769,6 +769,14 @@ const schemas = {
     clientName: z.string().max(200).optional().nullable()
   }),
 
+  createAdminBudget: z.object({
+    clientName: z.string().max(200).optional().nullable(),
+    builder: z.string().max(200).optional().nullable(),
+    homeSize: z.coerce.number().int().min(500).max(50000),
+    propertyType: z.enum(['residential', 'condo']),
+    budgetType: z.enum(['template', 'blank_custom']).optional().default('template')
+  }),
+
   updateBudget: z.object({
     state: z.object({
       selections: z.record(z.string(), z.enum(['good', 'standard', 'better', 'best']).nullable()).optional(),
@@ -1382,6 +1390,15 @@ function buildBudgetDefaultSnapshot(defaults) {
       residential: deepClone(normalized.residential_sections || []),
       condo: deepClone(normalized.condo_sections || [])
     }
+  };
+}
+
+function buildBlankBudgetSnapshot() {
+  return {
+    [DEFAULT_CATEGORY_SNAPSHOT_KEY]: { residential: [], condo: [] },
+    [DEFAULT_EXTRA_SNAPSHOT_KEY]: { residential: [], condo: [] },
+    [DEFAULT_SECTION_SNAPSHOT_KEY]: { residential: [], condo: [] },
+    __layout: { sections: [{ id: 'custom', name: 'Custom', order: 0 }] }
   };
 }
 
@@ -2670,10 +2687,7 @@ app.delete('/api/admin/budgets/:id', requireAuth, async (req, res) => {
 
 app.post('/api/admin/budgets', requireAuth, async (req, res) => {
   try {
-    const { clientName, builder, homeSize, propertyType } = req.body;
-    if (!homeSize || !propertyType) {
-      return res.status(400).json({ error: 'homeSize and propertyType are required' });
-    }
+    const { clientName, builder, homeSize, propertyType, budgetType } = schemas.createAdminBudget.parse(req.body);
     
     let id;
     let exists;
@@ -2682,6 +2696,8 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
       const { data: check } = await supabase.from('budgets').select('id').eq('id', id).single();
       exists = !!check;
     } while (exists);
+
+    const isBlankCustom = budgetType === 'blank_custom';
     
     const state = {
       selections: {}, extras: {}, modifiers: [], catMods: {},
@@ -2697,15 +2713,28 @@ app.post('/api/admin/budgets', requireAuth, async (req, res) => {
       clientName: clientName || null,
       builder: builder || null,
       currentState: state,
-      isCustomized: false,
-      categoryConfig: buildBudgetDefaultSnapshot(defaults)
+      isCustomized: isBlankCustom,
+      sqftLocked: isBlankCustom ? homeSize : null,
+      propertyTypeLocked: isBlankCustom ? propertyType : null,
+      categoryConfig: isBlankCustom ? buildBlankBudgetSnapshot() : buildBudgetDefaultSnapshot(defaults),
+      customCategories: isBlankCustom ? [] : null
     };
     await saveBudget(budget);
-    await addVersion(id, 1, state, 'Initial blank budget', true, buildVersionMeta(req, req.user));
+    await addVersion(
+      id,
+      1,
+      state,
+      isBlankCustom ? 'Initial blank custom budget' : 'Initial template budget',
+      true,
+      buildVersionMeta(req, req.user)
+    );
     
     res.json({ success: true, id, url: budgetEditUrl(id) });
     
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid budget details', details: err.issues || err.errors });
+    }
     console.error('Create admin budget error:', err);
     res.status(500).json({ error: 'Failed to create budget' });
   }

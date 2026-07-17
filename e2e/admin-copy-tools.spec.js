@@ -352,6 +352,73 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.opened).toBe('clone987');
   });
 
+  test('new budget asks for template or truly blank custom starting point', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const calls = [];
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options = {}) => {
+        if (String(url).endsWith('/api/admin/budgets') && options.method === 'POST') {
+          calls.push(JSON.parse(options.body));
+          return new Response(JSON.stringify({ success: true, id: `created-${calls.length}` }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return originalFetch(url, options);
+      };
+      loadBudgets = async () => {};
+      openCustomizeModal = async () => {};
+
+      showNewBudgetModal();
+      const defaultType = document.querySelector('input[name="newBudgetType"]:checked')?.value;
+      const defaultButton = document.getElementById('newBudgetSubmitBtn').textContent.trim();
+      document.getElementById('newBudgetClient').value = 'Blank QA';
+      document.getElementById('newBudgetBuilder').value = 'Gamma';
+      document.getElementById('newBudgetSqft').value = '4500';
+      document.getElementById('newBudgetPropertyType').value = 'residential';
+      const blankOption = document.querySelector('input[name="newBudgetType"][value="blank_custom"]');
+      blankOption.checked = true;
+      updateNewBudgetTypeUi();
+      const blankButton = document.getElementById('newBudgetSubmitBtn').textContent.trim();
+      await handleNewBudgetSubmit({ preventDefault() {} });
+
+      showNewBudgetModal();
+      document.getElementById('newBudgetClient').value = 'Template QA';
+      document.getElementById('newBudgetSqft').value = '6000';
+      document.getElementById('newBudgetPropertyType').value = 'condo';
+      await handleNewBudgetSubmit({ preventDefault() {} });
+      window.fetch = originalFetch;
+
+      return {
+        defaultType,
+        defaultButton,
+        blankButton,
+        calls,
+        options: [...document.querySelectorAll('input[name="newBudgetType"]')].map(input => input.value),
+        bodyOverflow: document.body.scrollWidth > document.body.clientWidth + 4
+      };
+    });
+
+    expect(result.options).toEqual(['template', 'blank_custom']);
+    expect(result.defaultType).toBe('template');
+    expect(result.defaultButton).toBe('Create Template Budget');
+    expect(result.blankButton).toBe('Create Blank Custom Budget');
+    expect(result.calls[0]).toMatchObject({
+      clientName: 'Blank QA',
+      builder: 'Gamma',
+      homeSize: 4500,
+      propertyType: 'residential',
+      budgetType: 'blank_custom'
+    });
+    expect(result.calls[1]).toMatchObject({
+      clientName: 'Template QA',
+      homeSize: 6000,
+      propertyType: 'condo',
+      budgetType: 'template'
+    });
+    expect(result.bodyOverflow).toBe(false);
+  });
+
   test('copies a source section into the target customize editor', async ({ page }) => {
     const result = await page.evaluate(() => {
       const targetCat = {
