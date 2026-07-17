@@ -2727,19 +2727,24 @@
       <h2 id="libraryEditorTitle">New Library Section</h2>
       <button class="modal-close" onclick="closeLibraryEditorModal()">×</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body library-category-editor" data-presentation-mode="list">
       <input type="hidden" id="libraryEditId">
       <div class="library-editor-grid">
         <label>Name<input type="text" id="libraryEditName" maxlength="200" placeholder="Golf Simulator"></label>
         <label>Category<input type="text" id="libraryEditCategory" maxlength="100" placeholder="Entertainment"></label>
         <label>Header<input type="text" id="libraryEditHeader" maxlength="120" placeholder="Entertainment"></label>
         <label>Icon<input type="text" id="libraryEditIcon" maxlength="20" placeholder="📦"></label>
+        <label>Display<select id="libraryEditPresentationMode" class="presentation-mode-select" onchange="setLibraryPresentationMode(this)">
+          <option value="list">Feature list</option>
+          <option value="matrix">Comparison table</option>
+        </select></label>
         <label style="grid-column:1/-1;">Tags<input type="text" id="libraryEditTags" placeholder="golf, entertainment, one-off"></label>
         <label style="grid-column:1/-1;">Description / usage notes<textarea id="libraryEditDescription" rows="3" maxlength="1000" placeholder="When to use this section and what the allowance covers."></textarea></label>
       </div>
       <label style="display:flex;align-items:center;gap:8px;margin:14px 0;font-size:13px;"><input type="checkbox" id="libraryEditRequired"> Require a customer choice</label>
       <h3 style="margin:14px 0 8px;">Options</h3>
-      <div id="libraryTierEditors"></div>
+      <div id="libraryTierEditors" class="library-tier-editors"></div>
+      <div id="libraryMatrixEditor"></div>
       <div style="display:flex;gap:10px;margin-top:18px;">
         <button type="button" class="btn btn-primary" onclick="saveLibraryEditor()" style="flex:1;">Save Library Section</button>
         <button type="button" class="btn btn-secondary" onclick="closeLibraryEditorModal()">Cancel</button>
@@ -3599,6 +3604,8 @@ function buildFeatureMatrixFromTiers(tiers = {}) {
 }
 
 function matrixRenderOptionsForEditor(editor) {
+  const isLibrary = !!editor?.closest?.('.library-category-editor') || editor?.classList?.contains('library-category-editor');
+  if (isLibrary) return { allowAddonPricing: true, hideScaleControls: true };
   const isCustomize = !!editor?.closest?.('#customizeModal');
   if (isCustomize) return { allowAddonPricing: true, hideScaleControls: true };
   return { allowTemplateAddonPricing: true };
@@ -3809,10 +3816,13 @@ function readFeatureMatrixFromContainer(container) {
 
 function getTierFeaturesFromEditor(editor) {
   const tiers = {};
-  editor?.querySelectorAll('.tier-row, .tier-edit-card[data-tier], .cc-tier-row').forEach(row => {
+  editor?.querySelectorAll('.tier-row, .tier-edit-card[data-tier], .cc-tier-row, .library-tier-editor[data-tier]').forEach(row => {
     const tierKey = row.dataset.tier;
     let features = [];
-    if (row.dataset.features) {
+    const libraryFeatures = row.querySelector('.library-tier-features');
+    if (libraryFeatures) {
+      features = splitFeatureLines([libraryFeatures.value || '']);
+    } else if (row.dataset.features) {
       try { features = JSON.parse(row.dataset.features || '[]'); } catch (_) { features = []; }
     } else {
       const idx = parseInt(editor.closest?.('.cat-editor-card')?.dataset.catIdx || '-1');
@@ -3828,9 +3838,11 @@ function getTierFeaturesFromEditor(editor) {
 function writeMatrixLegacyFeaturesToTierRows(editor, matrix = []) {
   TIER_ORDER.forEach(tierKey => {
     const features = legacyFeaturesFromMatrix(matrix, tierKey);
-    const row = editor?.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
+    const row = editor?.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured), .library-tier-editor[data-tier="${tierKey}"]`);
     if (!row) return;
     row.dataset.features = JSON.stringify(features);
+    const libraryFeatures = row.querySelector('.library-tier-features');
+    if (libraryFeatures) libraryFeatures.value = features.join('\n');
     const featureButton = row.querySelector('.tier-features-btn');
     if (featureButton) featureButton.textContent = `✏️ Edit Features (${features.length})`;
   });
@@ -3871,7 +3883,7 @@ function setMatrixMode(select, catId) {
 }
 
 function convertCategoryFeaturesToMatrix(button) {
-  const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor');
+  const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor, .library-category-editor');
   const list = editor?.querySelector('.feature-matrix-list');
   if (!editor || !list) return;
   const existingMatrix = readFeatureMatrixFromContainer(list);
@@ -3888,7 +3900,7 @@ function convertCategoryFeaturesToMatrix(button) {
   editor.dataset.presentationMode = 'matrix';
   const panel = editor.querySelector('.matrix-mode-panel');
   if (panel) panel.style.display = 'block';
-  const tierEditor = editor.querySelector('.tier-editors, .tier-edit-grid, .cc-tiers');
+  const tierEditor = editor.querySelector('.tier-editors, .tier-edit-grid, .cc-tiers, .library-tier-editors');
   if (tierEditor) tierEditor.style.display = 'none';
   markCatDirty();
   queueCustomizeDraftSave();
@@ -4126,7 +4138,7 @@ function getMatrixPanelForControl(control) {
 function matrixAddonPriceAllowedForControl(control) {
   const panel = getMatrixPanelForControl(control);
   if (!panel) return false;
-  return !!(panel.closest('#customizeModal') || panel.closest('.cat-editor-card'));
+  return !!(panel.closest('#customizeModal') || panel.closest('.cat-editor-card') || panel.closest('.library-category-editor'));
 }
 
 function refreshMatrixAddonPricingLocks(control) {
@@ -4138,13 +4150,13 @@ function refreshMatrixAddonPricingLocks(control) {
 function syncMatrixRowsToCards(editor) {
   editor?.querySelectorAll('.feature-matrix-tier-card[data-tier]').forEach(card => {
     const tierKey = card.dataset.tier;
-    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
+    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured), .library-tier-editor[data-tier="${tierKey}"]`);
     const labelInput = card.querySelector('.matrix-tier-label');
     const priceInput = card.querySelector('.matrix-tier-price');
     const scaleInput = card.querySelector('.matrix-tier-scale');
     if (!row) return;
-    const rowLabel = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value;
-    const rowPrice = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value;
+    const rowLabel = row.querySelector('.tier-label, .cc-tier-label, .library-tier-label, [data-tf="label"]')?.value;
+    const rowPrice = row.querySelector('.tier-price, .cc-tier-price, .library-tier-price, [data-tf="price"]')?.value;
     const rowScale = row.querySelector('[data-tf="sizeScale"]')?.value;
     if (labelInput && rowLabel !== undefined) labelInput.value = rowLabel;
     if (priceInput && rowPrice !== undefined) priceInput.value = rowPrice;
@@ -4155,7 +4167,7 @@ function syncMatrixRowsToCards(editor) {
 function swapMatrixTierWithNeighbor(button, tierKey, direction) {
   const panel = button.closest('.matrix-mode-panel');
   if (!panel) return;
-  const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor');
+  const editor = button.closest('.category-editor, .cat-editor-card, .custom-category-editor, .library-category-editor');
   const scrollArea = button.closest('.customize-scroll-area') || document.scrollingElement;
   const previousScroll = scrollArea?.scrollTop || 0;
   syncMatrixTierCardsToRows(editor);
@@ -4163,8 +4175,11 @@ function swapMatrixTierWithNeighbor(button, tierKey, direction) {
   const currentIndex = activeTiers.indexOf(tierKey);
   const nextTier = activeTiers[currentIndex + direction];
   if (currentIndex < 0 || !nextTier) return;
-  const rowSelector = editor?.classList.contains('custom-category-editor') ? '.cc-tier-row' : (editor?.classList.contains('cat-editor-card') ? '.tier-edit-card' : '.tier-row');
-  const selectors = editor?.classList.contains('custom-category-editor')
+  const isLibrary = editor?.classList.contains('library-category-editor');
+  const rowSelector = isLibrary ? '.library-tier-editor' : (editor?.classList.contains('custom-category-editor') ? '.cc-tier-row' : (editor?.classList.contains('cat-editor-card') ? '.tier-edit-card' : '.tier-row'));
+  const selectors = isLibrary
+    ? { enabled: '.library-tier-enabled', label: '.library-tier-label', price: '.library-tier-price', disable: 'input:not(.library-tier-enabled), textarea' }
+    : editor?.classList.contains('custom-category-editor')
     ? { enabled: '.cc-tier-enabled', label: '.cc-tier-label', price: '.cc-tier-price', disable: 'input:not(.cc-tier-enabled), button:not(.tier-swap-btn)' }
     : (editor?.classList.contains('cat-editor-card')
       ? { enabled: null, label: '[data-tf="label"]', price: '[data-tf="price"]', sizeScale: '[data-tf="sizeScale"]', disable: 'input, button' }
@@ -4227,13 +4242,13 @@ function syncMatrixTierCardsToRows(editor) {
   if (!editor) return;
   editor.querySelectorAll('.feature-matrix-tier-card[data-tier]').forEach(card => {
     const tierKey = card.dataset.tier;
-    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured)`);
+    const row = editor.querySelector(`.tier-row[data-tier="${tierKey}"], .cc-tier-row[data-tier="${tierKey}"], .tier-edit-card[data-tier="${tierKey}"]:not(.tier-not-configured), .library-tier-editor[data-tier="${tierKey}"]`);
     if (!row) return;
-    const enabled = row.querySelector('.tier-enabled, .cc-tier-enabled');
+    const enabled = row.querySelector('.tier-enabled, .cc-tier-enabled, .library-tier-enabled');
     const matrixEnabled = card.querySelector('.matrix-tier-enabled')?.checked !== false;
     if (enabled) enabled.checked = matrixEnabled;
-    const labelInput = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]');
-    const priceInput = row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]');
+    const labelInput = row.querySelector('.tier-label, .cc-tier-label, .library-tier-label, [data-tf="label"]');
+    const priceInput = row.querySelector('.tier-price, .cc-tier-price, .library-tier-price, [data-tf="price"]');
     const scaleInput = row.querySelector('[data-tf="sizeScale"]');
     const matrixLabel = card.querySelector('.matrix-tier-label')?.value;
     const matrixPrice = card.querySelector('.matrix-tier-price')?.value;
@@ -4246,11 +4261,11 @@ function syncMatrixTierCardsToRows(editor) {
 
 function buildMatrixCategoryFromEditor(editor) {
   const tiers = {};
-  editor?.querySelectorAll('.tier-row[data-tier], .cc-tier-row[data-tier], .tier-edit-card[data-tier]:not(.tier-not-configured)').forEach(row => {
+  editor?.querySelectorAll('.tier-row[data-tier], .cc-tier-row[data-tier], .tier-edit-card[data-tier]:not(.tier-not-configured), .library-tier-editor[data-tier]').forEach(row => {
     const tierKey = row.dataset.tier;
-    const enabledInput = row.querySelector('.tier-enabled, .cc-tier-enabled');
-    const label = row.querySelector('.tier-label, .cc-tier-label, [data-tf="label"]')?.value || TIER_NAMES[tierKey];
-    const price = parseInt(row.querySelector('.tier-price, .cc-tier-price, [data-tf="price"]')?.value) || 0;
+    const enabledInput = row.querySelector('.tier-enabled, .cc-tier-enabled, .library-tier-enabled');
+    const label = row.querySelector('.tier-label, .cc-tier-label, .library-tier-label, [data-tf="label"]')?.value || TIER_NAMES[tierKey];
+    const price = parseInt(row.querySelector('.tier-price, .cc-tier-price, .library-tier-price, [data-tf="price"]')?.value) || 0;
     const scaleInput = row.querySelector('[data-tf="sizeScale"]');
     const sizeScale = scaleInput?.value?.trim();
     tiers[tierKey] = {
@@ -4266,10 +4281,31 @@ function buildMatrixCategoryFromEditor(editor) {
 }
 
 function toggleMatrixTierEnabled(control, tierKey, enabled) {
-  const editor = control.closest('.category-editor, .cat-editor-card, .custom-category-editor');
+  const editor = control.closest('.category-editor, .cat-editor-card, .custom-category-editor, .library-category-editor');
   if (!editor) return;
   const scrollArea = control.closest('.customize-scroll-area') || document.scrollingElement;
   const previousScroll = scrollArea?.scrollTop || 0;
+
+  if (editor.classList.contains('library-category-editor')) {
+    const currentPanel = editor.querySelector('.matrix-mode-panel');
+    const featureMatrix = readFeatureMatrixFromContainer(currentPanel?.querySelector('.feature-matrix-list'));
+    syncMatrixTierCardsToRows(editor);
+    const row = editor.querySelector(`.library-tier-editor[data-tier="${tierKey}"]`);
+    const checkbox = row?.querySelector('.library-tier-enabled');
+    if (checkbox) checkbox.checked = enabled;
+    syncLibraryTierEditorState(row, { focus: false });
+    const payload = {
+      ...buildMatrixCategoryFromEditor(editor),
+      presentationMode: 'matrix',
+      featureMatrix
+    };
+    const replacement = renderFeatureMatrixEditorPanel(payload, {}, matrixRenderOptionsForEditor(editor));
+    if (currentPanel) currentPanel.outerHTML = replacement;
+    requestAnimationFrame(() => {
+      if (scrollArea) scrollArea.scrollTop = previousScroll;
+    });
+    return;
+  }
 
   if (editor.classList.contains('cat-editor-card')) {
     const catIdx = parseInt(editor.dataset.catIdx || '-1');
@@ -5774,6 +5810,7 @@ function libraryCardHtml(item, { allowAdd = false } = {}) {
     </div>
     <div style="font-size:13px;color:var(--text-light);margin-top:7px;">${escapeAttr(item.description || 'No usage notes yet.')}</div>
     <div class="library-tags">${(item.tags || []).map(tag => `<span class="library-tag">${escapeAttr(tag)}</span>`).join('')}</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-light);margin-top:8px;">${payload.presentationMode === 'matrix' ? 'Comparison table' : 'Feature list'}</div>
     <div class="section-library-tier-list">${tiers.map(key => `<span>${escapeAttr(payload.tiers[key].label || tierDisplayName(key))}: ${formatCurrency(payload.tiers[key].price)}</span>`).join('')}</div>
     <div class="library-card-actions">
       ${allowAdd ? `<button type="button" class="btn btn-primary btn-small" onclick="addLibrarySectionToBudget('${escapeAttr(item.id)}')">Add to Budget</button>` : ''}
@@ -5810,7 +5847,7 @@ function renderLibraryTierEditors(payload = {}) {
     const tier = payload.tiers?.[key] || {};
     const enabled = !!(payload.tiers?.[key] && tier.enabled !== false);
     const disabled = enabled ? '' : 'disabled';
-    return `<div class="library-tier-editor ${enabled ? '' : 'is-disabled'}" data-tier="${key}">
+    return `<div class="library-tier-editor ${enabled ? '' : 'is-disabled'}" data-tier="${key}" data-features="${escapeAttr(JSON.stringify(tier.features || []))}" data-brands="${escapeAttr(tier.brands || '')}">
       <label class="library-tier-toggle"><input type="checkbox" class="library-tier-enabled" ${enabled ? 'checked' : ''} onchange="syncLibraryTierEditorState(this.closest('.library-tier-editor'))"> ${escapeAttr(tierDisplayName(key))}</label>
       <label>Option label<input type="text" class="library-tier-label" value="${escapeAttr(tier.label || '')}" placeholder="${escapeAttr(tierDisplayName(key))}" ${disabled}></label>
       <label>Allowance<input type="number" class="library-tier-price" min="0" max="10000000" step="100" value="${Number(tier.price || 0)}" ${disabled}></label>
@@ -5819,14 +5856,63 @@ function renderLibraryTierEditors(payload = {}) {
   }).join('');
 }
 
-function syncLibraryTierEditorState(row) {
+function syncLibraryTierEditorState(row, { focus = true } = {}) {
   if (!row) return;
   const enabled = row.querySelector('.library-tier-enabled')?.checked === true;
   row.classList.toggle('is-disabled', !enabled);
   row.querySelectorAll('input:not(.library-tier-enabled), textarea').forEach(field => {
     field.disabled = !enabled;
   });
-  if (enabled) row.querySelector('.library-tier-label')?.focus();
+  if (enabled && focus) row.querySelector('.library-tier-label')?.focus();
+}
+
+function getLibraryEditor() {
+  return document.querySelector('#libraryEditorModal .library-category-editor');
+}
+
+function renderLibraryMatrixEditor(payload = {}) {
+  const editor = getLibraryEditor();
+  const host = document.getElementById('libraryMatrixEditor');
+  if (!editor || !host) return;
+  host.innerHTML = renderFeatureMatrixEditorPanel(payload, {}, matrixRenderOptionsForEditor(editor));
+  refreshMatrixAddonPricingLocks(host);
+  updateMatrixIncludedNoteSizeButtons(host);
+}
+
+function setLibraryPresentationMode(select) {
+  const editor = getLibraryEditor();
+  if (!editor) return;
+  const previousMode = editor.dataset.presentationMode === 'matrix' ? 'matrix' : 'list';
+  const nextMode = select.value === 'matrix' ? 'matrix' : 'list';
+  const tierEditors = document.getElementById('libraryTierEditors');
+  const panel = editor.querySelector('.matrix-mode-panel');
+
+  if (previousMode === 'matrix' && nextMode === 'list') {
+    const warning = 'Switch to Feature list? Comparison descriptions, add-on statuses, and not-included statuses will be lost. Included rows will become the option feature lists.';
+    if (!confirm(warning)) {
+      select.value = 'matrix';
+      return;
+    }
+    const matrix = readFeatureMatrixFromContainer(panel?.querySelector('.feature-matrix-list'));
+    syncMatrixTierCardsToRows(editor);
+    writeMatrixLegacyFeaturesToTierRows(editor, matrix);
+    editor.querySelectorAll('.library-tier-editor').forEach(row => syncLibraryTierEditorState(row, { focus: false }));
+  }
+
+  editor.dataset.presentationMode = nextMode;
+  if (tierEditors) tierEditors.style.display = nextMode === 'matrix' ? 'none' : '';
+
+  if (nextMode === 'matrix') {
+    const existingMatrix = readFeatureMatrixFromContainer(panel?.querySelector('.feature-matrix-list'));
+    const payload = {
+      ...buildMatrixCategoryFromEditor(editor),
+      presentationMode: 'matrix',
+      featureMatrix: existingMatrix.length ? existingMatrix : buildFeatureMatrixFromTiers(getTierFeaturesFromEditor(editor))
+    };
+    renderLibraryMatrixEditor(payload);
+  } else if (panel) {
+    panel.style.display = 'none';
+  }
 }
 
 function openLibraryEditorModal(id = '', payloadOverride = null) {
@@ -5843,6 +5929,12 @@ function openLibraryEditorModal(id = '', payloadOverride = null) {
   document.getElementById('libraryEditDescription').value = item?.description || payload.desc || '';
   document.getElementById('libraryEditRequired').checked = payload.required === true;
   renderLibraryTierEditors(payload);
+  const presentationMode = payload.presentationMode === 'matrix' ? 'matrix' : 'list';
+  const editor = getLibraryEditor();
+  if (editor) editor.dataset.presentationMode = presentationMode;
+  document.getElementById('libraryEditPresentationMode').value = presentationMode;
+  document.getElementById('libraryTierEditors').style.display = presentationMode === 'matrix' ? 'none' : '';
+  renderLibraryMatrixEditor({ ...payload, presentationMode });
   showManagedModal('libraryEditorModal');
 }
 
@@ -5861,9 +5953,12 @@ function duplicateLibraryItem(id) {
 }
 
 async function saveLibraryEditor() {
+  const editor = getLibraryEditor();
   const id = document.getElementById('libraryEditId').value;
   const name = document.getElementById('libraryEditName').value.trim();
   if (!name) return showToast('Add a library section name');
+  const presentationMode = document.getElementById('libraryEditPresentationMode').value === 'matrix' ? 'matrix' : 'list';
+  if (presentationMode === 'matrix') syncMatrixTierCardsToRows(editor);
   const tiers = {};
   document.querySelectorAll('#libraryTierEditors .library-tier-editor').forEach(row => {
     if (!row.querySelector('.library-tier-enabled').checked) return;
@@ -5877,14 +5972,19 @@ async function saveLibraryEditor() {
     };
   });
   if (!Object.keys(tiers).length) return showToast('Enable at least one option');
-  const payload = {
+  const featureMatrix = presentationMode === 'matrix'
+    ? readFeatureMatrixFromContainer(editor?.querySelector('.feature-matrix-list'))
+    : [];
+  if (presentationMode === 'matrix' && !featureMatrix.length) return showToast('Add at least one comparison feature');
+  applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode);
+  const payload = withPresentationPayload({
     ...(libraryEditorBasePayload || {}),
     name,
     icon: document.getElementById('libraryEditIcon').value.trim() || '📦',
     section: document.getElementById('libraryEditHeader').value.trim() || 'Custom',
     required: document.getElementById('libraryEditRequired').checked,
     tiers
-  };
+  }, presentationMode, featureMatrix);
   const body = {
     name,
     category: document.getElementById('libraryEditCategory').value.trim() || 'Other',
@@ -6624,6 +6724,8 @@ function readTierRowData(row, selectors) {
   } catch (_) {
     features = [];
   }
+  const libraryFeatures = row.querySelector('.library-tier-features');
+  if (libraryFeatures) features = splitFeatureLines([libraryFeatures.value || '']);
   if (!features.length && row.classList.contains('tier-edit-card')) {
     const editor = row.closest('.cat-editor-card');
     const idx = parseInt(editor?.dataset.catIdx || '-1');
@@ -6657,6 +6759,8 @@ function writeTierRowData(row, data, selectors) {
   if (scaleEl) scaleEl.value = data.sizeScale ?? '';
   row.dataset.features = JSON.stringify(data.features || []);
   row.dataset.brands = data.brands || '';
+  const libraryFeatures = row.querySelector('.library-tier-features');
+  if (libraryFeatures) libraryFeatures.value = (data.features || []).join('\n');
   const brandsEl = row.querySelector('[data-tf="brands"]');
   if (brandsEl) brandsEl.value = data.brands || '';
   const disabled = !enabled && !isLocked;

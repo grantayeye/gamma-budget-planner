@@ -1940,6 +1940,99 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.uniqueIds).toBe(true);
   });
 
+  test('creates, edits, and reuses comparison-table library sections', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      sectionLibraryItems = [];
+      const calls = [];
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options = {}) => {
+        const method = options.method || 'GET';
+        const body = options.body ? JSON.parse(options.body) : null;
+        calls.push({ url: String(url), method, body });
+        const item = {
+          id: 'network-options',
+          name: body.name,
+          description: body.description,
+          category: body.category,
+          tags: body.tags,
+          payload: body.payload
+        };
+        return new Response(JSON.stringify({ success: true, item }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      };
+
+      openLibraryEditorModal('', {
+        name: 'Network Options',
+        icon: 'N',
+        section: 'Infrastructure',
+        tiers: {
+          good: { enabled: true, label: 'Reliable', price: 10000, features: ['Managed WiFi'] },
+          better: { enabled: true, label: 'Resilient', price: 18000, features: ['Managed WiFi', 'Battery backup'] }
+        }
+      });
+      document.getElementById('libraryEditCategory').value = 'Infrastructure';
+      const modeSelect = document.getElementById('libraryEditPresentationMode');
+      modeSelect.value = 'matrix';
+      setLibraryPresentationMode(modeSelect);
+      const createdRowCount = document.querySelectorAll('#libraryMatrixEditor .feature-matrix-row').length;
+      await saveLibraryEditor();
+
+      openLibraryEditorModal('network-options');
+      const editMode = document.getElementById('libraryEditPresentationMode').value;
+      const batteryRow = [...document.querySelectorAll('#libraryMatrixEditor .feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Battery backup');
+      batteryRow.querySelector('.fm-description').value = 'Keeps critical network equipment online during short outages.';
+      const betterStatus = batteryRow.querySelector('.fm-status[data-tier="better"]');
+      betterStatus.value = 'addon';
+      updateMatrixAddonPriceVisibility(betterStatus);
+      batteryRow.querySelector('.fm-addon-price-input[data-tier="better"]').value = '2500';
+      document.querySelector('#libraryMatrixEditor .feature-matrix-tier-card[data-tier="better"] .matrix-tier-price').value = '19000';
+      await saveLibraryEditor();
+
+      customizeBudgetId = 'matrix-library-budget';
+      customizeBudgetData = {
+        id: 'matrix-library-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
+        categoryConfig: { __layout: { sections: [{ id: 'custom', name: 'Custom', order: 0 }] } },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+      addLibrarySectionToBudget('network-options');
+      const reused = collectCustomizationData().customCategories[0];
+      const post = calls.find(call => call.method === 'POST');
+      const put = calls.find(call => call.method === 'PUT');
+      window.fetch = originalFetch;
+      return {
+        createdRowCount,
+        postMode: post?.body?.payload?.presentationMode,
+        editMode,
+        putMode: put?.body?.payload?.presentationMode,
+        betterPrice: put?.body?.payload?.tiers?.better?.price,
+        batteryCell: put?.body?.payload?.featureMatrix?.find(row => row.label === 'Battery backup')?.tierStatus?.better,
+        batteryDescription: put?.body?.payload?.featureMatrix?.find(row => row.label === 'Battery backup')?.description,
+        reusedMode: reused?.presentationMode,
+        reusedMatrixCount: reused?.featureMatrix?.length,
+        cardText: document.getElementById('sectionLibraryManagerBody').textContent
+      };
+    });
+
+    expect(result.createdRowCount).toBe(2);
+    expect(result.postMode).toBe('matrix');
+    expect(result.editMode).toBe('matrix');
+    expect(result.putMode).toBe('matrix');
+    expect(result.betterPrice).toBe(19000);
+    expect(result.batteryCell).toEqual({ status: 'addon', price: 2500 });
+    expect(result.batteryDescription).toContain('critical network equipment');
+    expect(result.reusedMode).toBe('matrix');
+    expect(result.reusedMatrixCount).toBe(2);
+    expect(result.cardText).toContain('Comparison table');
+  });
+
   test('previews and explicitly applies an AI budget draft', async ({ page }) => {
     const result = await page.evaluate(async () => {
       customizeBudgetId = 'ai-budget';
