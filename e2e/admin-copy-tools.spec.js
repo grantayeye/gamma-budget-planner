@@ -352,6 +352,73 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.opened).toBe('clone987');
   });
 
+  test('new budget asks for template or truly blank custom starting point', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const calls = [];
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options = {}) => {
+        if (String(url).endsWith('/api/admin/budgets') && options.method === 'POST') {
+          calls.push(JSON.parse(options.body));
+          return new Response(JSON.stringify({ success: true, id: `created-${calls.length}` }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return originalFetch(url, options);
+      };
+      loadBudgets = async () => {};
+      openCustomizeModal = async () => {};
+
+      showNewBudgetModal();
+      const defaultType = document.querySelector('input[name="newBudgetType"]:checked')?.value;
+      const defaultButton = document.getElementById('newBudgetSubmitBtn').textContent.trim();
+      document.getElementById('newBudgetClient').value = 'Blank QA';
+      document.getElementById('newBudgetBuilder').value = 'Gamma';
+      document.getElementById('newBudgetSqft').value = '4500';
+      document.getElementById('newBudgetPropertyType').value = 'residential';
+      const blankOption = document.querySelector('input[name="newBudgetType"][value="blank_custom"]');
+      blankOption.checked = true;
+      updateNewBudgetTypeUi();
+      const blankButton = document.getElementById('newBudgetSubmitBtn').textContent.trim();
+      await handleNewBudgetSubmit({ preventDefault() {} });
+
+      showNewBudgetModal();
+      document.getElementById('newBudgetClient').value = 'Template QA';
+      document.getElementById('newBudgetSqft').value = '6000';
+      document.getElementById('newBudgetPropertyType').value = 'condo';
+      await handleNewBudgetSubmit({ preventDefault() {} });
+      window.fetch = originalFetch;
+
+      return {
+        defaultType,
+        defaultButton,
+        blankButton,
+        calls,
+        options: [...document.querySelectorAll('input[name="newBudgetType"]')].map(input => input.value),
+        bodyOverflow: document.body.scrollWidth > document.body.clientWidth + 4
+      };
+    });
+
+    expect(result.options).toEqual(['template', 'blank_custom']);
+    expect(result.defaultType).toBe('template');
+    expect(result.defaultButton).toBe('Create Template Budget');
+    expect(result.blankButton).toBe('Create Blank Custom Budget');
+    expect(result.calls[0]).toMatchObject({
+      clientName: 'Blank QA',
+      builder: 'Gamma',
+      homeSize: 4500,
+      propertyType: 'residential',
+      budgetType: 'blank_custom'
+    });
+    expect(result.calls[1]).toMatchObject({
+      clientName: 'Template QA',
+      homeSize: 6000,
+      propertyType: 'condo',
+      budgetType: 'template'
+    });
+    expect(result.bodyOverflow).toBe(false);
+  });
+
   test('copies a source section into the target customize editor', async ({ page }) => {
     const result = await page.evaluate(() => {
       const targetCat = {
@@ -1878,5 +1945,381 @@ test.describe('Admin copy/customization tools', () => {
 
     expect(result.customCount).toBe(1);
     expect(result.seen).toEqual([{ type: 'custom', id: result.addedId }]);
+  });
+
+  test('saves and reuses a custom section from the team library', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      customizeBudgetId = 'library-budget';
+      customizeBudgetData = {
+        id: 'library-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
+        categoryConfig: { __layout: { sections: [{ id: 'custom', name: 'Custom', order: 0 }] } },
+        customCategories: [{
+          id: 'golf-simulator',
+          name: 'Golf Simulator',
+          icon: 'G',
+          section: 'Custom',
+          section_id: 'custom',
+          tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000, features: ['Room technology'], brands: '' } }
+        }]
+      };
+      renderCustomizeEditor();
+      const calls = [];
+      const originalFetch = window.fetch;
+      const originalConfirm = window.confirm;
+      window.confirm = () => true;
+      let savedItem;
+      window.fetch = async (url, options = {}) => {
+        calls.push({ url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
+        if ((options.method || 'GET') === 'POST') {
+          const body = JSON.parse(options.body);
+          savedItem = { id: 'golf-simulator', name: body.name, description: body.description, category: body.category, tags: body.tags, payload: body.payload };
+          return new Response(JSON.stringify({ success: true, item: savedItem }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ items: [savedItem] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+
+      saveEditorToSectionLibrary('custom', '0');
+      document.getElementById('libraryEditCategory').value = 'Entertainment';
+      document.getElementById('libraryEditTags').value = 'golf, one-off';
+      await saveLibraryEditor();
+      await openSectionLibraryModal();
+      addLibrarySectionToBudget('golf-simulator');
+      const collected = collectCustomizationData();
+      window.fetch = originalFetch;
+      window.confirm = originalConfirm;
+      return {
+        postName: calls.find(call => call.method === 'POST')?.body?.name,
+        postCategory: calls.find(call => call.method === 'POST')?.body?.category,
+        libraryCard: document.getElementById('sectionLibraryBody').textContent,
+        names: collected.customCategories.map(category => category.name),
+        uniqueIds: new Set(collected.customCategories.map(category => category.id)).size === collected.customCategories.length
+      };
+    });
+
+    expect(result.postName).toBe('Golf Simulator');
+    expect(result.postCategory).toBe('Entertainment');
+    expect(result.libraryCard).toContain('Simulator Allowance');
+    expect(result.names).toEqual(['Golf Simulator', 'Golf Simulator']);
+    expect(result.uniqueIds).toBe(true);
+  });
+
+  test('creates, edits, and reuses comparison-table library sections', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      sectionLibraryItems = [];
+      const calls = [];
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options = {}) => {
+        const method = options.method || 'GET';
+        const body = options.body ? JSON.parse(options.body) : null;
+        calls.push({ url: String(url), method, body });
+        const item = {
+          id: 'network-options',
+          name: body.name,
+          description: body.description,
+          category: body.category,
+          tags: body.tags,
+          payload: body.payload
+        };
+        return new Response(JSON.stringify({ success: true, item }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      };
+
+      openLibraryEditorModal('', {
+        name: 'Network Options',
+        icon: 'N',
+        section: 'Infrastructure',
+        tiers: {
+          good: { enabled: true, label: 'Reliable', price: 10000, features: ['Managed WiFi'] },
+          better: { enabled: true, label: 'Resilient', price: 18000, features: ['Managed WiFi', 'Battery backup'] }
+        }
+      });
+      document.getElementById('libraryEditCategory').value = 'Infrastructure';
+      const modeSelect = document.getElementById('libraryEditPresentationMode');
+      modeSelect.value = 'matrix';
+      setLibraryPresentationMode(modeSelect);
+      const createdRowCount = document.querySelectorAll('#libraryMatrixEditor .feature-matrix-row').length;
+      await saveLibraryEditor();
+
+      openLibraryEditorModal('network-options');
+      const editMode = document.getElementById('libraryEditPresentationMode').value;
+      const batteryRow = [...document.querySelectorAll('#libraryMatrixEditor .feature-matrix-row')]
+        .find(row => row.querySelector('.fm-label')?.value === 'Battery backup');
+      batteryRow.querySelector('.fm-description').value = 'Keeps critical network equipment online during short outages.';
+      const betterStatus = batteryRow.querySelector('.fm-status[data-tier="better"]');
+      betterStatus.value = 'addon';
+      updateMatrixAddonPriceVisibility(betterStatus);
+      batteryRow.querySelector('.fm-addon-price-input[data-tier="better"]').value = '2500';
+      document.querySelector('#libraryMatrixEditor .feature-matrix-tier-card[data-tier="better"] .matrix-tier-price').value = '19000';
+      await saveLibraryEditor();
+
+      customizeBudgetId = 'matrix-library-budget';
+      customizeBudgetData = {
+        id: 'matrix-library-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {} },
+        categoryConfig: { __layout: { sections: [{ id: 'custom', name: 'Custom', order: 0 }] } },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+      addLibrarySectionToBudget('network-options');
+      const reused = collectCustomizationData().customCategories[0];
+      const post = calls.find(call => call.method === 'POST');
+      const put = calls.find(call => call.method === 'PUT');
+      window.fetch = originalFetch;
+      return {
+        createdRowCount,
+        postMode: post?.body?.payload?.presentationMode,
+        editMode,
+        putMode: put?.body?.payload?.presentationMode,
+        betterPrice: put?.body?.payload?.tiers?.better?.price,
+        batteryCell: put?.body?.payload?.featureMatrix?.find(row => row.label === 'Battery backup')?.tierStatus?.better,
+        batteryDescription: put?.body?.payload?.featureMatrix?.find(row => row.label === 'Battery backup')?.description,
+        reusedMode: reused?.presentationMode,
+        reusedMatrixCount: reused?.featureMatrix?.length,
+        cardText: document.getElementById('sectionLibraryManagerBody').textContent
+      };
+    });
+
+    expect(result.createdRowCount).toBe(2);
+    expect(result.postMode).toBe('matrix');
+    expect(result.editMode).toBe('matrix');
+    expect(result.putMode).toBe('matrix');
+    expect(result.betterPrice).toBe(19000);
+    expect(result.batteryCell).toEqual({ status: 'addon', price: 2500 });
+    expect(result.batteryDescription).toContain('critical network equipment');
+    expect(result.reusedMode).toBe('matrix');
+    expect(result.reusedMatrixCount).toBe(2);
+    expect(result.cardText).toContain('Comparison table');
+  });
+
+  test('previews and explicitly applies an AI budget draft', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      customizeBudgetId = 'ai-budget';
+      customizeBudgetData = {
+        id: 'ai-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: {
+          __defaultCategories: { residential: [{ id: 'networking', name: 'Networking', section: 'Infrastructure', icon: 'N', tiers: { best: { enabled: true, label: 'Enterprise', price: 30000, features: [] } } }], condo: [] }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+      showManagedModal('customizeModal');
+      const draft = {
+        summary: 'Adds a golf simulator allowance for review.',
+        assumptions: ['Room construction is excluded.'],
+        questions: ['Is a launch monitor already selected?'],
+        templateSelections: [{ categoryId: 'networking', categoryName: 'Networking', tierKey: 'best', price: 30000, required: false, rationale: 'Reliable coverage.' }],
+        sections: [{
+          source: 'custom', sourceId: '', name: 'Golf Simulator', icon: 'G', header: 'Entertainment', required: false,
+          recommendedTier: 'standard', rationale: 'Requested in meeting notes.',
+          tiers: [{ key: 'standard', label: 'Simulator Allowance', price: 50000, features: ['Room technology'], brands: '' }]
+        }]
+      };
+      const appliedBudget = {
+        ...customizeBudgetData,
+        currentState: { ...customizeBudgetData.currentState, selections: {}, total: 0 },
+        categoryConfig: { ...customizeBudgetData.categoryConfig, __aiDraft: { summary: 'Golf', assumptions: [], questions: [], appliedAt: '2026-07-15T00:00:00.000Z' } },
+        customCategories: [{ id: 'ai-golf-simulator', name: 'Golf Simulator', icon: 'G', section: 'Entertainment', aiGenerated: true, provenance: 'ai', aiReviewedAt: '2026-07-15T00:00:00.000Z', aiPriceReviewed: true, tiers: { standard: { enabled: true, label: 'Simulator Allowance', price: 50000 } } }]
+      };
+      const calls = [];
+      const originalFetch = window.fetch;
+      const originalConfirm = window.confirm;
+      window.confirm = () => true;
+      window.fetch = async (url, options = {}) => {
+        calls.push({ url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
+        if (String(url).endsWith('/api/admin/ai/status')) {
+          return new Response(JSON.stringify({ configured: true, model: 'gpt-test' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (String(url).endsWith('/api/admin/ai/budget-draft')) {
+          return new Response(JSON.stringify({ draft, model: 'gpt-test' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ success: true, budget: appliedBudget, newVersion: 2, undoAvailable: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+
+      await openAiBudgetDraftModal();
+      const customizeInertDuringAi = document.getElementById('customizeModal').inert;
+      document.getElementById('aiBudgetPrompt').value = 'Build a golf simulator allowance from the meeting notes.';
+      await generateAiBudgetDraft();
+      const preview = document.getElementById('aiBudgetResult').textContent;
+      const provenance = Array.from(document.querySelectorAll('#aiBudgetResult .provenance-badge')).map(el => el.textContent.trim());
+      const footerRect = document.getElementById('aiDraftFooter').getBoundingClientRect();
+      const footerVisible = getComputedStyle(document.getElementById('aiDraftFooter')).display !== 'none' && footerRect.bottom <= window.innerHeight + 1;
+      document.querySelector('.ai-review-row[data-kind="template"] .ai-include').click();
+      document.querySelector('.ai-review-row[data-kind="section"] .ai-tier-price').value = '55000';
+      updateAiDraftTotals();
+      const recommendedAdditions = document.getElementById('aiRecommendedAdditions').textContent;
+      const projectedTotal = document.getElementById('aiProjectedTotal').textContent;
+      await applyAiBudgetDraft();
+      const finalNames = customizeBudgetData.customCategories.map(category => category.name);
+      const generateCall = calls.find(call => call.url.endsWith('/api/admin/ai/budget-draft'));
+      const applyCall = calls.find(call => call.url.endsWith('/api/admin/budgets/ai-budget/apply-ai-draft'));
+      window.fetch = originalFetch;
+      window.confirm = originalConfirm;
+      return {
+        preview,
+        provenance,
+        finalNames,
+        draftPrompt: generateCall?.body?.prompt,
+        generationHasCustomization: !!generateCall?.body?.customization,
+        applyHasCustomization: !!applyCall?.body?.customization,
+        appliedTemplateCount: applyCall?.body?.draft?.templateSelections?.length,
+        appliedPrice: applyCall?.body?.draft?.sections?.[0]?.tiers?.[0]?.price,
+        recommendedAdditions,
+        projectedTotal,
+        applied: !!applyCall,
+        finalSelections: customizeBudgetData.currentState.selections,
+        modalOpen: document.getElementById('aiBudgetDraftModal').classList.contains('active'),
+        appliedProvenance: document.getElementById('customizeBody').textContent.includes('AI-Created'),
+        undoVisible: getComputedStyle(document.getElementById('undoAiDraftBtn')).display !== 'none',
+        customizeInertDuringAi,
+        customizeInertAfterApply: document.getElementById('customizeModal').inert,
+        footerVisible
+      };
+    });
+
+    expect(result.preview).toContain('Golf Simulator');
+    expect(result.preview).toContain('$80,000');
+    expect(result.provenance).toEqual(['Approved Category', 'AI-Created']);
+    expect(result.draftPrompt).toContain('meeting notes');
+    expect(result.generationHasCustomization).toBe(true);
+    expect(result.applyHasCustomization).toBe(true);
+    expect(result.appliedTemplateCount).toBe(0);
+    expect(result.appliedPrice).toBe(55000);
+    expect(result.recommendedAdditions).toBe('$55,000');
+    expect(result.projectedTotal).toBe('$55,000');
+    expect(result.applied).toBe(true);
+    expect(result.finalNames).toEqual(['Golf Simulator']);
+    expect(result.finalSelections).toEqual({});
+    expect(result.modalOpen).toBe(false);
+    expect(result.appliedProvenance).toBe(true);
+    expect(result.undoVisible).toBe(true);
+    expect(result.customizeInertDuringAi).toBe(true);
+    expect(result.customizeInertAfterApply).toBe(false);
+    expect(result.footerVisible).toBe(true);
+  });
+
+  test('readiness panel surfaces structural risks and records AI-note review', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      customizeBudgetId = 'readiness-budget';
+      customizeBudgetData = {
+        id: 'readiness-budget',
+        isCustomized: true,
+        sqftLocked: 4000,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: {
+          __defaultCategories: { residential: [{ id: 'networking', name: 'Networking', section: 'Infrastructure', icon: 'N', tiers: { good: { enabled: true, label: 'Good', price: 5000 } } }], condo: [] },
+          networking: { required: true },
+          __aiDraft: { appliedAt: '2026-07-15T00:00:00.000Z', assumptions: ['Pathways must be confirmed.'], questions: ['Is power available?'] }
+        },
+        customCategories: [
+          { id: 'ai-gate', name: 'Gate Camera', aiGenerated: true, tiers: { good: { enabled: true, label: 'Coverage', price: 0 } } },
+          { id: 'manual-gate', name: 'Gate Camera Copy', tiers: { good: { enabled: true, label: 'Coverage', price: 2500 } } }
+        ]
+      };
+      renderCustomizeEditor();
+      const before = document.getElementById('budgetReadinessPanel').textContent;
+      acknowledgeAiReadiness();
+      const after = document.getElementById('budgetReadinessPanel').textContent;
+      return {
+        before,
+        after,
+        reviewed: customizeBudgetData.categoryConfig.__aiDraft.assumptionsReviewed,
+        counts: Array.from(document.querySelectorAll('.readiness-item strong')).map(el => Number(el.textContent))
+      };
+    });
+
+    expect(result.before).toContain('Networking');
+    expect(result.before).toContain('Gate Camera');
+    expect(result.before).toContain('AI notes pending review');
+    expect(result.after).not.toContain('AI notes pending review');
+    expect(result.reviewed).toBe(true);
+    expect(result.counts).toEqual([1, 1, 1, 1]);
+  });
+
+  test('one-click AI undo restores the prior customizer state', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const baseBudget = {
+        id: 'undo-budget', isCustomized: true, sqftLocked: 4000, propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4000, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: { __defaultCategories: { residential: [], condo: [] } }, customCategories: []
+      };
+      customizeBudgetId = baseBudget.id;
+      customizeBudgetData = { ...baseBudget, customCategories: [{ id: 'ai-room', name: 'AI Room', aiGenerated: true, tiers: { good: { enabled: true, label: 'Allowance', price: 5000 } } }] };
+      customizeAiUndoAvailable = true;
+      renderCustomizeEditor();
+      const visibleBefore = getComputedStyle(document.getElementById('undoAiDraftBtn')).display !== 'none';
+      const originalFetch = window.fetch;
+      const originalConfirm = window.confirm;
+      let undoCalled = false;
+      window.confirm = () => true;
+      window.fetch = async (url, options = {}) => {
+        undoCalled = String(url).endsWith('/api/admin/budgets/undo-budget/undo-ai-draft') && options.method === 'POST';
+        return new Response(JSON.stringify({ success: true, budget: baseBudget, newVersion: 3 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+      await undoAiBudgetDraft();
+      window.fetch = originalFetch;
+      window.confirm = originalConfirm;
+      return {
+        visibleBefore,
+        undoCalled,
+        restoredNames: customizeBudgetData.customCategories.map(category => category.name),
+        availableAfter: customizeAiUndoAvailable,
+        visibleAfter: getComputedStyle(document.getElementById('undoAiDraftBtn')).display !== 'none'
+      };
+    });
+
+    expect(result).toEqual({ visibleBefore: true, undoCalled: true, restoredNames: [], availableAfter: false, visibleAfter: false });
+  });
+
+  test('team library manager searches, filters, edits, and duplicates sections', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      sectionLibraryItems = [
+        { id: 'golf', name: 'Golf Simulator', description: 'Dedicated room allowance', category: 'Entertainment', tags: ['golf', 'one-off'], payload: { name: 'Golf Simulator', icon: 'G', section: 'Entertainment', tiers: { standard: { enabled: true, label: 'Allowance', price: 50000, features: [] } } } },
+        { id: 'gate', name: 'Entry Gate', description: 'Gate access allowance', category: 'Security', tags: ['gate'], payload: { name: 'Entry Gate', icon: 'S', section: 'Security', tiers: { standard: { enabled: true, label: 'Allowance', price: 20000, features: [] } } } }
+      ];
+      populateLibraryCategorySelects();
+      renderSectionLibraryManager();
+      document.getElementById('libraryManagerSearch').value = 'golf';
+      renderSectionLibraryManager();
+      const searchText = document.getElementById('sectionLibraryManagerBody').textContent;
+      document.getElementById('libraryManagerSearch').value = '';
+      document.getElementById('libraryManagerCategory').value = 'Security';
+      renderSectionLibraryManager();
+      const filterText = document.getElementById('sectionLibraryManagerBody').textContent;
+      openLibraryEditorModal('golf');
+      const edit = {
+        name: document.getElementById('libraryEditName').value,
+        category: document.getElementById('libraryEditCategory').value,
+        dashboardInert: document.getElementById('dashboard').inert
+      };
+      closeLibraryEditorModal();
+      duplicateLibraryItem('golf');
+      const duplicate = {
+        id: document.getElementById('libraryEditId').value,
+        name: document.getElementById('libraryEditName').value
+      };
+      closeLibraryEditorModal();
+      return { searchText, filterText, edit, duplicate };
+    });
+
+    expect(result.searchText).toContain('Golf Simulator');
+    expect(result.searchText).not.toContain('Entry Gate');
+    expect(result.filterText).toContain('Entry Gate');
+    expect(result.filterText).not.toContain('Golf Simulator');
+    expect(result.edit).toEqual({ name: 'Golf Simulator', category: 'Entertainment', dashboardInert: true });
+    expect(result.duplicate).toEqual({ id: '', name: 'Golf Simulator Copy' });
   });
 });

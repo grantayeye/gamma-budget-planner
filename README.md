@@ -30,6 +30,8 @@ Create `.env` file:
 
 ```
 RESEND_API_KEY=your_resend_api_key
+OPENAI_API_KEY=your_openai_api_key  # required for admin AI Budget Draft
+OPENAI_BUDGET_MODEL=gpt-5.6-terra  # optional override
 BUDGET_EDIT_SECRET=long_random_secret_for_editable_budget_links
 SESSION_SECRET=generate_a_random_secret
 PORT=3000
