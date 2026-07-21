@@ -115,6 +115,56 @@ test.describe('Budget Planner', () => {
     expect(newTotal).not.toBe(initialTotal);
   });
 
+  test('customer sees renamed template sections and separately named duplicates', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const surveillance = {
+        id: 'surveillance',
+        section: 'Security',
+        section_id: 'security',
+        name: 'Surveillance',
+        icon: '📹',
+        tiers: { good: { enabled: true, price: 8000, label: 'Core Coverage', features: [] } }
+      };
+      isCustomizedBudget = true;
+      customCategoryConfig = {
+        __defaultCategories: { residential: [surveillance], condo: [] },
+        __defaultExtras: { residential: [], condo: [] },
+        __defaultSections: { residential: [{ id: 'security', name: 'Security', order: 0 }], condo: [] },
+        __layout: { sections: [{ id: 'security', name: 'Security', order: 0 }] },
+        surveillance: {
+          name: 'Main House Surveillance',
+          section: 'Security',
+          section_id: 'security',
+          sortOrder: 0,
+          tiers: { good: { enabled: true, price: 8000, label: 'Core Coverage', features: [] } }
+        }
+      };
+      customCategories = [{
+        id: 'custom-guest-house-surveillance',
+        section: 'Security',
+        section_id: 'security',
+        sortOrder: 1,
+        name: 'Guest House Surveillance',
+        icon: '📹',
+        tiers: { good: { enabled: true, price: 12000, label: 'Guest Coverage', features: [] } }
+      }];
+      state.propertyType = 'residential';
+      state.selections = {};
+      state.extras = {};
+      state.catMods = {};
+      renderCategories();
+      return {
+        names: CATEGORIES().map(category => category.name),
+        renderedNames: [...document.querySelectorAll('.category-name')].map(el => el.textContent.trim()),
+        ids: [...document.querySelectorAll('.category-card')].map(el => el.id)
+      };
+    });
+
+    expect(result.names).toEqual(['Main House Surveillance', 'Guest House Surveillance']);
+    expect(result.renderedNames).toEqual(['Main House Surveillance', 'Guest House Surveillance']);
+    expect(result.ids).toEqual(['cat-surveillance', 'cat-custom-guest-house-surveillance']);
+  });
+
   test('required budget sections hide Skip and can be cleared back to unanswered', async ({ page }) => {
     const initial = await page.evaluate(() => {
       CONFIGS.residential = {

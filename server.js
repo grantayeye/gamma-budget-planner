@@ -1411,7 +1411,10 @@ function getBudgetDefaultCategoriesFromConfig(categoryConfig, defaults, property
   const categories = getSnapshotForPropertyType(categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
     || getDefaultCategoriesFromData(defaults, propertyType);
   const sections = getBudgetDefaultSectionsFromConfig(categoryConfig, defaults, propertyType);
-  return normalizeCategoryList(categories, sections).categories;
+  return normalizeCategoryList(categories, sections).categories.map(category => {
+    const customName = categoryConfig?.[category.id]?.name;
+    return customName ? { ...category, name: customName } : category;
+  });
 }
 
 function getBudgetDefaultExtrasFromConfig(categoryConfig, defaults, propertyType) {
@@ -1496,7 +1499,7 @@ function updateNonCustomCategoryPrices(existingConfig = {}, oldCategories, newCa
         brands: existingTier.brands ?? defaultTier?.brands ?? ''
       };
     });
-    config[cat.id] = { hidden: existing.hidden === true, tiers };
+    config[cat.id] = { ...existing, hidden: existing.hidden === true, tiers };
   });
   Object.keys(existingConfig).forEach(catId => {
     if (!config[catId]) config[catId] = existingConfig[catId];
@@ -1544,7 +1547,7 @@ function preserveCategoryPricesAcrossChange(existingConfig = {}, oldCategories, 
         brands: existingTier.brands ?? defaultTier?.brands ?? ''
       };
     });
-    config[cat.id] = { hidden: existing.hidden === true, tiers };
+    config[cat.id] = { ...existing, hidden: existing.hidden === true, tiers };
   });
   Object.keys(existingConfig).forEach(catId => {
     if (!config[catId]) config[catId] = existingConfig[catId];

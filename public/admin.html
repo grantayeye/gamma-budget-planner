@@ -4634,7 +4634,10 @@ function getBudgetDefaultCategories(budget, propertyType) {
   const categories = snapshotForPropertyType(budget?.categoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], propertyType)
     || getDefaultCategories(propertyType);
   const sections = getBudgetDefaultSections(budget, propertyType);
-  return normalizeCategoryList(categories, sections).categories;
+  return normalizeCategoryList(categories, sections).categories.map(category => {
+    const customName = budget?.categoryConfig?.[category.id]?.name;
+    return customName ? { ...category, name: customName } : category;
+  });
 }
 
 function getBudgetDefaultExtras(budget, propertyType) {
@@ -5535,7 +5538,7 @@ function getCustomizeLayoutModel(defaultCategories, customCategories, existingCo
     items.push({
       id: cat.id,
       type: 'default',
-      name: cat.name,
+      name: override.name || cat.name,
       sectionId,
       section: sectionName,
       order: Number.isFinite(Number(override.sortOrder)) ? Number(override.sortOrder) : index
@@ -5759,7 +5762,7 @@ function calculateBudgetReadiness() {
   document.querySelectorAll('.category-editor').forEach(editor => {
     const id = editor.dataset.catId;
     const shown = editor.querySelector('.customize-show-control input')?.checked !== false;
-    const name = editor.querySelector('.category-editor-title strong')?.textContent.trim() || id;
+    const name = editor.querySelector('.category-editor-name')?.textContent.trim() || id;
     if (shown) names.push(name);
     if (shown && editor.querySelector('.category-required')?.checked && !selections[id]) required.push(name);
     const enabledRows = Array.from(editor.querySelectorAll('.tier-row')).filter(row => row.querySelector('.tier-enabled')?.checked);
@@ -6113,7 +6116,8 @@ function saveEditorToSectionLibrary(type, idOrIndex) {
     if (!editor || !base) return showToast('Could not read that section');
     const layout = collectCustomizeLayoutData().itemLayout[idOrIndex] || {};
     const override = readStandardCategoryEditorPayload(editor, layout);
-    payload = { ...base, ...override, id: `library-${slugifySectionId(base.name)}`, name: base.name, icon: base.icon || '📦', desc: base.desc || '', section: layout.section || base.section || 'Custom', tiers: override.tiers };
+    const name = override.name || base.name;
+    payload = { ...base, ...override, id: `library-${slugifySectionId(name)}`, name, icon: base.icon || '📦', desc: base.desc || '', section: layout.section || base.section || 'Custom', tiers: override.tiers };
     delete payload.hidden;
   } else {
     const editor = document.querySelector(`.custom-category-editor[data-index="${Number(idOrIndex)}"]`);
@@ -6917,6 +6921,7 @@ function readStandardCategoryEditorPayload(editor, extra = {}) {
   const featureMatrix = readMatrixForPresentationMode(editor, presentationMode);
   applyMatrixLegacyFeatures(tiers, featureMatrix, presentationMode);
   return withPresentationPayload({
+    name: editor.querySelector('.category-editor-name')?.textContent.trim() || '',
     hidden: isHidden,
     required: editor.querySelector('.category-required')?.checked === true,
     tiers,
@@ -6932,9 +6937,8 @@ function readCustomCategoryEditorPayload(editor, options = {}) {
   const customId = options.newId
     ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     : existingId;
-  const existingCategory = options.newId
-    ? {}
-    : (customizeBudgetData?.customCategories || []).find(category => category.id === existingId) || {};
+  const existingCategory = (customizeBudgetData?.customCategories || [])
+    .find(category => category.id === existingId) || {};
   const tiers = readTierRowsFromEditor(editor, '.cc-tier-row', {
     enabled: '.cc-tier-enabled',
     label: '.cc-tier-label',
@@ -7090,7 +7094,7 @@ function getCopyToSourcePayload(type, idOrIndex) {
   const propertyType = getBudgetPropertyType(customizeBudgetData || {});
   const cat = getBudgetDefaultCategories(customizeBudgetData, propertyType).find(item => item.id === idOrIndex);
   if (!override || !cat) return null;
-  return { type: 'default', catId: idOrIndex, override, label: cat.name };
+  return { type: 'default', catId: idOrIndex, override, label: override.name || cat.name };
 }
 
 function openCopyToModal(type, idOrIndex) {
@@ -7368,6 +7372,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
   const isLocked = selectedTier && !isHidden; // Can't hide if selected
   const sizeScale = cat.sizeScale ?? 0.5; // Default scale factor
   const presentationMode = getCategoryPresentationMode(cat, override);
+  const displayName = override.name || cat.name;
   
   // All possible tiers - show all of them, even if missing from base data
   const allTiers = TIER_ORDER;
@@ -7389,7 +7394,7 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
     <div class="category-editor" data-cat-id="${cat.id}" data-size-scale="${sizeScale}" data-presentation-mode="${presentationMode}" style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:8px;${isHidden ? 'opacity:0.6;' : ''}">
       <div class="category-editor-header-row">
         <div class="category-editor-title">
-          <strong>${cat.icon} ${cat.name}</strong>
+          <strong>${cat.icon} <span class="category-editor-name">${escapeAttr(displayName)}</span></strong>
           ${override.aiReviewedAt ? provenanceBadgeHtml('approved') : ''}
           ${selectedTier ? `<span style="color:var(--accent);font-size:12px;margin-left:8px;">● ${selectedTier} selected</span>` : ''}
         </div>
@@ -7397,6 +7402,8 @@ function renderCategoryEditor(cat, existingOverride, selectedTier, sqft, layoutC
           ${layoutControlsHtml}
           <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('default', '${cat.id}')">Copy To</button>
           <button type="button" class="btn btn-secondary btn-small" onclick="saveEditorToSectionLibrary('default', '${cat.id}')">Save to Library</button>
+          <button type="button" class="btn btn-secondary btn-small" onclick="renameDefaultCategory('${cat.id}')">Rename</button>
+          <button type="button" class="btn btn-secondary btn-small customize-duplicate-btn" onclick="duplicateCustomizeCategory('default', '${cat.id}')">Duplicate</button>
           <label class="customize-show-control" style="${isLocked ? 'opacity:0.5;' : ''}">
             <input type="checkbox"
               ${isHidden ? '' : 'checked'}
@@ -7502,7 +7509,7 @@ function renderCustomCategoryEditor(cc, index, selectedTier, layoutControlsHtml 
         ${layoutControlsHtml}
         <button type="button" class="btn btn-secondary btn-small customize-copy-to-btn" onclick="openCopyToModal('custom', '${index}')">Copy To</button>
         <button type="button" class="btn btn-secondary btn-small" onclick="saveEditorToSectionLibrary('custom', '${index}')">Save to Library</button>
-        <button type="button" class="btn btn-secondary btn-small customize-clone-btn" onclick="cloneCustomCategory(${index})">Clone</button>
+        <button type="button" class="btn btn-secondary btn-small customize-clone-btn" onclick="duplicateCustomizeCategory('custom', ${index})">Duplicate</button>
         <button type="button" class="btn btn-secondary btn-small customize-collapse-btn" onclick="toggleCustomizeEditorCollapsed(this)" aria-expanded="false">Edit</button>
         <button type="button" class="btn btn-small" style="background:#FFEBEE;color:#C62828;" onclick="removeCustomCategory(${index})">Remove</button>
       </div>
@@ -7825,31 +7832,96 @@ function addCustomCategory() {
   queueCustomizeDraftSave();
 }
 
-function nextCustomCloneName(name) {
-  const base = String(name || 'Custom Section').replace(/\s\(\d+\)$/, '');
-  const names = Array.from(document.querySelectorAll('.custom-category-editor .cc-name'))
-    .map(input => input.value.trim().toLowerCase());
-  let index = 1;
-  while (names.includes(`${base} (${index})`.toLowerCase())) index++;
-  return `${base} (${index})`;
+function renameDefaultCategory(catId) {
+  const editor = document.querySelector(`.category-editor[data-cat-id="${CSS.escape(String(catId))}"]`);
+  const nameEl = editor?.querySelector('.category-editor-name');
+  if (!nameEl) return showToast('Could not rename that section');
+  const nextName = prompt('Section name:', nameEl.textContent.trim());
+  if (nextName === null) return;
+  const cleanName = nextName.trim().slice(0, 200);
+  if (!cleanName) return showToast('Section name cannot be blank');
+  nameEl.textContent = cleanName;
+  markCatDirty();
+  queueCustomizeDraftSave();
+  updateBudgetReadiness();
+  showToast(`✓ Renamed to ${cleanName}`);
 }
 
-function cloneCustomCategory(index) {
-  const editor = document.querySelector(`.custom-category-editor[data-index="${index}"]`);
-  const source = readCustomCategoryEditorData(editor, { newId: true });
-  if (!source || !source.name) {
-    showToast('Name the custom section before cloning');
-    return;
+function nextDuplicateCategoryName(name) {
+  const base = String(name || 'Custom Section').replace(/\s+Copy(?:\s+\d+)?$/i, '').trim() || 'Custom Section';
+  const names = [
+    ...Array.from(document.querySelectorAll('.category-editor-name')).map(el => el.textContent.trim().toLowerCase()),
+    ...Array.from(document.querySelectorAll('.custom-category-editor .cc-name')).map(input => input.value.trim().toLowerCase())
+  ];
+  let candidate = `${base} Copy`;
+  let index = 2;
+  while (names.includes(candidate.toLowerCase())) candidate = `${base} Copy ${index++}`;
+  return candidate;
+}
+
+function duplicateCustomizeCategory(type, idOrIndex) {
+  if (!customizeBudgetData) return;
+  let source;
+  let sourceName;
+
+  if (type === 'default') {
+    const catId = String(idOrIndex);
+    const editor = document.querySelector(`.category-editor[data-cat-id="${CSS.escape(catId)}"]`);
+    if (!editor) return showToast('Could not read that section');
+    const current = collectCustomizationData();
+    customizeBudgetData.categoryConfig = current.categoryConfig;
+    customizeBudgetData.customCategories = current.customCategories;
+    const propertyType = getBudgetPropertyType(customizeBudgetData);
+    const base = getBudgetDefaultCategories(customizeBudgetData, propertyType).find(category => category.id === catId);
+    const override = current.categoryConfig[catId] || {};
+    if (!base) return showToast('Could not read that section');
+    sourceName = override.name || base.name;
+    source = {
+      ...JSON.parse(JSON.stringify(base)),
+      ...JSON.parse(JSON.stringify(override)),
+      icon: base.icon || '📦',
+      desc: base.desc || '',
+      section_id: override.section_id || override.sectionId || base.section_id || base.sectionId || slugifySectionId(override.section || base.section || 'Custom'),
+      sectionId: override.section_id || override.sectionId || base.section_id || base.sectionId || slugifySectionId(override.section || base.section || 'Custom'),
+      section: override.section || base.section || 'Custom',
+      sortOrder: Number(override.sortOrder ?? base.sortOrder ?? 0) + 0.5,
+      tiers: JSON.parse(JSON.stringify(override.tiers || base.tiers || {}))
+    };
+    delete source.hidden;
+  } else {
+    const editor = document.querySelector(`.custom-category-editor[data-index="${Number(idOrIndex)}"]`);
+    source = readCustomCategoryEditorData(editor, { newId: true });
+    if (!source?.name) return showToast('Name the custom section before duplicating');
+    sourceName = source.name;
+    const current = collectCustomizationData();
+    customizeBudgetData.categoryConfig = current.categoryConfig;
+    customizeBudgetData.customCategories = current.customCategories;
+    source.sortOrder = Number(source.sortOrder ?? 0) + 0.5;
   }
 
-  source.name = nextCustomCloneName(source.name);
-  const current = collectCustomizationData();
-  customizeBudgetData.categoryConfig = current.categoryConfig;
-  customizeBudgetData.customCategories = [...(current.customCategories || []), source];
+  const suggestedName = nextDuplicateCategoryName(sourceName);
+  const requestedName = prompt('Name the duplicated section:', suggestedName);
+  if (requestedName === null) return;
+  const cleanName = requestedName.trim().slice(0, 200);
+  if (!cleanName) return showToast('Section name cannot be blank');
+
+  const propertyType = getBudgetPropertyType(customizeBudgetData);
+  const usedIds = new Set([
+    ...getBudgetDefaultCategories(customizeBudgetData, propertyType).map(category => category.id),
+    ...(customizeBudgetData.customCategories || []).map(category => category.id)
+  ]);
+  source.id = uniqueSectionId(`custom-${slugifySectionId(cleanName)}`, usedIds);
+  source.name = cleanName;
+  customizeBudgetData.customCategories = [...(customizeBudgetData.customCategories || []), source];
   renderCustomizeEditor();
   markCatDirty();
   queueCustomizeDraftSave();
-  showToast(`✓ Cloned ${source.name}`);
+  requestAnimationFrame(() => scrollCustomizeItemIntoView('custom', source.id));
+  showToast(`✓ Added ${cleanName}`);
+}
+
+function cloneCustomCategory(index) {
+  duplicateCustomizeCategory('custom', index);
 }
 
 function removeCustomCategory(index) {
