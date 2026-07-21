@@ -2266,7 +2266,10 @@ function snapshotForPropertyType(snapshot, propertyType) {
 function baseCategoriesForBudget() {
   const categories = snapshotForPropertyType(customCategoryConfig?.[DEFAULT_CATEGORY_SNAPSHOT_KEY], state.propertyType)
     || CONFIGS[state.propertyType].categories;
-  return normalizeCategoryList(categories, baseSectionsForBudget()).categories;
+  return normalizeCategoryList(categories, baseSectionsForBudget()).categories.map(category => {
+    const customName = customCategoryConfig?.[category.id]?.name;
+    return customName ? { ...category, name: customName } : category;
+  });
 }
 
 function baseExtrasForBudget() {
@@ -2311,6 +2314,7 @@ function CATEGORIES() {
       customCat.sectionId = override.section_id || override.sectionId;
     }
     if (override?.section) customCat.section = override.section;
+    if (override?.name) customCat.name = override.name;
     if (override?.sortOrder !== undefined) customCat.sortOrder = override.sortOrder;
     if (override?.required !== undefined) customCat.required = override.required === true;
     if (override?.presentationMode) customCat.presentationMode = override.presentationMode;

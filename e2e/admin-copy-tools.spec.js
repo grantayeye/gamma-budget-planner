@@ -352,6 +352,82 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.opened).toBe('clone987');
   });
 
+  test('renames a template section and creates independently named duplicates', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const surveillance = {
+        id: 'surveillance',
+        name: 'Surveillance',
+        icon: '📹',
+        section: 'Security',
+        section_id: 'security',
+        presentationMode: 'matrix',
+        featureMatrix: [{
+          id: 'camera-count',
+          label: 'Camera coverage',
+          description: 'Camera allowance for this building.',
+          tierStatus: { good: 'included', better: { status: 'addon', price: 2500 } }
+        }],
+        tiers: {
+          good: { enabled: true, label: 'Core Coverage', price: 8000, features: ['Camera coverage'], brands: 'Axis' },
+          better: { enabled: true, label: 'Expanded Coverage', price: 14000, features: [], brands: 'Axis' }
+        }
+      };
+      customizeBudgetId = 'rename-duplicate-budget';
+      customizeBudgetData = {
+        id: 'rename-duplicate-budget',
+        isCustomized: true,
+        sqftLocked: 4500,
+        propertyTypeLocked: 'residential',
+        currentState: { homeSize: 4500, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: {
+          __defaultCategories: { residential: [surveillance], condo: [] },
+          __defaultExtras: { residential: [], condo: [] },
+          __defaultSections: { residential: [{ id: 'security', name: 'Security', order: 0 }], condo: [] },
+          __layout: { sections: [{ id: 'security', name: 'Security', order: 0 }] }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+
+      const promptValues = ['Main House Surveillance', 'Guest House Surveillance', 'Warehouse Surveillance'];
+      prompt = () => promptValues.shift();
+      renameDefaultCategory('surveillance');
+      duplicateCustomizeCategory('default', 'surveillance');
+      const guestEditor = document.querySelector('.custom-category-editor');
+      const guestIndex = Number(guestEditor.dataset.index);
+      guestEditor.querySelector('.feature-matrix-tier-card[data-tier="good"] .matrix-tier-price').value = '12000';
+      duplicateCustomizeCategory('custom', guestIndex);
+      document.querySelector('.custom-category-editor .feature-matrix-tier-card[data-tier="good"] .matrix-tier-price').value = '13000';
+
+      const collected = collectCustomizationData();
+      const guest = collected.customCategories.find(category => category.name === 'Guest House Surveillance');
+      const warehouse = collected.customCategories.find(category => category.name === 'Warehouse Surveillance');
+      return {
+        defaultName: collected.categoryConfig.surveillance.name,
+        defaultPrice: collected.categoryConfig.surveillance.tiers.good.price,
+        customNames: collected.customCategories.map(category => category.name),
+        customIds: collected.customCategories.map(category => category.id),
+        guestPrice: guest?.tiers?.good?.price,
+        warehousePrice: warehouse?.tiers?.good?.price,
+        guestMatrix: guest?.featureMatrix,
+        warehouseMatrix: warehouse?.featureMatrix,
+        guestSection: guest?.section,
+        bodyOverflow: document.body.scrollWidth > document.body.clientWidth + 4
+      };
+    });
+
+    expect(result.defaultName).toBe('Main House Surveillance');
+    expect(result.defaultPrice).toBe(8000);
+    expect(result.customNames).toEqual(['Guest House Surveillance', 'Warehouse Surveillance']);
+    expect(new Set(result.customIds).size).toBe(2);
+    expect(result.guestPrice).toBe(13000);
+    expect(result.warehousePrice).toBe(12000);
+    expect(result.guestMatrix[0].description).toContain('this building');
+    expect(result.warehouseMatrix[0].tierStatus.better).toEqual({ status: 'addon', price: 2500 });
+    expect(result.guestSection).toBe('Security');
+    expect(result.bodyOverflow).toBe(false);
+  });
+
   test('new budget asks for template or truly blank custom starting point', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const calls = [];
