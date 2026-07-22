@@ -1992,6 +1992,94 @@ test.describe('Admin copy/customization tools', () => {
     expect(result.customTierCount).toBe(0);
   });
 
+  test('multiple named custom categories survive section assignment and save', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      customizeBudgetId = 'multi-custom-budget';
+      customizeBudgetData = {
+        id: 'multi-custom-budget',
+        isCustomized: true,
+        currentState: { homeSize: 500, propertyType: 'residential', selections: {}, extras: {}, total: 0 },
+        categoryConfig: {
+          __defaultCategories: { residential: [], condo: [] },
+          __defaultExtras: { residential: [], condo: [] },
+          __defaultSections: { residential: [], condo: [] },
+          __layout: {
+            sections: [
+              { id: 'audio', name: 'Audio', order: 0 },
+              { id: 'video', name: 'Video', order: 1 }
+            ]
+          }
+        },
+        customCategories: []
+      };
+      renderCustomizeEditor();
+
+      const addNamedCategory = (name, sectionId) => {
+        addCustomCategory();
+        const editor = [...document.querySelectorAll('.custom-category-editor')]
+          .find(item => item.querySelector('.cc-name')?.value === 'New Custom Section');
+        editor.querySelector('.cc-name').value = name;
+        const sectionSelect = editor.querySelector('.customize-item-section');
+        sectionSelect.value = sectionId;
+        changeCustomizeItemSection(sectionSelect);
+      };
+
+      addNamedCategory('Community Room Microphones', 'audio');
+      addNamedCategory('Lobby Display', 'video');
+      addNamedCategory('Pool Deck Audio', 'audio');
+
+      const collectedBeforeSave = collectCustomizationData();
+      const calls = [];
+      const originalFetch = window.fetch;
+      const originalLoadBudgets = loadBudgets;
+      window.fetch = async (url, options = {}) => {
+        if (String(url).endsWith('/api/admin/budgets/multi-custom-budget/customize')) {
+          calls.push(JSON.parse(options.body));
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return originalFetch(url, options);
+      };
+      loadBudgets = async () => {};
+      await saveCustomization();
+      window.fetch = originalFetch;
+      loadBudgets = originalLoadBudgets;
+
+      return {
+        before: collectedBeforeSave.customCategories.map(category => ({
+          id: category.id,
+          name: category.name,
+          section: category.section,
+          tiers: category.tiers
+        })),
+        saved: calls[0].customCategories.map(category => ({
+          id: category.id,
+          name: category.name,
+          section: category.section,
+          tiers: category.tiers
+        }))
+      };
+    });
+
+    expect(result.before.map(category => category.name)).toEqual([
+      'Community Room Microphones',
+      'Pool Deck Audio',
+      'Lobby Display'
+    ]);
+    expect(result.saved).toEqual(result.before);
+    expect(new Set(result.saved.map(category => category.id)).size).toBe(3);
+    expect(result.saved.map(category => category.section)).toEqual(['Audio', 'Audio', 'Video']);
+    result.saved.forEach(category => {
+      expect(category.tiers.good).toMatchObject({
+        enabled: true,
+        label: 'Budget Allowance',
+        price: 0
+      });
+    });
+  });
+
   test('adding a custom category scrolls back to the new editor', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const body = document.createElement('div');
