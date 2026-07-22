@@ -165,6 +165,47 @@ test.describe('Budget Planner', () => {
     expect(result.ids).toEqual(['cat-surveillance', 'cat-custom-guest-house-surveillance']);
   });
 
+  test('customer sees multiple newly named custom categories with allowance options', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      isCustomizedBudget = true;
+      customCategoryConfig = {
+        __defaultCategories: { residential: [], condo: [] },
+        __defaultExtras: { residential: [], condo: [] },
+        __defaultSections: { residential: [], condo: [] },
+        __layout: {
+          sections: [
+            { id: 'audio', name: 'Audio', order: 0 },
+            { id: 'video', name: 'Video', order: 1 }
+          ]
+        }
+      };
+      const allowanceTier = {
+        good: { enabled: true, label: 'Budget Allowance', price: 0, features: [], brands: '' }
+      };
+      customCategories = [
+        { id: 'custom-microphones', name: 'Community Room Microphones', section_id: 'audio', section: 'Audio', sortOrder: 0, tiers: allowanceTier },
+        { id: 'custom-pool-audio', name: 'Pool Deck Audio', section_id: 'audio', section: 'Audio', sortOrder: 1, tiers: allowanceTier },
+        { id: 'custom-lobby-display', name: 'Lobby Display', section_id: 'video', section: 'Video', sortOrder: 0, tiers: allowanceTier }
+      ];
+      state.propertyType = 'residential';
+      state.selections = {};
+      state.extras = {};
+      state.catMods = {};
+      renderCategories();
+      return {
+        names: [...document.querySelectorAll('.category-name')].map(element => element.textContent.trim()),
+        optionLabels: [...document.querySelectorAll('.tier-btn:not(.none-btn) .tier-label')].map(element => element.textContent.trim()),
+        sections: [...document.querySelectorAll('.section-header h3')].map(element => element.textContent.trim()),
+        overflow: document.body.scrollWidth > document.body.clientWidth + 4
+      };
+    });
+
+    expect(result.names).toEqual(['Community Room Microphones', 'Pool Deck Audio', 'Lobby Display']);
+    expect(result.optionLabels).toEqual(['Budget Allowance', 'Budget Allowance', 'Budget Allowance']);
+    expect(result.sections).toEqual(['Audio', 'Video']);
+    expect(result.overflow).toBe(false);
+  });
+
   test('required budget sections hide Skip and can be cleared back to unanswered', async ({ page }) => {
     const initial = await page.evaluate(() => {
       CONFIGS.residential = {

@@ -23,6 +23,7 @@ const {
   buildBudgetDraftInput,
   normalizeAiDraft
 } = require('./src/utils/budget-ai');
+const { ensureCustomCategoryTier } = require('./src/utils/custom-categories');
 
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION:', err);
@@ -1160,11 +1161,11 @@ function normalizeCustomCategoriesPayload(customCategories = []) {
   const usedIds = new Set();
   return (Array.isArray(customCategories) ? customCategories : [])
     .map(category => {
-      const normalized = normalizePresentationPayload(category);
+      const normalized = ensureCustomCategoryTier(normalizePresentationPayload(category));
       normalized.id = uniqueSectionId(sanitizeIdentifier(normalized.id || normalized.name, 'custom-category'), usedIds);
       return normalized;
     })
-    .filter(category => category.id && category.name && Object.keys(category.tiers || {}).length > 0);
+    .filter(category => category.id && category.name);
 }
 
 function mergeCustomCategoriesPayload(existingCategories = [], incomingCategories = []) {

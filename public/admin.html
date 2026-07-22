@@ -7810,7 +7810,11 @@ function addCustomCategory() {
     ...current.categoryConfig,
     __layout: { sections: layout.sections }
   };
-  const newCustomId = `custom-${Date.now()}`;
+  const usedIds = new Set([
+    ...getBudgetDefaultCategories(customizeBudgetData, getBudgetPropertyType(customizeBudgetData)).map(category => category.id),
+    ...(current.customCategories || []).map(category => category.id)
+  ]);
+  const newCustomId = uniqueSectionId(`custom-${Date.now()}`, usedIds);
   customizeBudgetData.customCategories = [
     ...(current.customCategories || []),
     {
@@ -7824,7 +7828,15 @@ function addCustomCategory() {
         ...Object.values(layout.itemLayout || {}),
         ...Object.values(layout.customLayout || {})
       ].filter(item => item.sectionId === customSection.id).length,
-      tiers: {}
+      tiers: {
+        good: {
+          enabled: true,
+          label: 'Budget Allowance',
+          price: 0,
+          features: [],
+          brands: ''
+        }
+      }
     }
   ];
   renderCustomizeEditor();
